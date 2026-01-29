@@ -20,7 +20,7 @@ class SetupController
             Response::redirect('/login');
         }
 
-        Response::view('auth/setup');
+        Response::view('auth/setup', [], 'layouts/guest');
     }
 
     public function create(): void

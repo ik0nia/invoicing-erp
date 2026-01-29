@@ -14,7 +14,7 @@ class AuthController
             Response::redirect('/admin/dashboard');
         }
 
-        Response::view('auth/login');
+        Response::view('auth/login', [], 'layouts/guest');
     }
 
     public function login(): void
