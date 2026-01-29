@@ -25,6 +25,9 @@ Aplicatie ERP custom (fara dependinte composer) pentru firme din Romania.
 
 Recomandat: seteaza document root catre folderul `public/`.
 
+Daca document root ramane in radacina proiectului (ex: /erp), este necesar fisierul `.htaccess`
+din radacina pentru a redirectiona toate cererile catre `index.php`.
+
 ## Structura branding
 
 Logo-ul este salvat in:
