@@ -100,39 +100,6 @@
                 </button>
             </form>
         <?php endif; ?>
-
-        <?php if (empty($packages)): ?>
-            <p class="mt-4 text-sm text-slate-500">Nu exista pachete. Genereaza pachete din formularul de mai sus.</p>
-        <?php else: ?>
-            <div class="mt-4 space-y-3">
-                <?php foreach ($packages as $package): ?>
-                    <?php $stat = $packageStats[$package->id] ?? null; ?>
-                    <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="font-medium text-slate-900">
-                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
-                            </div>
-                            <?php if (empty($isConfirmed)): ?>
-                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                                    <?= App\Support\Csrf::input() ?>
-                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                    <input type="hidden" name="action" value="delete">
-                                    <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                                    <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
-                                </form>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($stat): ?>
-                            <div class="mt-1 text-slate-500">
-                                Cota TVA <?= number_format($stat['vat_percent'], 2, '.', ' ') ?>% ·
-                                <?= (int) $stat['line_count'] ?> produse ·
-                                <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
     </div>
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -176,19 +143,42 @@
         </div>
     <?php endif; ?>
 
+    <?php
+        $unassigned = $linesByPackage[0] ?? [];
+        $unassignedCount = count($unassigned);
+    ?>
+
     <div class="mt-4 grid gap-4 lg:grid-cols-3">
         <?php foreach ($packages as $package): ?>
             <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
+            <?php $stat = $packageStats[$package->id] ?? null; ?>
             <div
                 class="rounded border border-slate-200 bg-slate-50 p-4"
                 data-drop-zone
                 data-package-id="<?= (int) $package->id ?>"
                 data-vat="<?= htmlspecialchars(number_format($package->vat_percent, 2, '.', '')) ?>"
             >
-                <div class="text-sm font-semibold text-slate-900">
-                    <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
+                <div class="flex items-start justify-between gap-2">
+                    <div class="text-sm font-semibold text-slate-900">
+                        <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
+                    </div>
+                    <?php if (empty($isConfirmed)): ?>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                            <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
+                        </form>
+                    <?php endif; ?>
                 </div>
                 <div class="text-xs text-slate-500">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
+                <?php if ($stat): ?>
+                    <div class="mt-1 text-xs text-slate-500">
+                        <?= (int) $stat['line_count'] ?> produse ·
+                        <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
+                    </div>
+                <?php endif; ?>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php if (empty($packageLines)): ?>
                         <div class="text-xs text-slate-400">Fara produse</div>
@@ -216,9 +206,9 @@
             data-vat=""
         >
             <div class="text-sm font-semibold text-slate-900">Nealocat</div>
-            <div class="text-xs text-slate-500">Produse fara pachet</div>
+            <div class="text-xs text-slate-500">Produse fara pachet · <?= (int) $unassignedCount ?></div>
             <div class="mt-3 space-y-2 min-h-[40px]">
-                <?php foreach (($linesByPackage[0] ?? []) as $line): ?>
+                <?php foreach ($unassigned as $line): ?>
                     <div
                         class="cursor-move rounded bg-white px-3 py-2 text-xs text-slate-700 shadow"
                         draggable="true"
