@@ -126,7 +126,7 @@
         <?php if (empty($clients)): ?>
             <p class="mt-4 text-sm text-slate-600">Nu exista comisioane importate pentru acest furnizor.</p>
         <?php else: ?>
-            <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3">
+            <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form">
                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                 <div>
                     <label class="block text-sm font-medium text-slate-700" for="client-search">Cauta client</label>
@@ -178,10 +178,6 @@
                         </tbody>
                     </table>
                 </div>
-
-                <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-                    Selecteaza clientul
-                </button>
             </form>
 
             <?php if (!empty($selectedClientCui)): ?>
@@ -210,6 +206,16 @@
     <?php
         $unassigned = $linesByPackage[0] ?? [];
         $unassignedCount = count($unassigned);
+        $hasCommission = $commissionPercent !== null;
+        $applyCommission = function (float $amount) use ($commissionPercent): ?float {
+            if ($commissionPercent === null) {
+                return null;
+            }
+            $factor = 1 + (abs($commissionPercent) / 100);
+            return $commissionPercent >= 0
+                ? round($amount * $factor, 2)
+                : round($amount / $factor, 2);
+        };
     ?>
 
     <div class="mt-4 grid gap-4 lg:grid-cols-3">
@@ -240,12 +246,15 @@
                 <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
                     <div class="mt-1 text-xs text-slate-600">
-                        <?= (int) $stat['line_count'] ?> produse ·
-                        <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
+                        <?= (int) $stat['line_count'] ?> produse
                     </div>
                     <?php if ($commissionTotal !== null): ?>
                         <div class="mt-1 text-xs font-semibold text-slate-700">
                             Total cu comision: <?= number_format($commissionTotal, 2, '.', ' ') ?> RON
+                        </div>
+                    <?php else: ?>
+                        <div class="mt-1 text-xs text-slate-500">
+                            Selecteaza clientul pentru a vedea preturile.
                         </div>
                     <?php endif; ?>
                 <?php endif; ?>
@@ -261,7 +270,16 @@
                                 data-line-id="<?= (int) $line->id ?>"
                                 data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
                             >
-                                <?= htmlspecialchars($line->product_name) ?>
+                                <div><?= htmlspecialchars($line->product_name) ?></div>
+                                <div class="mt-1 text-[11px] font-normal text-slate-700">
+                                    Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
+                                </div>
+                                <div class="text-[11px] font-normal text-slate-700">
+                                    Pret/buc: <?= $hasCommission ? number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') : '-' ?> RON
+                                </div>
+                                <div class="text-[11px] font-normal text-slate-700">
+                                    Total: <?= $hasCommission ? number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') : '-' ?> RON
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -280,15 +298,24 @@
                 <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php foreach ($unassigned as $line): ?>
-                        <div
-                            class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
-                            draggable="true"
-                            data-line-draggable
-                            data-line-id="<?= (int) $line->id ?>"
-                            data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
-                        >
-                            <?= htmlspecialchars($line->product_name) ?>
+                    <div
+                        class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                        draggable="true"
+                        data-line-draggable
+                        data-line-id="<?= (int) $line->id ?>"
+                        data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
+                    >
+                        <div><?= htmlspecialchars($line->product_name) ?></div>
+                        <div class="mt-1 text-[11px] font-normal text-slate-700">
+                            Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
                         </div>
+                        <div class="text-[11px] font-normal text-slate-700">
+                            Pret/buc: <?= $hasCommission ? number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') : '-' ?> RON
+                        </div>
+                        <div class="text-[11px] font-normal text-slate-700">
+                            Total: <?= $hasCommission ? number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') : '-' ?> RON
+                        </div>
+                    </div>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -384,6 +411,7 @@
         const searchInput = document.getElementById('client-search');
         if (searchInput) {
             const rows = Array.from(document.querySelectorAll('[data-client-row]'));
+            const form = document.getElementById('client-form');
             const filterRows = () => {
                 const value = searchInput.value.trim().toLowerCase();
                 rows.forEach((row) => {
@@ -399,8 +427,22 @@
                     const radio = row.querySelector('input[type="radio"]');
                     if (radio) {
                         radio.checked = true;
+                        if (form) {
+                            form.submit();
+                        }
                     }
                 });
+            });
+
+            rows.forEach((row) => {
+                const radio = row.querySelector('input[type="radio"]');
+                if (radio) {
+                    radio.addEventListener('change', () => {
+                        if (form) {
+                            form.submit();
+                        }
+                    });
+                }
             });
         }
 
