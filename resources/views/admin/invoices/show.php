@@ -79,14 +79,28 @@
                             <label class="block text-sm font-medium text-slate-700" for="vat_<?= htmlspecialchars($vatRate) ?>">
                                 Numar pachete pentru TVA <?= htmlspecialchars($vatRate) ?>%
                             </label>
-                            <input
-                                id="vat_<?= htmlspecialchars($vatRate) ?>"
-                                name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
-                                type="number"
-                                min="1"
-                                value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
-                                class="mt-1 w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                            >
+                    <div class="mt-1 inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
+                        <button
+                            type="button"
+                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            data-counter-decrement
+                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                        >−</button>
+                        <input
+                            id="vat_<?= htmlspecialchars($vatRate) ?>"
+                            name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
+                            type="number"
+                            min="1"
+                            value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
+                            class="w-12 border-none text-center text-sm"
+                        >
+                        <button
+                            type="button"
+                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            data-counter-increment
+                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                        >+</button>
+                    </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -106,18 +120,13 @@
         </form>
 
         <?php if (empty($isConfirmed) && !empty($packages)): ?>
-            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-4">
-                <?= App\Support\Csrf::input() ?>
-                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                <input type="hidden" name="action" value="confirm">
-                <button class="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                    Confirma pachetele
-                </button>
-            </form>
+            <div class="mt-3 text-sm text-slate-600">
+                Dupa ce organizezi produsele, confirma pachetele in sectiunea de mai jos.
+            </div>
         <?php endif; ?>
     </div>
 
-    <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Client de facturat</h2>
         <p class="mt-2 text-sm text-slate-600">
             Alege clientul pentru a calcula comisionul pe pachete.
@@ -128,6 +137,8 @@
         <?php else: ?>
             <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form">
                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                <input type="hidden" name="anchor" value="client-select">
+                <input type="hidden" name="anchor" value="client-select">
                 <div>
                     <label class="block text-sm font-medium text-slate-700" for="client-search">Cauta client</label>
                     <input
@@ -250,7 +261,7 @@
                     </div>
                     <?php if ($commissionTotal !== null): ?>
                         <div class="mt-1 text-xs font-semibold text-slate-700">
-                            Total cu comision: <?= number_format($commissionTotal, 2, '.', ' ') ?> RON
+                            Total client: <?= number_format($commissionTotal, 2, '.', ' ') ?> RON
                         </div>
                     <?php else: ?>
                         <div class="mt-1 text-xs text-slate-500">
@@ -274,12 +285,18 @@
                                 <div class="mt-1 text-[11px] font-normal text-slate-700">
                                     Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
                                 </div>
-                                <div class="text-[11px] font-normal text-slate-700">
-                                    Pret/buc: <?= $hasCommission ? number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') : '-' ?> RON
-                                </div>
-                                <div class="text-[11px] font-normal text-slate-700">
-                                    Total: <?= $hasCommission ? number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') : '-' ?> RON
-                                </div>
+                                <?php if ($hasCommission): ?>
+                                    <div class="text-[11px] font-normal text-slate-700">
+                                        Pret/buc: <?= number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') ?> RON
+                                    </div>
+                                    <div class="text-[11px] font-normal text-slate-700">
+                                        Total: <?= number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') ?> RON
+                                    </div>
+                                <?php else: ?>
+                                    <div class="text-[11px] font-normal text-slate-500">
+                                        Selecteaza clientul pentru preturi.
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -309,12 +326,18 @@
                         <div class="mt-1 text-[11px] font-normal text-slate-700">
                             Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
                         </div>
-                        <div class="text-[11px] font-normal text-slate-700">
-                            Pret/buc: <?= $hasCommission ? number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') : '-' ?> RON
-                        </div>
-                        <div class="text-[11px] font-normal text-slate-700">
-                            Total: <?= $hasCommission ? number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') : '-' ?> RON
-                        </div>
+                        <?php if ($hasCommission): ?>
+                            <div class="text-[11px] font-normal text-slate-700">
+                                Pret/buc: <?= number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') ?> RON
+                            </div>
+                            <div class="text-[11px] font-normal text-slate-700">
+                                Total: <?= number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') ?> RON
+                            </div>
+                        <?php else: ?>
+                            <div class="text-[11px] font-normal text-slate-500">
+                                Selecteaza clientul pentru preturi.
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
                 </div>
@@ -324,8 +347,19 @@
 
     <?php if (!empty($commissionPercent) && !empty($packageTotalsWithCommission['invoice_total'])): ?>
         <div class="mt-6 rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-            Total pachete cu comision: <strong><?= number_format($packageTotalsWithCommission['invoice_total'], 2, '.', ' ') ?> RON</strong>
+            Total client pachete: <strong><?= number_format($packageTotalsWithCommission['invoice_total'], 2, '.', ' ') ?> RON</strong>
         </div>
+    <?php endif; ?>
+
+    <?php if (empty($isConfirmed) && !empty($packages)): ?>
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-6">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input type="hidden" name="action" value="confirm">
+            <button class="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                Confirma pachetele
+            </button>
+        </form>
     <?php endif; ?>
 
     <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">
@@ -445,6 +479,40 @@
                 }
             });
         }
+
+        const params = new URLSearchParams(window.location.search);
+        const anchor = params.get('anchor');
+        if (anchor) {
+            const el = document.getElementById(anchor);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        const decButtons = document.querySelectorAll('[data-counter-decrement]');
+        const incButtons = document.querySelectorAll('[data-counter-increment]');
+
+        const updateCounter = (id, delta) => {
+            const input = document.getElementById(id);
+            if (!input) {
+                return;
+            }
+            const current = parseInt(input.value || '1', 10);
+            const next = Math.max(1, current + delta);
+            input.value = String(next);
+        };
+
+        decButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                updateCounter(button.dataset.target, -1);
+            });
+        });
+
+        incButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                updateCounter(button.dataset.target, 1);
+            });
+        });
 
         const isLocked = <?= !empty($isConfirmed) ? 'true' : 'false' ?>;
         if (isLocked) {
