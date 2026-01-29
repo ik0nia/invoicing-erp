@@ -3,56 +3,101 @@
 namespace App\Domain\Settings\Http\Controllers;
 
 use App\Domain\Settings\Services\SettingsService;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\View\View;
+use App\Support\Auth;
+use App\Support\Response;
+use App\Support\Session;
 
-class SettingsController extends Controller
+class SettingsController
 {
-    public function __construct(private SettingsService $settings)
+    private SettingsService $settings;
+
+    public function __construct()
     {
+        $this->settings = new SettingsService();
     }
 
-    public function editBranding(): View
+    public function editBranding(): void
     {
-        $this->ensureAdmin();
+        Auth::requireAdmin();
 
         $logoPath = $this->settings->get('branding.logo_path');
-        $logoUrl = $logoPath ? Storage::url($logoPath) : null;
+        $logoUrl = $logoPath ? \App\Support\Url::asset($logoPath) : null;
 
-        return view('admin.settings.branding', [
+        Response::view('admin/settings/branding', [
             'logoPath' => $logoPath,
             'logoUrl' => $logoUrl,
         ]);
     }
 
-    public function updateBranding(Request $request): RedirectResponse
+    public function updateBranding(): void
     {
-        $this->ensureAdmin();
+        Auth::requireAdmin();
 
-        $data = $request->validate([
-            'logo' => ['required', 'file', 'mimes:png,jpg,jpeg,svg'],
-        ]);
-
-        $file = $data['logo'];
-        $extension = $file->getClientOriginalExtension();
-
-        $path = $file->storeAs('erp', 'logo.' . $extension, 'public');
-        $this->settings->set('branding.logo_path', $path);
-
-        return redirect()
-            ->route('admin.settings.branding')
-            ->with('status', 'Logo actualizat.');
-    }
-
-    private function ensureAdmin(): void
-    {
-        $user = auth()->user();
-
-        if (!$user || !$user->isAdmin()) {
-            abort(403);
+        if (!isset($_FILES['logo']) || $_FILES['logo']['error'] !== UPLOAD_ERR_OK) {
+            Session::flash('error', 'Te rog incarca un fisier valid.');
+            Response::redirect('/admin/setari/branding');
         }
+
+        $file = $_FILES['logo'];
+        $maxSize = 2 * 1024 * 1024;
+
+        if ($file['size'] > $maxSize) {
+            Session::flash('error', 'Logo-ul trebuie sa fie sub 2 MB.');
+            Response::redirect('/admin/setari/branding');
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo ? finfo_file($finfo, $file['tmp_name']) : ($file['type'] ?? '');
+
+        if ($finfo) {
+            finfo_close($finfo);
+        }
+
+        $allowed = [
+            'image/png' => 'png',
+            'image/jpeg' => 'jpg',
+            'image/svg+xml' => 'svg',
+        ];
+
+        if (!array_key_exists($mime, $allowed)) {
+            Session::flash('error', 'Format logo invalid. Acceptam png, jpg sau svg.');
+            Response::redirect('/admin/setari/branding');
+        }
+
+        $extension = $allowed[$mime];
+        $storageDir = BASE_PATH . '/storage/app/public/erp';
+        $publicDir = BASE_PATH . '/public/storage/erp';
+
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0775, true);
+        }
+
+        if (!is_dir($publicDir)) {
+            mkdir($publicDir, 0775, true);
+        }
+
+        $filename = 'logo.' . $extension;
+        $targetPath = $storageDir . '/' . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+            Session::flash('error', 'Nu am putut salva fisierul incarcat.');
+            Response::redirect('/admin/setari/branding');
+        }
+
+        foreach (['png', 'jpg', 'svg'] as $ext) {
+            if ($ext === $extension) {
+                continue;
+            }
+
+            @unlink($storageDir . '/logo.' . $ext);
+            @unlink($publicDir . '/logo.' . $ext);
+        }
+
+        copy($targetPath, $publicDir . '/' . $filename);
+
+        $this->settings->set('branding.logo_path', 'storage/erp/' . $filename);
+
+        Session::flash('status', 'Logo actualizat.');
+        Response::redirect('/admin/setari/branding');
     }
 }

@@ -1,20 +1,22 @@
 <?php
 
-use Illuminate\Foundation\Application;
-use Illuminate\Http\Request;
+declare(strict_types=1);
 
-define('LARAVEL_START', microtime(true));
+define('BASE_PATH', dirname(__DIR__));
+$scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+define('BASE_URL', $scriptDir === '/' ? '' : $scriptDir);
 
-// Determine if the application is in maintenance mode...
-if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
-    require $maintenance;
-}
+require BASE_PATH . '/app/Support/Autoloader.php';
 
-// Register the Composer autoloader...
-require __DIR__.'/../vendor/autoload.php';
+App\Support\Autoloader::register();
+App\Support\Env::load(BASE_PATH . '/.env');
 
-// Bootstrap Laravel and handle the request...
-/** @var Application $app */
-$app = require_once __DIR__.'/../bootstrap/app.php';
+date_default_timezone_set(App\Support\Env::get('APP_TIMEZONE', 'Europe/Bucharest'));
 
-$app->handleRequest(Request::capture());
+session_start();
+
+$router = new App\Support\Router();
+
+require BASE_PATH . '/routes/web.php';
+
+$router->dispatch();

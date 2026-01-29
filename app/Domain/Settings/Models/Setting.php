@@ -2,18 +2,29 @@
 
 namespace App\Domain\Settings\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Database;
 
-class Setting extends Model
+class Setting
 {
-    protected $table = 'settings';
+    public int $id;
+    public string $key;
+    public mixed $value;
 
-    protected $fillable = [
-        'key',
-        'value',
-    ];
+    public static function findByKey(string $key): ?self
+    {
+        $row = Database::fetchOne('SELECT * FROM settings WHERE `key` = :key LIMIT 1', [
+            'key' => $key,
+        ]);
 
-    protected $casts = [
-        'value' => 'array',
-    ];
+        if (!$row) {
+            return null;
+        }
+
+        $setting = new self();
+        $setting->id = (int) $row['id'];
+        $setting->key = $row['key'];
+        $setting->value = json_decode($row['value'], true);
+
+        return $setting;
+    }
 }

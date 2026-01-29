@@ -2,22 +2,31 @@
 
 Versiune: v0.0.1
 
+Aplicatie ERP custom (fara dependinte composer) pentru firme din Romania.
+
 ## Cerinte
 
-- PHP 8.2+
-- Laravel 12
-- Baza de date configurata in .env
+- PHP 8.0+ (compatibil shared hosting)
+- MySQL 5.7+ sau MariaDB 10.3+
 
-## Instalare
+## Instalare (fara SSH)
 
-1. `composer install`
-2. `cp .env.example .env`
-3. `php artisan key:generate`
-4. `php artisan migrate`
-5. `php artisan db:seed`
-6. `php artisan storage:link`
+1. Creeaza o baza de date si un user in hosting.
+2. Importa schema SQL:
+   - `database/schema.sql`
+3. (Optional) Seed roluri:
+   - `database/seed_roles.sql`
+4. Copiaza `.env.example` ca `.env` si completeaza:
+   - `APP_URL`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+5. Uploadeaza toate fisierele pe hosting.
+6. Deschide in browser:
+   - `/setup` pentru a crea primul admin
 
-Pentru dezvoltare front-end (optional):
+Recomandat: seteaza document root catre folderul `public/`.
 
-- `npm install`
-- `npm run build`
+## Structura branding
+
+Logo-ul este salvat in:
+
+- `storage/app/public/erp/logo.{ext}`
+- Copie publicata in `public/storage/erp/logo.{ext}`

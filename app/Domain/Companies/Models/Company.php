@@ -2,37 +2,52 @@
 
 namespace App\Domain\Companies\Models;
 
-use App\Domain\Users\Models\User;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\Database;
 
-class Company extends Model
+class Company
 {
-    protected $table = 'companies';
+    public int $id;
+    public string $denumire;
+    public string $tip_firma;
+    public string $cui;
+    public string $nr_reg_comertului;
+    public bool $platitor_tva;
+    public string $adresa;
+    public string $localitate;
+    public string $judet;
+    public string $tara;
+    public string $email;
+    public string $telefon;
+    public string $tip_companie;
+    public bool $activ;
 
-    protected $fillable = [
-        'denumire',
-        'tip_firma',
-        'cui',
-        'nr_reg_comertului',
-        'platitor_tva',
-        'adresa',
-        'localitate',
-        'judet',
-        'tara',
-        'email',
-        'telefon',
-        'tip_companie',
-        'activ',
-    ];
-
-    protected $casts = [
-        'platitor_tva' => 'boolean',
-        'activ' => 'boolean',
-    ];
-
-    public function users(): HasMany
+    public static function fromArray(array $row): self
     {
-        return $this->hasMany(User::class);
+        $company = new self();
+        $company->id = (int) $row['id'];
+        $company->denumire = $row['denumire'];
+        $company->tip_firma = $row['tip_firma'];
+        $company->cui = $row['cui'];
+        $company->nr_reg_comertului = $row['nr_reg_comertului'];
+        $company->platitor_tva = (bool) $row['platitor_tva'];
+        $company->adresa = $row['adresa'];
+        $company->localitate = $row['localitate'];
+        $company->judet = $row['judet'];
+        $company->tara = $row['tara'];
+        $company->email = $row['email'];
+        $company->telefon = $row['telefon'];
+        $company->tip_companie = $row['tip_companie'];
+        $company->activ = (bool) $row['activ'];
+
+        return $company;
+    }
+
+    public static function find(int $id): ?self
+    {
+        $row = Database::fetchOne('SELECT * FROM companies WHERE id = :id LIMIT 1', [
+            'id' => $id,
+        ]);
+
+        return $row ? self::fromArray($row) : null;
     }
 }
