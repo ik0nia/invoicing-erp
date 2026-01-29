@@ -55,6 +55,10 @@ class Role
 
     public static function ensureDefaults(): void
     {
+        if (!Database::tableExists('roles')) {
+            return;
+        }
+
         $defaults = [
             ['key' => 'admin', 'label' => 'Administrator'],
             ['key' => 'staff', 'label' => 'Angajat firma'],

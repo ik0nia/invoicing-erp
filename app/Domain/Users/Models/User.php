@@ -51,6 +51,10 @@ class User
 
     public static function exists(): bool
     {
+        if (!Database::tableExists('users')) {
+            return false;
+        }
+
         $row = Database::fetchOne('SELECT id FROM users LIMIT 1');
 
         return $row !== null;

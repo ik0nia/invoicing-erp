@@ -66,4 +66,17 @@ class Database
     {
         return self::pdo()->lastInsertId();
     }
+
+    public static function tableExists(string $table): bool
+    {
+        try {
+            $stmt = self::pdo()->prepare('SHOW TABLES LIKE :table');
+            $stmt->execute(['table' => $table]);
+            $row = $stmt->fetch();
+        } catch (PDOException $exception) {
+            return false;
+        }
+
+        return $row !== false;
+    }
 }

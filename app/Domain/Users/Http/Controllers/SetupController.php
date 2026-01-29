@@ -4,6 +4,7 @@ namespace App\Domain\Users\Http\Controllers;
 
 use App\Domain\Users\Models\Role;
 use App\Domain\Users\Models\User;
+use App\Support\Database;
 use App\Support\Response;
 use App\Support\Session;
 
@@ -11,6 +12,10 @@ class SetupController
 {
     public function show(): void
     {
+        if (!$this->schemaReady()) {
+            return;
+        }
+
         if (User::exists()) {
             Response::redirect('/login');
         }
@@ -20,6 +25,10 @@ class SetupController
 
     public function create(): void
     {
+        if (!$this->schemaReady()) {
+            return;
+        }
+
         if (User::exists()) {
             Response::redirect('/login');
         }
@@ -56,5 +65,27 @@ class SetupController
 
         Session::flash('status', 'Contul de administrator a fost creat.');
         Response::redirect('/login');
+    }
+
+    private function schemaReady(): bool
+    {
+        $required = ['users', 'roles', 'role_user', 'settings', 'companies'];
+        $missing = [];
+
+        foreach ($required as $table) {
+            if (!Database::tableExists($table)) {
+                $missing[] = $table;
+            }
+        }
+
+        if ($missing !== []) {
+            Response::view('errors/schema', [
+                'missingTables' => $missing,
+            ], 'layouts/guest');
+
+            return false;
+        }
+
+        return true;
     }
 }
