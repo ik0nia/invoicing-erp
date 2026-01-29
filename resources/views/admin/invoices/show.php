@@ -132,13 +132,13 @@
     </div>
 </div>
 
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Organizare produse (drag & drop)</h2>
-    <p class="mt-2 text-sm text-slate-500">
+    <p class="mt-2 text-sm text-slate-600">
         Poti muta produsele intre pachete doar daca au aceeasi cota TVA.
     </p>
     <?php if (!empty($isConfirmed)): ?>
-        <div class="mt-3 text-sm text-amber-700">
+        <div class="mt-3 text-sm font-semibold text-amber-700">
             Pachetele sunt confirmate si nu mai pot fi mutate.
         </div>
     <?php endif; ?>
@@ -153,7 +153,7 @@
             <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
             <?php $stat = $packageStats[$package->id] ?? null; ?>
             <div
-                class="rounded border border-slate-200 bg-slate-50 p-4"
+                class="rounded border border-slate-300 bg-white p-4 shadow-sm"
                 data-drop-zone
                 data-package-id="<?= (int) $package->id ?>"
                 data-vat="<?= htmlspecialchars(number_format($package->vat_percent, 2, '.', '')) ?>"
@@ -168,24 +168,24 @@
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                             <input type="hidden" name="action" value="delete">
                             <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                            <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
+                            <button class="text-xs font-semibold text-red-600 hover:text-red-700">Sterge</button>
                         </form>
                     <?php endif; ?>
                 </div>
-                <div class="text-xs text-slate-500">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
+                <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
-                    <div class="mt-1 text-xs text-slate-500">
+                    <div class="mt-1 text-xs text-slate-600">
                         <?= (int) $stat['line_count'] ?> produse ·
                         <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
                     </div>
                 <?php endif; ?>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php if (empty($packageLines)): ?>
-                        <div class="text-xs text-slate-400">Fara produse</div>
+                        <div class="text-xs font-semibold text-slate-500">Fara produse</div>
                     <?php else: ?>
                         <?php foreach ($packageLines as $line): ?>
                             <div
-                                class="cursor-move rounded bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                                class="cursor-move rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                                 draggable="true"
                                 data-line-draggable
                                 data-line-id="<?= (int) $line->id ?>"
@@ -200,17 +200,17 @@
         <?php endforeach; ?>
 
         <div
-            class="rounded border border-dashed border-slate-300 bg-white p-4"
+            class="rounded border-2 border-dashed border-slate-400 bg-slate-50 p-4"
             data-drop-zone
             data-package-id="0"
             data-vat=""
         >
             <div class="text-sm font-semibold text-slate-900">Nealocat</div>
-            <div class="text-xs text-slate-500">Produse fara pachet · <?= (int) $unassignedCount ?></div>
+            <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
             <div class="mt-3 space-y-2 min-h-[40px]">
                 <?php foreach ($unassigned as $line): ?>
                     <div
-                        class="cursor-move rounded bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                        class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                         draggable="true"
                         data-line-draggable
                         data-line-id="<?= (int) $line->id ?>"
@@ -336,16 +336,16 @@
                     return;
                 }
                 event.preventDefault();
-                zone.classList.add('ring-2', 'ring-blue-300');
+                zone.classList.add('ring-2', 'ring-blue-400');
             });
 
             zone.addEventListener('dragleave', () => {
-                zone.classList.remove('ring-2', 'ring-blue-300');
+                zone.classList.remove('ring-2', 'ring-blue-400');
             });
 
             zone.addEventListener('drop', (event) => {
                 event.preventDefault();
-                zone.classList.remove('ring-2', 'ring-blue-300');
+                zone.classList.remove('ring-2', 'ring-blue-400');
                 if (!draggedLineId) {
                     return;
                 }
