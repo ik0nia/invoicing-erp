@@ -291,6 +291,7 @@
                 draggedLineId = item.dataset.lineId || null;
                 draggedVat = item.dataset.vat || null;
                 event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', draggedLineId || '');
             });
         });
 
@@ -300,7 +301,8 @@
                     return;
                 }
                 const zoneVat = zone.dataset.vat || '';
-                if (zoneVat !== '' && draggedVat !== '' && zoneVat !== draggedVat) {
+                const isEmptyVat = zoneVat === '' || zoneVat === '0' || zoneVat === '0.00';
+                if (!isEmptyVat && draggedVat !== '' && zoneVat !== draggedVat) {
                     return;
                 }
                 event.preventDefault();
@@ -319,7 +321,8 @@
                 }
 
                 const zoneVat = zone.dataset.vat || '';
-                if (zoneVat !== '' && draggedVat !== '' && zoneVat !== draggedVat) {
+                const isEmptyVat = zoneVat === '' || zoneVat === '0' || zoneVat === '0.00';
+                if (!isEmptyVat && draggedVat !== '' && zoneVat !== draggedVat) {
                     alert('Poti muta doar produse cu aceeasi cota TVA.');
                     return;
                 }
