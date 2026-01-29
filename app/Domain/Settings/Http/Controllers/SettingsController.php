@@ -21,7 +21,15 @@ class SettingsController
         Auth::requireAdmin();
 
         $logoPath = $this->settings->get('branding.logo_path');
-        $logoUrl = $logoPath ? \App\Support\Url::asset($logoPath) : null;
+        $logoUrl = null;
+
+        if ($logoPath) {
+            $absolutePath = BASE_PATH . '/' . ltrim($logoPath, '/');
+
+            if (file_exists($absolutePath)) {
+                $logoUrl = \App\Support\Url::asset($logoPath);
+            }
+        }
 
         Response::view('admin/settings/branding', [
             'logoPath' => $logoPath,
@@ -65,7 +73,7 @@ class SettingsController
         }
 
         $extension = $allowed[$mime];
-        $storageDir = BASE_PATH . '/storage/app/public/erp';
+        $storageDir = BASE_PATH . '/storage/erp';
         $publicDir = BASE_PATH . '/public/storage/erp';
 
         if (!is_dir($storageDir)) {
@@ -93,7 +101,7 @@ class SettingsController
             @unlink($publicDir . '/logo.' . $ext);
         }
 
-        copy($targetPath, $publicDir . '/' . $filename);
+        @copy($targetPath, $publicDir . '/' . $filename);
 
         $this->settings->set('branding.logo_path', 'storage/erp/' . $filename);
 

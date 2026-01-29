@@ -5,7 +5,15 @@ use App\Support\Auth;
 
 $settings = new SettingsService();
 $brandingLogo = $settings->get('branding.logo_path');
-$logoUrl = $brandingLogo ? App\Support\Url::asset($brandingLogo) : null;
+$logoUrl = null;
+
+if ($brandingLogo) {
+    $absolutePath = BASE_PATH . '/' . ltrim($brandingLogo, '/');
+
+    if (file_exists($absolutePath)) {
+        $logoUrl = App\Support\Url::asset($brandingLogo);
+    }
+}
 $user = Auth::user();
 ?>
 <!DOCTYPE html>

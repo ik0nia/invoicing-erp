@@ -32,5 +32,5 @@ din radacina pentru a redirectiona toate cererile catre `index.php`.
 
 Logo-ul este salvat in:
 
-- `storage/app/public/erp/logo.{ext}`
-- Copie publicata in `public/storage/erp/logo.{ext}`
+- `storage/erp/logo.{ext}` (accesibil direct daca document root este in radacina)
+- Copie publicata in `public/storage/erp/logo.{ext}` (pentru document root in `public/`)
