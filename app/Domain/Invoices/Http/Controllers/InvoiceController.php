@@ -218,7 +218,7 @@ class InvoiceController
         return $stats;
     }
 
-    private function ensureInvoiceTables(): void
+    private function ensureInvoiceTables(): bool
     {
         try {
             Database::execute(

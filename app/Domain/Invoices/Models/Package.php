@@ -27,6 +27,10 @@ class Package
 
     public static function forInvoice(int $invoiceId): array
     {
+        if (!Database::tableExists('packages')) {
+            return [];
+        }
+
         $rows = Database::fetchAll(
             'SELECT * FROM packages WHERE invoice_in_id = :invoice ORDER BY id ASC',
             ['invoice' => $invoiceId]
@@ -37,6 +41,10 @@ class Package
 
     public static function find(int $id): ?self
     {
+        if (!Database::tableExists('packages')) {
+            return null;
+        }
+
         $row = Database::fetchOne('SELECT * FROM packages WHERE id = :id LIMIT 1', [
             'id' => $id,
         ]);
@@ -46,6 +54,10 @@ class Package
 
     public static function deleteIfEmpty(int $packageId): void
     {
+        if (!Database::tableExists('invoice_in_lines')) {
+            return;
+        }
+
         $count = (int) Database::fetchValue(
             'SELECT COUNT(*) FROM invoice_in_lines WHERE package_id = :package',
             ['package' => $packageId]

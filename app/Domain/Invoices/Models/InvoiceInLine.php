@@ -64,6 +64,10 @@ class InvoiceInLine
 
     public static function forInvoice(int $invoiceId): array
     {
+        if (!Database::tableExists('invoice_in_lines')) {
+            return [];
+        }
+
         $rows = Database::fetchAll(
             'SELECT * FROM invoice_in_lines WHERE invoice_in_id = :invoice ORDER BY id ASC',
             ['invoice' => $invoiceId]

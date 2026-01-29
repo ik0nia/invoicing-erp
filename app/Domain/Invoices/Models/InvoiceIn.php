@@ -79,6 +79,10 @@ class InvoiceIn
 
     public static function find(int $id): ?self
     {
+        if (!Database::tableExists('invoices_in')) {
+            return null;
+        }
+
         $row = Database::fetchOne('SELECT * FROM invoices_in WHERE id = :id LIMIT 1', [
             'id' => $id,
         ]);
@@ -88,6 +92,10 @@ class InvoiceIn
 
     public static function all(): array
     {
+        if (!Database::tableExists('invoices_in')) {
+            return [];
+        }
+
         $rows = Database::fetchAll('SELECT * FROM invoices_in ORDER BY issue_date DESC, id DESC');
 
         return array_map([self::class, 'fromArray'], $rows);
