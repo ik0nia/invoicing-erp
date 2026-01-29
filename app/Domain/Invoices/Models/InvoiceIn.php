@@ -19,6 +19,8 @@ class InvoiceIn
     public float $total_vat;
     public float $total_with_vat;
     public ?string $xml_path;
+    public bool $packages_confirmed;
+    public ?string $packages_confirmed_at;
 
     public static function create(array $data): self
     {
@@ -117,6 +119,8 @@ class InvoiceIn
         $invoice->total_vat = (float) $row['total_vat'];
         $invoice->total_with_vat = (float) $row['total_with_vat'];
         $invoice->xml_path = $row['xml_path'];
+        $invoice->packages_confirmed = !empty($row['packages_confirmed']);
+        $invoice->packages_confirmed_at = $row['packages_confirmed_at'] ?? null;
 
         return $invoice;
     }

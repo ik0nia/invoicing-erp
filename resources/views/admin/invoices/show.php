@@ -6,6 +6,15 @@
         <p class="mt-1 text-sm text-slate-500">
             <?= htmlspecialchars($invoice->supplier_name) ?> → <?= htmlspecialchars($invoice->customer_name) ?>
         </p>
+        <?php if (!empty($isConfirmed)): ?>
+            <div class="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Pachete confirmate
+            </div>
+        <?php else: ?>
+            <div class="mt-2 inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                Pachete neconfirmate
+            </div>
+        <?php endif; ?>
     </div>
     <a
         href="<?= App\Support\Url::to('admin/facturi') ?>"
@@ -69,13 +78,28 @@
                 <div class="mt-4 text-xs text-slate-500">
                     Impartirea se face automat in functie de cotele TVA. Poti muta manual produse intre pachete cu aceeasi TVA.
                 </div>
-                <div class="mt-4">
-                    <button class="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                        Genereaza pachete
-                    </button>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <?php if (empty($isConfirmed)): ?>
+                        <button class="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                            Genereaza pachete
+                        </button>
+                    <?php else: ?>
+                        <div class="text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
         </form>
+
+        <?php if (empty($isConfirmed) && !empty($packages)): ?>
+            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-4">
+                <?= App\Support\Csrf::input() ?>
+                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                <input type="hidden" name="action" value="confirm">
+                <button class="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    Confirma pachetele
+                </button>
+            </form>
+        <?php endif; ?>
 
         <?php if (empty($packages)): ?>
             <p class="mt-4 text-sm text-slate-500">Nu exista pachete. Genereaza pachete din formularul de mai sus.</p>
@@ -86,15 +110,17 @@
                     <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                         <div class="flex items-start justify-between gap-3">
                             <div class="font-medium text-slate-900">
-                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
+                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
                             </div>
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                                <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
-                            </form>
+                            <?php if (empty($isConfirmed)): ?>
+                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                                    <?= App\Support\Csrf::input() ?>
+                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                                    <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
+                                </form>
+                            <?php endif; ?>
                         </div>
                         <?php if ($stat): ?>
                             <div class="mt-1 text-slate-500">
@@ -144,6 +170,11 @@
     <p class="mt-2 text-sm text-slate-500">
         Poti muta produsele intre pachete doar daca au aceeasi cota TVA.
     </p>
+    <?php if (!empty($isConfirmed)): ?>
+        <div class="mt-3 text-sm text-amber-700">
+            Pachetele sunt confirmate si nu mai pot fi mutate.
+        </div>
+    <?php endif; ?>
 
     <div class="mt-4 grid gap-4 lg:grid-cols-3">
         <?php foreach ($packages as $package): ?>
@@ -155,9 +186,9 @@
                 data-vat="<?= htmlspecialchars(number_format($package->vat_percent, 2, '.', '')) ?>"
             >
                 <div class="text-sm font-semibold text-slate-900">
-                    <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
+                    <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
                 </div>
-            <div class="text-xs text-slate-500">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
+                <div class="text-xs text-slate-500">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php if (empty($packageLines)): ?>
                         <div class="text-xs text-slate-400">Fara produse</div>
@@ -244,29 +275,33 @@
                             <?= number_format($line->line_total_vat, 2, '.', ' ') ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="flex items-center gap-2">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                <input type="hidden" name="line_id" value="<?= (int) $line->id ?>">
-                                <select name="package_id" class="rounded border border-slate-300 px-2 py-1 text-sm">
-                                    <option value="">Nealocat</option>
-                                    <?php foreach ($packages as $package): ?>
-                                        <?php
-                                            $allowed = abs($package->vat_percent - $line->tax_percent) < 0.01 || $package->vat_percent <= 0;
-                                        ?>
-                                        <?php if (!$allowed): ?>
-                                            <?php continue; ?>
-                                        <?php endif; ?>
-                                        <option
-                                            value="<?= (int) $package->id ?>"
-                                            <?= $line->package_id === $package->id ? 'selected' : '' ?>
-                                        >
-                                            <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button class="text-blue-700 hover:text-blue-800">Muta</button>
-                            </form>
+                            <?php if (!empty($isConfirmed)): ?>
+                                <span class="text-xs text-slate-400">Confirmat</span>
+                            <?php else: ?>
+                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="flex items-center gap-2">
+                                    <?= App\Support\Csrf::input() ?>
+                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                    <input type="hidden" name="line_id" value="<?= (int) $line->id ?>">
+                                    <select name="package_id" class="rounded border border-slate-300 px-2 py-1 text-sm">
+                                        <option value="">Nealocat</option>
+                                        <?php foreach ($packages as $package): ?>
+                                            <?php
+                                                $allowed = abs($package->vat_percent - $line->tax_percent) < 0.01 || $package->vat_percent <= 0;
+                                            ?>
+                                            <?php if (!$allowed): ?>
+                                                <?php continue; ?>
+                                            <?php endif; ?>
+                                            <option
+                                                value="<?= (int) $package->id ?>"
+                                                <?= $line->package_id === $package->id ? 'selected' : '' ?>
+                                            >
+                                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button class="text-blue-700 hover:text-blue-800">Muta</button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600"></td>
                     </tr>
@@ -278,6 +313,11 @@
 
 <script>
     (function () {
+        const isLocked = <?= !empty($isConfirmed) ? 'true' : 'false' ?>;
+        if (isLocked) {
+            return;
+        }
+
         const form = document.getElementById('move-line-form');
         if (!form) {
             return;

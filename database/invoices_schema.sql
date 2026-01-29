@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS invoices_in (
     total_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
     total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
     xml_path VARCHAR(255) NULL,
+    packages_confirmed TINYINT(1) NOT NULL DEFAULT 0,
+    packages_confirmed_at DATETIME NULL,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -19,6 +21,7 @@ CREATE TABLE IF NOT EXISTS invoices_in (
 CREATE TABLE IF NOT EXISTS packages (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     invoice_in_id BIGINT UNSIGNED NOT NULL,
+    package_no INT NOT NULL DEFAULT 0,
     label VARCHAR(64) NULL,
     vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
     created_at DATETIME NULL

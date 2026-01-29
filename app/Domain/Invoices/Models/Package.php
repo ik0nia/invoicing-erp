@@ -8,16 +8,18 @@ class Package
 {
     public int $id;
     public int $invoice_in_id;
+    public int $package_no;
     public ?string $label;
     public float $vat_percent;
 
-    public static function create(int $invoiceId, float $vatPercent, ?string $label = null): self
+    public static function create(int $invoiceId, int $packageNo, float $vatPercent, ?string $label = null): self
     {
         Database::execute(
-            'INSERT INTO packages (invoice_in_id, label, vat_percent, created_at)
-             VALUES (:invoice_in_id, :label, :vat_percent, :created_at)',
+            'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, created_at)
+             VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :created_at)',
             [
                 'invoice_in_id' => $invoiceId,
+                'package_no' => $packageNo,
                 'label' => $label,
                 'vat_percent' => $vatPercent,
                 'created_at' => date('Y-m-d H:i:s'),
@@ -34,7 +36,7 @@ class Package
         }
 
         $rows = Database::fetchAll(
-            'SELECT * FROM packages WHERE invoice_in_id = :invoice ORDER BY id ASC',
+            'SELECT * FROM packages WHERE invoice_in_id = :invoice ORDER BY package_no ASC, id ASC',
             ['invoice' => $invoiceId]
         );
 
@@ -78,11 +80,20 @@ class Package
         );
     }
 
+    public static function updateNumber(int $packageId, int $packageNo): void
+    {
+        Database::execute(
+            'UPDATE packages SET package_no = :package_no WHERE id = :id',
+            ['package_no' => $packageNo, 'id' => $packageId]
+        );
+    }
+
     public static function fromArray(array $row): self
     {
         $package = new self();
         $package->id = (int) $row['id'];
         $package->invoice_in_id = (int) $row['invoice_in_id'];
+        $package->package_no = isset($row['package_no']) ? (int) $row['package_no'] : (int) $row['id'];
         $package->label = $row['label'];
         $package->vat_percent = isset($row['vat_percent']) ? (float) $row['vat_percent'] : 0.0;
 

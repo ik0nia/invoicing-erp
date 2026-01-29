@@ -8,6 +8,7 @@ use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
+use App\Domain\Settings\Services\SettingsService;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -48,6 +49,7 @@ class InvoiceController
                 'vatRates' => $vatRates,
                 'packageDefaults' => $packageDefaults,
                 'linesByPackage' => $linesByPackage,
+                'isConfirmed' => $invoice->packages_confirmed,
                 'clients' => $clients,
             ]);
         }
@@ -141,12 +143,22 @@ class InvoiceController
         }
 
         if ($action === 'generate') {
+            if ($this->isInvoiceConfirmed($invoiceId)) {
+                Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi regenerate.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+            }
+
             $counts = $_POST['package_counts'] ?? [];
             $this->generatePackages($invoiceId, $counts);
             Session::flash('status', 'Pachetele au fost reorganizate.');
         }
 
         if ($action === 'delete') {
+            if ($this->isInvoiceConfirmed($invoiceId)) {
+                Session::flash('error', 'Pachetele sunt confirmate si nu pot fi sterse.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+            }
+
             $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
             if ($packageId) {
                 $package = Package::find($packageId);
@@ -157,9 +169,20 @@ class InvoiceController
                         ['package' => $packageId]
                     );
                     Database::execute('DELETE FROM packages WHERE id = :id', ['id' => $packageId]);
+                    $this->renumberPackages($invoiceId);
                     Session::flash('status', 'Pachet sters. Produsele au fost trecute la nealocate.');
                 }
             }
+        }
+
+        if ($action === 'confirm') {
+            if ($this->isInvoiceConfirmed($invoiceId)) {
+                Session::flash('status', 'Pachetele sunt deja confirmate.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+            }
+
+            $this->confirmPackages($invoiceId);
+            Session::flash('status', 'Pachetele au fost confirmate.');
         }
 
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
@@ -174,6 +197,11 @@ class InvoiceController
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
 
         if ($invoiceId && $lineId) {
+            if ($this->isInvoiceConfirmed($invoiceId)) {
+                Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi modificate.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+            }
+
             $line = InvoiceInLine::find($lineId);
 
             if (!$line || $line->invoice_in_id !== $invoiceId) {
@@ -226,7 +254,8 @@ class InvoiceController
 
         foreach ($packages as $package) {
             $stats[$package->id] = [
-                'label' => $package->label ?: 'Pachet de produse #' . $package->id,
+                'label' => $package->label ?: 'Pachet de produse #' . $package->package_no,
+                'package_no' => $package->package_no,
                 'vat_percent' => $package->vat_percent,
                 'line_count' => 0,
                 'total' => 0.0,
@@ -265,6 +294,8 @@ class InvoiceController
                     total_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
                     total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
                     xml_path VARCHAR(255) NULL,
+                    packages_confirmed TINYINT(1) NOT NULL DEFAULT 0,
+                    packages_confirmed_at DATETIME NULL,
                     created_at DATETIME NULL,
                     updated_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -274,6 +305,7 @@ class InvoiceController
                 'CREATE TABLE IF NOT EXISTS packages (
                     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     invoice_in_id BIGINT UNSIGNED NOT NULL,
+                    package_no INT NOT NULL DEFAULT 0,
                     label VARCHAR(64) NULL,
                     vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
                     created_at DATETIME NULL
@@ -303,6 +335,15 @@ class InvoiceController
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'vat_percent')) {
             Database::execute('ALTER TABLE packages ADD COLUMN vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0 AFTER label');
         }
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'package_no')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN package_no INT NOT NULL DEFAULT 0 AFTER invoice_in_id');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'packages_confirmed')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN packages_confirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER xml_path');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'packages_confirmed_at')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN packages_confirmed_at DATETIME NULL AFTER packages_confirmed');
+        }
 
         $this->ensurePackageAutoIncrement();
 
@@ -324,6 +365,7 @@ class InvoiceController
         Database::execute('DELETE FROM packages WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
 
         $groups = $this->buildVatGroups($lines);
+        $nextNumber = $this->lastConfirmedPackageNo() + 1;
 
         foreach ($groups as $vat => $groupLines) {
             $requested = isset($counts[$vat]) ? (int) $counts[$vat] : 1;
@@ -332,7 +374,8 @@ class InvoiceController
 
             $packages = [];
             for ($i = 0; $i < $packageCount; $i++) {
-                $packages[] = Package::create($invoiceId, (float) $vat);
+                $packages[] = Package::create($invoiceId, $nextNumber, (float) $vat);
+                $nextNumber++;
             }
 
             $index = 0;
@@ -405,6 +448,81 @@ class InvoiceController
         }
 
         return $grouped;
+    }
+
+    private function lastConfirmedPackageNo(): int
+    {
+        $settings = new SettingsService();
+        $value = (int) $settings->get('packages.last_confirmed_no', 10000);
+
+        return $value > 0 ? $value : 10000;
+    }
+
+    private function setLastConfirmedPackageNo(int $value): void
+    {
+        $settings = new SettingsService();
+        $settings->set('packages.last_confirmed_no', $value);
+    }
+
+    private function confirmPackages(int $invoiceId): void
+    {
+        $packages = Package::forInvoice($invoiceId);
+
+        if (empty($packages)) {
+            return;
+        }
+
+        $ordered = $this->orderPackages($packages);
+        $nextNumber = $this->lastConfirmedPackageNo() + 1;
+
+        foreach ($ordered as $package) {
+            Package::updateNumber($package->id, $nextNumber);
+            $nextNumber++;
+        }
+
+        $this->setLastConfirmedPackageNo($nextNumber - 1);
+
+        Database::execute(
+            'UPDATE invoices_in SET packages_confirmed = 1, packages_confirmed_at = :now WHERE id = :id',
+            ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
+        );
+    }
+
+    private function renumberPackages(int $invoiceId): void
+    {
+        $packages = Package::forInvoice($invoiceId);
+
+        if (empty($packages)) {
+            return;
+        }
+
+        $ordered = $this->orderPackages($packages);
+        $nextNumber = $this->lastConfirmedPackageNo() + 1;
+
+        foreach ($ordered as $package) {
+            Package::updateNumber($package->id, $nextNumber);
+            $nextNumber++;
+        }
+    }
+
+    private function orderPackages(array $packages): array
+    {
+        usort($packages, function (Package $a, Package $b): int {
+            if (abs($a->vat_percent - $b->vat_percent) > 0.01) {
+                return $a->vat_percent <=> $b->vat_percent;
+            }
+
+            return $a->id <=> $b->id;
+        });
+
+        return $packages;
+    }
+
+    private function isInvoiceConfirmed(int $invoiceId): bool
+    {
+        $invoice = InvoiceIn::find($invoiceId);
+
+        return $invoice ? (bool) $invoice->packages_confirmed : false;
     }
 
     private function ensurePackageAutoIncrement(): void
