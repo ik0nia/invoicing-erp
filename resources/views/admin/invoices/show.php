@@ -44,6 +44,21 @@
     </div>
 </div>
 
+<div class="mt-4 flex flex-wrap items-center gap-3">
+    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+        <button
+            type="submit"
+            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
+        >
+            Sterge factura
+        </button>
+    </form>
+    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
+</div>
+
 <div class="mt-8 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div class="flex items-center justify-between">
@@ -103,31 +118,44 @@
     </div>
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Clienti disponibili</h2>
-        <p class="mt-2 text-sm text-slate-500">
-            Comisioane asociate furnizorului <?= htmlspecialchars($invoice->supplier_cui) ?>.
+        <h2 class="text-lg font-semibold text-slate-900">Client de facturat</h2>
+        <p class="mt-2 text-sm text-slate-600">
+            Alege clientul pentru a calcula comisionul pe pachete.
         </p>
+
         <?php if (empty($clients)): ?>
-            <p class="mt-4 text-sm text-slate-500">Nu exista comisioane importate pentru acest furnizor.</p>
+            <p class="mt-4 text-sm text-slate-600">Nu exista comisioane importate pentru acest furnizor.</p>
         <?php else: ?>
-            <div class="mt-4 max-h-64 overflow-auto rounded border border-slate-200">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-slate-50 text-slate-600">
-                        <tr>
-                            <th class="px-3 py-2">Client CUI</th>
-                            <th class="px-3 py-2">Comision (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($clients as $client): ?>
-                            <tr class="border-b border-slate-100">
-                                <td class="px-3 py-2"><?= htmlspecialchars($client->client_cui) ?></td>
-                                <td class="px-3 py-2"><?= number_format($client->commission, 2, '.', ' ') ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+            <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3">
+                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                <label class="block text-sm font-medium text-slate-700" for="client_cui">Client</label>
+                <select
+                    id="client_cui"
+                    name="client_cui"
+                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    onchange="this.form.submit()"
+                >
+                    <option value="">Alege client</option>
+                    <?php foreach ($clients as $client): ?>
+                        <option
+                            value="<?= htmlspecialchars($client['client_cui']) ?>"
+                            <?= ($selectedClientCui ?? '') === (string) $client['client_cui'] ? 'selected' : '' ?>
+                        >
+                            <?= htmlspecialchars($client['client_name'] ?? $client['client_cui']) ?>
+                            (<?= htmlspecialchars($client['client_cui']) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+
+            <?php if (!empty($selectedClientCui)): ?>
+                <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <div>Client selectat: <strong><?= htmlspecialchars($selectedClientName ?: $selectedClientCui) ?></strong></div>
+                    <?php if ($commissionPercent !== null): ?>
+                        <div class="mt-1">Comision: <strong><?= number_format($commissionPercent, 2, '.', ' ') ?>%</strong></div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>
@@ -152,6 +180,7 @@
         <?php foreach ($packages as $package): ?>
             <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
             <?php $stat = $packageStats[$package->id] ?? null; ?>
+            <?php $commissionTotal = $packageTotalsWithCommission['packages'][$package->id] ?? null; ?>
             <div
                 class="rounded border border-slate-300 bg-white p-4 shadow-sm"
                 data-drop-zone
@@ -178,6 +207,11 @@
                         <?= (int) $stat['line_count'] ?> produse ·
                         <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
                     </div>
+                    <?php if ($commissionTotal !== null): ?>
+                        <div class="mt-1 text-xs font-semibold text-slate-700">
+                            Total cu comision: <?= number_format($commissionTotal, 2, '.', ' ') ?> RON
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php if (empty($packageLines)): ?>
@@ -224,6 +258,12 @@
             </div>
         <?php endif; ?>
     </div>
+
+    <?php if (!empty($commissionPercent) && !empty($packageTotalsWithCommission['invoice_total'])): ?>
+        <div class="mt-6 rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+            Total pachete cu comision: <strong><?= number_format($packageTotalsWithCommission['invoice_total'], 2, '.', ' ') ?> RON</strong>
+        </div>
+    <?php endif; ?>
 
     <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">
         <?= App\Support\Csrf::input() ?>

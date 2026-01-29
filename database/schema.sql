@@ -74,6 +74,8 @@ CREATE TABLE commissions (
 CREATE TABLE invoices_in (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     invoice_number VARCHAR(64) NOT NULL,
+    invoice_series VARCHAR(32) NOT NULL DEFAULT "",
+    invoice_no VARCHAR(32) NOT NULL DEFAULT "",
     supplier_cui VARCHAR(32) NOT NULL,
     supplier_name VARCHAR(255) NOT NULL,
     customer_cui VARCHAR(32) NOT NULL,

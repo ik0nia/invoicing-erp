@@ -8,6 +8,8 @@ class InvoiceIn
 {
     public int $id;
     public string $invoice_number;
+    public string $invoice_series;
+    public string $invoice_no;
     public string $supplier_cui;
     public string $supplier_name;
     public string $customer_cui;
@@ -29,6 +31,8 @@ class InvoiceIn
         Database::execute(
             'INSERT INTO invoices_in (
                 invoice_number,
+                invoice_series,
+                invoice_no,
                 supplier_cui,
                 supplier_name,
                 customer_cui,
@@ -44,6 +48,8 @@ class InvoiceIn
                 updated_at
             ) VALUES (
                 :invoice_number,
+                :invoice_series,
+                :invoice_no,
                 :supplier_cui,
                 :supplier_name,
                 :customer_cui,
@@ -60,6 +66,8 @@ class InvoiceIn
             )',
             [
                 'invoice_number' => $data['invoice_number'],
+                'invoice_series' => $data['invoice_series'] ?? '',
+                'invoice_no' => $data['invoice_no'] ?? '',
                 'supplier_cui' => $data['supplier_cui'],
                 'supplier_name' => $data['supplier_name'],
                 'customer_cui' => $data['customer_cui'],
@@ -108,6 +116,8 @@ class InvoiceIn
         $invoice = new self();
         $invoice->id = (int) $row['id'];
         $invoice->invoice_number = $row['invoice_number'];
+        $invoice->invoice_series = $row['invoice_series'] ?? '';
+        $invoice->invoice_no = $row['invoice_no'] ?? '';
         $invoice->supplier_cui = $row['supplier_cui'];
         $invoice->supplier_name = $row['supplier_name'];
         $invoice->customer_cui = $row['customer_cui'];

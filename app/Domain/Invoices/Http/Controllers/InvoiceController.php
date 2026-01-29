@@ -25,6 +25,7 @@ class InvoiceController
         }
 
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
+        $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
 
         if ($invoiceId) {
             $invoice = InvoiceIn::find($invoiceId);
@@ -39,7 +40,21 @@ class InvoiceController
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
-            $clients = Commission::forSupplier($invoice->supplier_cui);
+            $clients = Commission::forSupplierWithPartners($invoice->supplier_cui);
+            $commissionPercent = null;
+            $selectedClientName = '';
+
+            if ($selectedClientCui !== '') {
+                foreach ($clients as $client) {
+                    if ((string) $client['client_cui'] === $selectedClientCui) {
+                        $commissionPercent = (float) $client['commission'];
+                        $selectedClientName = (string) ($client['client_name'] ?? '');
+                        break;
+                    }
+                }
+            }
+
+            $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
 
             Response::view('admin/invoices/show', [
                 'invoice' => $invoice,
@@ -51,6 +66,10 @@ class InvoiceController
                 'linesByPackage' => $linesByPackage,
                 'isConfirmed' => $invoice->packages_confirmed,
                 'clients' => $clients,
+                'selectedClientCui' => $selectedClientCui,
+                'selectedClientName' => $selectedClientName,
+                'commissionPercent' => $commissionPercent,
+                'packageTotalsWithCommission' => $packageTotalsWithCommission,
             ]);
         }
 
@@ -96,10 +115,17 @@ class InvoiceController
             Response::redirect('/admin/facturi/import');
         }
 
+        if ($this->invoiceExists($data['supplier_cui'], $data['invoice_series'], $data['invoice_no'], $data['invoice_number'])) {
+            Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
+            Response::redirect('/admin/facturi/import');
+        }
+
         $xmlPath = $this->storeXml($file['tmp_name'], $data['invoice_number']);
 
         $invoice = InvoiceIn::create([
             'invoice_number' => $data['invoice_number'],
+            'invoice_series' => $data['invoice_series'],
+            'invoice_no' => $data['invoice_no'],
             'supplier_cui' => $data['supplier_cui'],
             'supplier_name' => $data['supplier_name'],
             'customer_cui' => $data['customer_cui'],
@@ -186,6 +212,35 @@ class InvoiceController
         }
 
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+    }
+
+    public function delete(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            Response::redirect('/admin/facturi');
+        }
+
+        Database::execute('DELETE FROM invoice_in_lines WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
+        Database::execute('DELETE FROM packages WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
+        Database::execute('DELETE FROM invoices_in WHERE id = :id', ['id' => $invoiceId]);
+
+        if (!empty($invoice->xml_path)) {
+            $path = BASE_PATH . '/' . ltrim($invoice->xml_path, '/');
+            if (file_exists($path)) {
+                @unlink($path);
+            }
+        }
+
+        Session::flash('status', 'Factura de intrare a fost stearsa.');
+        Response::redirect('/admin/facturi');
     }
 
     public function moveLine(): void
@@ -283,6 +338,8 @@ class InvoiceController
                 'CREATE TABLE IF NOT EXISTS invoices_in (
                     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     invoice_number VARCHAR(64) NOT NULL,
+                    invoice_series VARCHAR(32) NOT NULL DEFAULT "",
+                    invoice_no VARCHAR(32) NOT NULL DEFAULT "",
                     supplier_cui VARCHAR(32) NOT NULL,
                     supplier_name VARCHAR(255) NOT NULL,
                     customer_cui VARCHAR(32) NOT NULL,
@@ -337,6 +394,12 @@ class InvoiceController
         }
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'package_no')) {
             Database::execute('ALTER TABLE packages ADD COLUMN package_no INT NOT NULL DEFAULT 0 AFTER invoice_in_id');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'invoice_series')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN invoice_series VARCHAR(32) NOT NULL DEFAULT "" AFTER invoice_number');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'invoice_no')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN invoice_no VARCHAR(32) NOT NULL DEFAULT "" AFTER invoice_series');
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'packages_confirmed')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN packages_confirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER xml_path');
@@ -448,6 +511,58 @@ class InvoiceController
         }
 
         return $grouped;
+    }
+
+    private function invoiceExists(string $supplierCui, string $invoiceSeries, string $invoiceNo, string $invoiceNumber): bool
+    {
+        if (!Database::tableExists('invoices_in')) {
+            return false;
+        }
+
+        if ($invoiceSeries !== '' && $invoiceNo !== '') {
+            $row = Database::fetchOne(
+                'SELECT id FROM invoices_in WHERE supplier_cui = :supplier AND invoice_series = :series AND invoice_no = :no LIMIT 1',
+                ['supplier' => $supplierCui, 'series' => $invoiceSeries, 'no' => $invoiceNo]
+            );
+        } else {
+            $row = Database::fetchOne(
+                'SELECT id FROM invoices_in WHERE supplier_cui = :supplier AND invoice_number = :number LIMIT 1',
+                ['supplier' => $supplierCui, 'number' => $invoiceNumber]
+            );
+        }
+
+        return $row !== null;
+    }
+
+    private function packageTotalsWithCommission(array $packageStats, ?float $commissionPercent): array
+    {
+        $totals = [
+            'packages' => [],
+            'invoice_total' => 0.0,
+        ];
+
+        if ($commissionPercent === null) {
+            return $totals;
+        }
+
+        foreach ($packageStats as $packageId => $stat) {
+            $value = $this->applyCommission($stat['total_vat'], $commissionPercent);
+            $totals['packages'][$packageId] = $value;
+            $totals['invoice_total'] += $value;
+        }
+
+        return $totals;
+    }
+
+    private function applyCommission(float $amount, float $percent): float
+    {
+        $factor = 1 + (abs($percent) / 100);
+
+        if ($percent >= 0) {
+            return round($amount * $factor, 2);
+        }
+
+        return round($amount / $factor, 2);
     }
 
     private function lastConfirmedPackageNo(): int

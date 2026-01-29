@@ -21,6 +21,23 @@ class Commission
         return array_map([self::class, 'fromArray'], $rows);
     }
 
+    public static function forSupplierWithPartners(string $supplierCui): array
+    {
+        if (!Database::tableExists('commissions')) {
+            return [];
+        }
+
+        return Database::fetchAll(
+            'SELECT c.*, sp.denumire AS supplier_name, cp.denumire AS client_name
+             FROM commissions c
+             LEFT JOIN partners sp ON sp.cui = c.supplier_cui
+             LEFT JOIN partners cp ON cp.cui = c.client_cui
+             WHERE c.supplier_cui = :supplier
+             ORDER BY client_name ASC',
+            ['supplier' => $supplierCui]
+        );
+    }
+
     public static function forSupplierClient(string $supplierCui, string $clientCui): ?self
     {
         $row = Database::fetchOne(

@@ -80,8 +80,12 @@ class InvoiceXmlParser
             ];
         }
 
+        [$invoiceSeries, $invoiceNo] = $this->splitInvoiceNumber($invoiceNumber);
+
         return [
             'invoice_number' => $invoiceNumber,
+            'invoice_series' => $invoiceSeries,
+            'invoice_no' => $invoiceNo,
             'issue_date' => $issueDate,
             'due_date' => $dueDate ?: null,
             'currency' => $currency,
@@ -231,8 +235,12 @@ class InvoiceXmlParser
             return null;
         }
 
+        [$invoiceSeries, $invoiceNo] = $this->splitInvoiceNumber($invoiceNumber);
+
         return [
             'invoice_number' => $invoiceNumber,
+            'invoice_series' => $invoiceSeries,
+            'invoice_no' => $invoiceNo,
             'issue_date' => $issueDate,
             'due_date' => $dueDate ?: null,
             'currency' => $currency,
@@ -292,6 +300,28 @@ class InvoiceXmlParser
         }
 
         return [0.0, 'BUC'];
+    }
+
+    private function splitInvoiceNumber(?string $invoiceNumber): array
+    {
+        if (!$invoiceNumber) {
+            return ['', ''];
+        }
+
+        $parts = explode('.', $invoiceNumber);
+
+        if (count($parts) >= 2) {
+            $series = trim($parts[0]);
+            $number = trim($parts[1]);
+
+            return [$series, $number];
+        }
+
+        if (preg_match('/^([A-Za-z]+)\s*0*([0-9]+)$/', $invoiceNumber, $match)) {
+            return [$match[1], $match[2]];
+        }
+
+        return ['', $invoiceNumber];
     }
 
     private function partyData(?\SimpleXMLElement $party): array
