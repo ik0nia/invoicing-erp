@@ -71,11 +71,27 @@ $menuSections = [
         .text-slate-400 { color: #475569 !important; }
         .text-slate-500 { color: #475569 !important; }
         .text-slate-600 { color: #334155 !important; }
+
+        body.sidebar-open #sidebar {
+            transform: translateX(0);
+        }
+        body.sidebar-open #mobile-overlay {
+            display: block;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900">
-    <div class="flex min-h-screen">
-        <aside class="w-64 border-r border-slate-200 bg-white">
+    <div class="min-h-screen lg:flex">
+        <div
+            id="mobile-overlay"
+            class="fixed inset-0 z-30 hidden bg-slate-900/50 lg:hidden"
+            aria-hidden="true"
+        ></div>
+        <aside
+            id="sidebar"
+            class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0"
+            aria-label="Meniu principal"
+        >
             <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
                 <?php if ($logoUrl): ?>
                     <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="h-9 w-auto">
@@ -106,13 +122,25 @@ $menuSections = [
             </nav>
         </aside>
 
-        <div class="flex flex-1 flex-col">
+        <div class="flex flex-1 flex-col lg:pl-0">
             <header class="border-b border-slate-200 bg-white">
-                <div class="flex items-center justify-between px-6 py-4">
+                <div class="flex items-center justify-between gap-4 px-4 py-4 lg:px-6">
                     <div>
-                        <div class="text-sm text-slate-500">Admin</div>
-                        <div class="text-base font-semibold text-slate-900">
-                            <?= htmlspecialchars($user?->name ?? 'Administrator') ?>
+                        <div class="flex items-center gap-3">
+                            <button
+                                type="button"
+                                class="inline-flex items-center justify-center rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 lg:hidden"
+                                id="sidebar-toggle"
+                                aria-label="Deschide meniul"
+                            >
+                                ☰
+                            </button>
+                            <div>
+                                <div class="text-sm text-slate-600">Admin</div>
+                                <div class="text-base font-semibold text-slate-900">
+                                    <?= htmlspecialchars($user?->name ?? 'Administrator') ?>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <?php if ($user): ?>
@@ -126,11 +154,37 @@ $menuSections = [
                 </div>
             </header>
 
-            <main class="flex-1 px-6 py-8">
+            <main class="flex-1 px-4 py-6 lg:px-6 lg:py-8">
                 <?php include BASE_PATH . '/resources/views/partials/flash.php'; ?>
                 <?= $content ?? '' ?>
             </main>
         </div>
     </div>
+    <script>
+        (function () {
+            const toggle = document.getElementById('sidebar-toggle');
+            const overlay = document.getElementById('mobile-overlay');
+
+            if (!toggle || !overlay) {
+                return;
+            }
+
+            const closeSidebar = () => {
+                document.body.classList.remove('sidebar-open');
+            };
+
+            toggle.addEventListener('click', () => {
+                document.body.classList.toggle('sidebar-open');
+            });
+
+            overlay.addEventListener('click', closeSidebar);
+
+            window.addEventListener('resize', () => {
+                if (window.innerWidth >= 1024) {
+                    closeSidebar();
+                }
+            });
+        })();
+    </script>
 </body>
 </html>
