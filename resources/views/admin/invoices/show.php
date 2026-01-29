@@ -128,24 +128,60 @@
         <?php else: ?>
             <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3">
                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                <label class="block text-sm font-medium text-slate-700" for="client_cui">Client</label>
-                <select
-                    id="client_cui"
-                    name="client_cui"
-                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    onchange="this.form.submit()"
-                >
-                    <option value="">Alege client</option>
-                    <?php foreach ($clients as $client): ?>
-                        <option
-                            value="<?= htmlspecialchars($client['client_cui']) ?>"
-                            <?= ($selectedClientCui ?? '') === (string) $client['client_cui'] ? 'selected' : '' ?>
-                        >
-                            <?= htmlspecialchars($client['client_name'] ?? $client['client_cui']) ?>
-                            (<?= htmlspecialchars($client['client_cui']) ?>)
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700" for="client-search">Cauta client</label>
+                    <input
+                        id="client-search"
+                        type="text"
+                        placeholder="Cauta dupa nume sau CUI"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                </div>
+
+                <div class="max-h-64 overflow-auto rounded border border-slate-200">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2">Select</th>
+                                <th class="px-3 py-2">Client</th>
+                                <th class="px-3 py-2">CUI</th>
+                                <th class="px-3 py-2">Comision</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($clients as $client): ?>
+                                <?php
+                                    $clientCui = (string) $client['client_cui'];
+                                    $clientName = (string) ($client['client_name'] ?? '');
+                                    $isSelected = ($selectedClientCui ?? '') === $clientCui;
+                                ?>
+                                <tr
+                                    class="border-b border-slate-100 hover:bg-slate-50 cursor-pointer <?= $isSelected ? 'bg-blue-50' : '' ?>"
+                                    data-client-row
+                                    data-search="<?= htmlspecialchars(strtolower($clientName . ' ' . $clientCui)) ?>"
+                                >
+                                    <td class="px-3 py-2">
+                                        <input
+                                            type="radio"
+                                            name="client_cui"
+                                            value="<?= htmlspecialchars($clientCui) ?>"
+                                            <?= $isSelected ? 'checked' : '' ?>
+                                        >
+                                    </td>
+                                    <td class="px-3 py-2 text-slate-800">
+                                        <?= htmlspecialchars($clientName ?: $clientCui) ?>
+                                    </td>
+                                    <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($clientCui) ?></td>
+                                    <td class="px-3 py-2 text-slate-600"><?= number_format((float) $client['commission'], 2, '.', ' ') ?>%</td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+                    Selecteaza clientul
+                </button>
             </form>
 
             <?php if (!empty($selectedClientCui)): ?>
@@ -345,6 +381,29 @@
 
 <script>
     (function () {
+        const searchInput = document.getElementById('client-search');
+        if (searchInput) {
+            const rows = Array.from(document.querySelectorAll('[data-client-row]'));
+            const filterRows = () => {
+                const value = searchInput.value.trim().toLowerCase();
+                rows.forEach((row) => {
+                    const haystack = row.dataset.search || '';
+                    row.style.display = haystack.includes(value) ? '' : 'none';
+                });
+            };
+            searchInput.addEventListener('input', filterRows);
+            filterRows();
+
+            rows.forEach((row) => {
+                row.addEventListener('click', (event) => {
+                    const radio = row.querySelector('input[type="radio"]');
+                    if (radio) {
+                        radio.checked = true;
+                    }
+                });
+            });
+        }
+
         const isLocked = <?= !empty($isConfirmed) ? 'true' : 'false' ?>;
         if (isLocked) {
             return;
