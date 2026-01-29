@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Domain\Invoices\Models;
+
+use App\Support\Database;
+
+class InvoiceIn
+{
+    public int $id;
+    public string $invoice_number;
+    public string $supplier_cui;
+    public string $supplier_name;
+    public string $customer_cui;
+    public string $customer_name;
+    public string $issue_date;
+    public ?string $due_date;
+    public string $currency;
+    public float $total_without_vat;
+    public float $total_vat;
+    public float $total_with_vat;
+    public ?string $xml_path;
+
+    public static function create(array $data): self
+    {
+        $now = date('Y-m-d H:i:s');
+
+        Database::execute(
+            'INSERT INTO invoices_in (
+                invoice_number,
+                supplier_cui,
+                supplier_name,
+                customer_cui,
+                customer_name,
+                issue_date,
+                due_date,
+                currency,
+                total_without_vat,
+                total_vat,
+                total_with_vat,
+                xml_path,
+                created_at,
+                updated_at
+            ) VALUES (
+                :invoice_number,
+                :supplier_cui,
+                :supplier_name,
+                :customer_cui,
+                :customer_name,
+                :issue_date,
+                :due_date,
+                :currency,
+                :total_without_vat,
+                :total_vat,
+                :total_with_vat,
+                :xml_path,
+                :created_at,
+                :updated_at
+            )',
+            [
+                'invoice_number' => $data['invoice_number'],
+                'supplier_cui' => $data['supplier_cui'],
+                'supplier_name' => $data['supplier_name'],
+                'customer_cui' => $data['customer_cui'],
+                'customer_name' => $data['customer_name'],
+                'issue_date' => $data['issue_date'],
+                'due_date' => $data['due_date'],
+                'currency' => $data['currency'],
+                'total_without_vat' => $data['total_without_vat'],
+                'total_vat' => $data['total_vat'],
+                'total_with_vat' => $data['total_with_vat'],
+                'xml_path' => $data['xml_path'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        return self::find((int) Database::lastInsertId());
+    }
+
+    public static function find(int $id): ?self
+    {
+        $row = Database::fetchOne('SELECT * FROM invoices_in WHERE id = :id LIMIT 1', [
+            'id' => $id,
+        ]);
+
+        return $row ? self::fromArray($row) : null;
+    }
+
+    public static function all(): array
+    {
+        $rows = Database::fetchAll('SELECT * FROM invoices_in ORDER BY issue_date DESC, id DESC');
+
+        return array_map([self::class, 'fromArray'], $rows);
+    }
+
+    public static function fromArray(array $row): self
+    {
+        $invoice = new self();
+        $invoice->id = (int) $row['id'];
+        $invoice->invoice_number = $row['invoice_number'];
+        $invoice->supplier_cui = $row['supplier_cui'];
+        $invoice->supplier_name = $row['supplier_name'];
+        $invoice->customer_cui = $row['customer_cui'];
+        $invoice->customer_name = $row['customer_name'];
+        $invoice->issue_date = $row['issue_date'];
+        $invoice->due_date = $row['due_date'];
+        $invoice->currency = $row['currency'];
+        $invoice->total_without_vat = (float) $row['total_without_vat'];
+        $invoice->total_vat = (float) $row['total_vat'];
+        $invoice->total_with_vat = (float) $row['total_with_vat'];
+        $invoice->xml_path = $row['xml_path'];
+
+        return $invoice;
+    }
+}

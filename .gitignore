@@ -17,6 +17,7 @@
 /public/hot
 /public/storage
 /storage/erp
+/storage/invoices_in
 /storage/cache/settings.php
 /storage/*.key
 /storage/pail

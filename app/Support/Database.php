@@ -79,4 +79,15 @@ class Database
 
         return $row !== false;
     }
+
+    public static function fetchValue(string $sql, array $params = []): mixed
+    {
+        $row = self::fetchOne($sql, $params);
+
+        if (!$row) {
+            return null;
+        }
+
+        return array_values($row)[0] ?? null;
+    }
 }

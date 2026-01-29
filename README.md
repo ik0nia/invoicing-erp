@@ -16,6 +16,11 @@ Aplicatie ERP custom (fara dependinte composer) pentru firme din Romania.
    - `database/schema.sql`
 3. (Optional) Seed roluri:
    - `database/seed_roles.sql`
+4. (Optional) Import date vechi:
+   - Importa SQL-ul vechi in baza de date (tabelele `parteneri` si `comisioane`)
+   - Apoi foloseste pagina `/admin/setari/import-date`
+5. (Optional) Module facturi:
+   - Daca ai o instalare existenta, importa `database/invoices_schema.sql`
 4. Copiaza `.env.example` ca `.env` si completeaza:
    - `APP_URL`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
 5. Uploadeaza toate fisierele pe hosting.

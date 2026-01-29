@@ -31,9 +31,19 @@ $menu = [
         'active' => str_starts_with($currentPath, '/admin/dashboard'),
     ],
     [
+        'label' => 'Facturi intrare',
+        'path' => '/admin/facturi',
+        'active' => str_starts_with($currentPath, '/admin/facturi'),
+    ],
+    [
         'label' => 'Setari branding',
         'path' => '/admin/setari/branding',
         'active' => str_starts_with($currentPath, '/admin/setari/branding'),
+    ],
+    [
+        'label' => 'Import date vechi',
+        'path' => '/admin/setari/import-date',
+        'active' => str_starts_with($currentPath, '/admin/setari/import-date'),
     ],
 ];
 ?>

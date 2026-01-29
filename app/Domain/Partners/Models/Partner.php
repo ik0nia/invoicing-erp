@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Domain\Partners\Models;
+
+use App\Support\Database;
+
+class Partner
+{
+    public int $id;
+    public string $cui;
+    public string $denumire;
+
+    public static function fromArray(array $row): self
+    {
+        $partner = new self();
+        $partner->id = (int) $row['id'];
+        $partner->cui = (string) $row['cui'];
+        $partner->denumire = $row['denumire'];
+
+        return $partner;
+    }
+
+    public static function findByCui(string $cui): ?self
+    {
+        $row = Database::fetchOne('SELECT * FROM partners WHERE cui = :cui LIMIT 1', [
+            'cui' => $cui,
+        ]);
+
+        return $row ? self::fromArray($row) : null;
+    }
+
+    public static function createIfMissing(string $cui, string $denumire): self
+    {
+        $existing = self::findByCui($cui);
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $now = date('Y-m-d H:i:s');
+
+        Database::execute(
+            'INSERT INTO partners (cui, denumire, created_at, updated_at)
+             VALUES (:cui, :denumire, :created_at, :updated_at)',
+            [
+                'cui' => $cui,
+                'denumire' => $denumire,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        return self::findByCui($cui);
+    }
+}
