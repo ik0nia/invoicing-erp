@@ -61,63 +61,68 @@
 
 <div class="mt-8 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-slate-900">Pachete</h2>
-        </div>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold text-slate-900">Pachete</h2>
+                <p class="mt-1 text-sm text-slate-600">Configureaza numarul de pachete pe fiecare cota TVA.</p>
+            </div>
+            <?php if (!empty($vatRates)): ?>
+                <form
+                    method="POST"
+                    action="<?= App\Support\Url::to('admin/facturi/pachete') ?>"
+                    class="flex flex-wrap items-center gap-3"
+                    id="packages-form"
+                >
+                    <?= App\Support\Csrf::input() ?>
+                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                    <input type="hidden" name="action" value="generate">
 
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <input type="hidden" name="action" value="generate">
-
-            <?php if (empty($vatRates)): ?>
-                <div class="text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
-            <?php else: ?>
-                <div class="grid gap-3 md:grid-cols-2">
                     <?php foreach ($vatRates as $vatRate): ?>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700" for="vat_<?= htmlspecialchars($vatRate) ?>">
-                                Numar pachete pentru TVA <?= htmlspecialchars($vatRate) ?>%
-                            </label>
-                    <div class="mt-1 inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
-                        <button
-                            type="button"
-                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                            data-counter-decrement
-                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                        >−</button>
-                        <input
-                            id="vat_<?= htmlspecialchars($vatRate) ?>"
-                            name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
-                            type="number"
-                            min="1"
-                            value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
-                            class="w-12 border-none text-center text-sm"
-                        >
-                        <button
-                            type="button"
-                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                            data-counter-increment
-                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                        >+</button>
-                    </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-slate-600">TVA <?= htmlspecialchars($vatRate) ?>%</span>
+                            <div class="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
+                                <button
+                                    type="button"
+                                    class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                                    data-counter-decrement
+                                    data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                                >−</button>
+                                <input
+                                    id="vat_<?= htmlspecialchars($vatRate) ?>"
+                                    name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
+                                    type="number"
+                                    min="1"
+                                    value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
+                                    class="w-12 border-none text-center text-sm"
+                                    data-counter-input
+                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                                >
+                                <button
+                                    type="button"
+                                    class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                                    data-counter-increment
+                                    data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                                >+</button>
+                            </div>
                         </div>
                     <?php endforeach; ?>
-                </div>
+                </form>
+            <?php endif; ?>
+        </div>
+
+        <?php if (empty($vatRates)): ?>
+            <div class="mt-4 text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
+        <?php else: ?>
+            <?php if (!empty($isConfirmed)): ?>
+                <div class="mt-4 text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
+            <?php else: ?>
                 <div class="mt-4 text-xs text-slate-500">
-                    Impartirea se face automat in functie de cotele TVA. Poti muta manual produse intre pachete cu aceeasi TVA.
-                </div>
-                <div class="mt-4 flex flex-wrap gap-3">
-                    <?php if (empty($isConfirmed)): ?>
-                        <button class="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                            Genereaza pachete
-                        </button>
-                    <?php else: ?>
-                        <div class="text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
-                    <?php endif; ?>
+                    Modificarea numarului de pachete aplica automat reorganizarea.
                 </div>
             <?php endif; ?>
-        </form>
+        <?php endif; ?>
 
         <?php if (empty($isConfirmed) && !empty($packages)): ?>
             <div class="mt-3 text-sm text-slate-600">
@@ -491,6 +496,14 @@
 
         const decButtons = document.querySelectorAll('[data-counter-decrement]');
         const incButtons = document.querySelectorAll('[data-counter-increment]');
+        const counterInputs = document.querySelectorAll('[data-counter-input]');
+        const packagesForm = document.getElementById('packages-form');
+
+        const submitPackages = () => {
+            if (packagesForm) {
+                packagesForm.submit();
+            }
+        };
 
         const updateCounter = (id, delta) => {
             const input = document.getElementById(id);
@@ -500,6 +513,7 @@
             const current = parseInt(input.value || '1', 10);
             const next = Math.max(1, current + delta);
             input.value = String(next);
+            submitPackages();
         };
 
         decButtons.forEach((button) => {
@@ -511,6 +525,12 @@
         incButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 updateCounter(button.dataset.target, 1);
+            });
+        });
+
+        counterInputs.forEach((input) => {
+            input.addEventListener('change', () => {
+                submitPackages();
             });
         });
 
