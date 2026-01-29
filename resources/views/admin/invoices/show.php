@@ -199,28 +199,30 @@
             </div>
         <?php endforeach; ?>
 
-        <div
-            class="rounded border-2 border-dashed border-slate-400 bg-slate-50 p-4"
-            data-drop-zone
-            data-package-id="0"
-            data-vat=""
-        >
-            <div class="text-sm font-semibold text-slate-900">Nealocat</div>
-            <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
-            <div class="mt-3 space-y-2 min-h-[40px]">
-                <?php foreach ($unassigned as $line): ?>
-                    <div
-                        class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
-                        draggable="true"
-                        data-line-draggable
-                        data-line-id="<?= (int) $line->id ?>"
-                        data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
-                    >
-                        <?= htmlspecialchars($line->product_name) ?>
-                    </div>
-                <?php endforeach; ?>
+        <?php if ($unassignedCount > 0): ?>
+            <div
+                class="rounded border-2 border-dashed border-slate-400 bg-slate-50 p-4"
+                data-drop-zone
+                data-package-id="0"
+                data-vat=""
+            >
+                <div class="text-sm font-semibold text-slate-900">Nealocat</div>
+                <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
+                <div class="mt-3 space-y-2 min-h-[40px]">
+                    <?php foreach ($unassigned as $line): ?>
+                        <div
+                            class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                            draggable="true"
+                            data-line-draggable
+                            data-line-id="<?= (int) $line->id ?>"
+                            data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
+                        >
+                            <?= htmlspecialchars($line->product_name) ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
             </div>
-        </div>
+        <?php endif; ?>
     </div>
 
     <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">
