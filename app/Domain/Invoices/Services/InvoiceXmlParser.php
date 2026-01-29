@@ -17,10 +17,10 @@ class InvoiceXmlParser
         }
 
         $contents = $this->stripBom($contents);
+        $contents = $this->sanitizeXml($contents);
+        $contents = $this->ensureUtf8($contents);
 
-        libxml_use_internal_errors(true);
-        $xml = simplexml_load_string($contents, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOCDATA);
-
+        $xml = $this->loadXml($contents);
         if (!$xml) {
             $message = $this->libxmlErrorMessage();
             throw new \RuntimeException('XML invalid.' . ($message ? ' ' . $message : ''));
@@ -100,6 +100,56 @@ class InvoiceXmlParser
         return $contents;
     }
 
+    private function sanitizeXml(string $contents): string
+    {
+        return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $contents) ?? $contents;
+    }
+
+    private function ensureUtf8(string $contents): string
+    {
+        if (preg_match('//u', $contents)) {
+            return $contents;
+        }
+
+        if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $contents);
+            if ($converted !== false) {
+                return $converted;
+            }
+        }
+
+        if (function_exists('utf8_encode')) {
+            return utf8_encode($contents);
+        }
+
+        return $contents;
+    }
+
+    private function loadXml(string $contents): ?\SimpleXMLElement
+    {
+        libxml_use_internal_errors(true);
+        $options = LIBXML_NONET | LIBXML_NOCDATA | LIBXML_PARSEHUGE;
+
+        $xml = simplexml_load_string($contents, 'SimpleXMLElement', $options);
+        if ($xml instanceof \SimpleXMLElement) {
+            libxml_clear_errors();
+            return $xml;
+        }
+
+        if (class_exists(\DOMDocument::class)) {
+            $dom = new \DOMDocument();
+            if (@$dom->loadXML($contents, $options) && $dom->documentElement) {
+                $simple = simplexml_import_dom($dom);
+                if ($simple instanceof \SimpleXMLElement) {
+                    libxml_clear_errors();
+                    return $simple;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function libxmlErrorMessage(): ?string
     {
         $errors = libxml_get_errors();
@@ -116,7 +166,10 @@ class InvoiceXmlParser
             return null;
         }
 
-        return 'Detalii: ' . $message;
+        $line = $first->line ?? 0;
+        $column = $first->column ?? 0;
+
+        return 'Detalii: ' . $message . ($line ? ' (linia ' . $line . ', coloana ' . $column . ')' : '');
     }
 
     private function partyData(?\SimpleXMLElement $party): array
