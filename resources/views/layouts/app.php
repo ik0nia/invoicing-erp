@@ -53,14 +53,9 @@ $menuSections = [
     ],
     'Setari' => [
         [
-            'label' => 'Setari branding',
-            'path' => '/admin/setari/branding',
-            'active' => str_starts_with($currentPath, '/admin/setari/branding'),
-        ],
-        [
-            'label' => 'Import date vechi',
-            'path' => '/admin/setari/import-date',
-            'active' => str_starts_with($currentPath, '/admin/setari/import-date'),
+            'label' => 'Setari',
+            'path' => '/admin/setari',
+            'active' => str_starts_with($currentPath, '/admin/setari'),
         ],
     ],
 ];

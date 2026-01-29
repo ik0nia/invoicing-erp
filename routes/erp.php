@@ -1,16 +1,12 @@
 <?php
 
-use App\Domain\Settings\Http\Controllers\LegacyImportController;
 use App\Domain\Settings\Http\Controllers\SettingsController;
 use App\Domain\Invoices\Http\Controllers\InvoiceController;
 use App\Domain\Companies\Http\Controllers\CompanyController;
 use App\Domain\Partners\Http\Controllers\AssociationsController;
 
-$router->get('/admin/setari/branding', [SettingsController::class, 'editBranding']);
-$router->post('/admin/setari/branding', [SettingsController::class, 'updateBranding']);
-
-$router->get('/admin/setari/import-date', [LegacyImportController::class, 'show']);
-$router->post('/admin/setari/import-date', [LegacyImportController::class, 'import']);
+$router->get('/admin/setari', [SettingsController::class, 'edit']);
+$router->post('/admin/setari', [SettingsController::class, 'update']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
