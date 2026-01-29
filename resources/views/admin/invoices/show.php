@@ -192,7 +192,7 @@
     </div>
 </div>
 
-<div class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
+<div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Organizare produse (drag & drop)</h2>
     <p class="mt-2 text-sm text-slate-600">
         Poti muta produsele intre pachete doar daca au aceeasi cota TVA.

@@ -171,7 +171,7 @@ class InvoiceController
         if ($action === 'generate') {
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi regenerate.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             $counts = $_POST['package_counts'] ?? [];
@@ -182,7 +182,7 @@ class InvoiceController
         if ($action === 'delete') {
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu pot fi sterse.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
@@ -204,14 +204,14 @@ class InvoiceController
         if ($action === 'confirm') {
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('status', 'Pachetele sunt deja confirmate.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             $this->confirmPackages($invoiceId);
             Session::flash('status', 'Pachetele au fost confirmate.');
         }
 
-        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
     public function delete(): void
@@ -254,13 +254,13 @@ class InvoiceController
         if ($invoiceId && $lineId) {
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi modificate.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             $line = InvoiceInLine::find($lineId);
 
             if (!$line || $line->invoice_in_id !== $invoiceId) {
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             if ($packageId) {
@@ -268,21 +268,21 @@ class InvoiceController
 
                 if (!$package || $package->invoice_in_id !== $invoiceId) {
                     Session::flash('error', 'Pachet invalid.');
-                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
                 }
 
                 if ($package->vat_percent <= 0) {
                     Package::updateVat($packageId, $line->tax_percent);
                 } elseif (abs($package->vat_percent - $line->tax_percent) > 0.01) {
                     Session::flash('error', 'Poti muta doar produse cu aceeasi cota TVA.');
-                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
                 }
             }
 
             InvoiceInLine::updatePackage($lineId, $packageId ?: null);
         }
 
-        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
     private function storeXml(string $tmpPath, string $invoiceNumber): ?string

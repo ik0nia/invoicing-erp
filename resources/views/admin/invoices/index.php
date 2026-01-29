@@ -14,7 +14,7 @@
 </div>
 
 <div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
-    <table class="w-full text-left text-sm">
+    <table class="w-full text-left text-sm md:table">
         <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
             <tr>
                 <th class="px-4 py-3">Factura</th>
@@ -35,26 +35,26 @@
                 </tr>
             <?php else: ?>
                 <?php foreach ($invoices as $invoice): ?>
-                    <tr class="border-b border-slate-100">
-                        <td class="px-4 py-3 font-medium text-slate-900">
+                    <tr class="border-b border-slate-100 block md:table-row">
+                        <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Factura">
                             <?= htmlspecialchars($invoice->invoice_number) ?>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">
+                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Serie">
                             <?= htmlspecialchars($invoice->invoice_series ?: '-') ?>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">
+                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Numar">
                             <?= htmlspecialchars($invoice->invoice_no ?: '-') ?>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">
+                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Furnizor">
                             <?= htmlspecialchars($invoice->supplier_name) ?>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">
+                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data">
                             <?= htmlspecialchars($invoice->issue_date) ?>
                         </td>
-                        <td class="px-4 py-3 text-slate-600">
+                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total (RON)">
                             <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
                         </td>
-                        <td class="px-4 py-3 text-right">
+                        <td class="px-4 py-3 text-right block md:table-cell" data-label="Actiuni">
                             <a
                                 href="<?= App\Support\Url::to('admin/facturi') ?>?invoice_id=<?= (int) $invoice->id ?>"
                                 class="text-blue-700 hover:text-blue-800"
@@ -79,3 +79,26 @@
         </tbody>
     </table>
 </div>
+
+<style>
+    @media (max-width: 768px) {
+        table thead {
+            display: none;
+        }
+        table tbody tr {
+            display: block;
+            padding: 0.75rem 0.75rem;
+        }
+        table tbody td {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.4rem 0;
+        }
+        table tbody td::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #334155;
+        }
+    }
+</style>
