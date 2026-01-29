@@ -146,6 +146,22 @@ class InvoiceController
             Session::flash('status', 'Pachetele au fost reorganizate.');
         }
 
+        if ($action === 'delete') {
+            $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
+            if ($packageId) {
+                $package = Package::find($packageId);
+
+                if ($package && $package->invoice_in_id === $invoiceId) {
+                    Database::execute(
+                        'UPDATE invoice_in_lines SET package_id = NULL WHERE package_id = :package',
+                        ['package' => $packageId]
+                    );
+                    Database::execute('DELETE FROM packages WHERE id = :id', ['id' => $packageId]);
+                    Session::flash('status', 'Pachet sters. Produsele au fost trecute la nealocate.');
+                }
+            }
+        }
+
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
     }
 

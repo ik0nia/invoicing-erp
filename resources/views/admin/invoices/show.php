@@ -84,12 +84,21 @@
                 <?php foreach ($packages as $package): ?>
                     <?php $stat = $packageStats[$package->id] ?? null; ?>
                     <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-                        <div class="font-medium text-slate-900">
-                            <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="font-medium text-slate-900">
+                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
+                            </div>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                                <button class="text-xs text-red-600 hover:text-red-700">Sterge</button>
+                            </form>
                         </div>
                         <?php if ($stat): ?>
                             <div class="mt-1 text-slate-500">
-                                TVA <?= number_format($stat['vat_percent'], 2, '.', ' ') ?>% ·
+                                Cota TVA <?= number_format($stat['vat_percent'], 2, '.', ' ') ?>% ·
                                 <?= (int) $stat['line_count'] ?> produse ·
                                 <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
                             </div>
@@ -148,7 +157,7 @@
                 <div class="text-sm font-semibold text-slate-900">
                     <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
                 </div>
-                <div class="text-xs text-slate-500">TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
+            <div class="text-xs text-slate-500">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php if (empty($packageLines)): ?>
                         <div class="text-xs text-slate-400">Fara produse</div>
