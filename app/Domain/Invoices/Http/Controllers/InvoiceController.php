@@ -35,6 +35,9 @@ class InvoiceController
             $lines = InvoiceInLine::forInvoice($invoiceId);
             $packages = Package::forInvoice($invoiceId);
             $packageStats = $this->packageStats($lines, $packages);
+            $vatRates = $this->vatRates($lines);
+            $packageDefaults = $this->packageDefaults($packages, $vatRates);
+            $linesByPackage = $this->groupLinesByPackage($lines, $packages);
             $clients = Commission::forSupplier($invoice->supplier_cui);
 
             Response::view('admin/invoices/show', [
@@ -42,6 +45,9 @@ class InvoiceController
                 'lines' => $lines,
                 'packages' => $packages,
                 'packageStats' => $packageStats,
+                'vatRates' => $vatRates,
+                'packageDefaults' => $packageDefaults,
+                'linesByPackage' => $linesByPackage,
                 'clients' => $clients,
             ]);
         }
@@ -112,6 +118,8 @@ class InvoiceController
             InvoiceInLine::create($invoice->id, $line);
         }
 
+        $this->generatePackages($invoice->id);
+
         Session::flash('status', 'Factura a fost importata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
     }
@@ -132,28 +140,10 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        if ($action === 'create') {
-            Package::create($invoiceId);
-            Session::flash('status', 'Pachet adaugat.');
-        }
-
-        if ($action === 'auto') {
-            $lines = InvoiceInLine::forInvoice($invoiceId);
-            $grouped = [];
-
-            foreach ($lines as $line) {
-                $key = (string) $line->tax_percent;
-                $grouped[$key][] = $line;
-            }
-
-            foreach ($grouped as $taxPercent => $groupLines) {
-                $package = Package::create($invoiceId, 'TVA ' . $taxPercent . '%');
-                foreach ($groupLines as $line) {
-                    InvoiceInLine::updatePackage($line->id, $package->id);
-                }
-            }
-
-            Session::flash('status', 'Pachetele au fost generate automat.');
+        if ($action === 'generate') {
+            $counts = $_POST['package_counts'] ?? [];
+            $this->generatePackages($invoiceId, $counts);
+            Session::flash('status', 'Pachetele au fost reorganizate.');
         }
 
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
@@ -168,6 +158,28 @@ class InvoiceController
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
 
         if ($invoiceId && $lineId) {
+            $line = InvoiceInLine::find($lineId);
+
+            if (!$line || $line->invoice_in_id !== $invoiceId) {
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+            }
+
+            if ($packageId) {
+                $package = Package::find($packageId);
+
+                if (!$package || $package->invoice_in_id !== $invoiceId) {
+                    Session::flash('error', 'Pachet invalid.');
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                }
+
+                if ($package->vat_percent <= 0) {
+                    Package::updateVat($packageId, $line->tax_percent);
+                } elseif (abs($package->vat_percent - $line->tax_percent) > 0.01) {
+                    Session::flash('error', 'Poti muta doar produse cu aceeasi cota TVA.');
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+                }
+            }
+
             InvoiceInLine::updatePackage($lineId, $packageId ?: null);
         }
 
@@ -198,7 +210,8 @@ class InvoiceController
 
         foreach ($packages as $package) {
             $stats[$package->id] = [
-                'label' => $package->label ?: 'Pachet #' . $package->id,
+                'label' => $package->label ?: 'Pachet de produse #' . $package->id,
+                'vat_percent' => $package->vat_percent,
                 'line_count' => 0,
                 'total' => 0.0,
                 'total_vat' => 0.0,
@@ -246,6 +259,7 @@ class InvoiceController
                     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     invoice_in_id BIGINT UNSIGNED NOT NULL,
                     label VARCHAR(64) NULL,
+                    vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000'
             );
@@ -270,9 +284,111 @@ class InvoiceController
             return false;
         }
 
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'vat_percent')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0 AFTER label');
+        }
+
         $this->ensurePackageAutoIncrement();
 
         return true;
+    }
+
+    private function generatePackages(int $invoiceId, array $counts = []): void
+    {
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+
+        if (empty($lines)) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE invoice_in_lines SET package_id = NULL WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        );
+        Database::execute('DELETE FROM packages WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
+
+        $groups = $this->buildVatGroups($lines);
+
+        foreach ($groups as $vat => $groupLines) {
+            $requested = isset($counts[$vat]) ? (int) $counts[$vat] : 1;
+            $maxAllowed = max(1, count($groupLines));
+            $packageCount = max(1, min($requested, $maxAllowed));
+
+            $packages = [];
+            for ($i = 0; $i < $packageCount; $i++) {
+                $packages[] = Package::create($invoiceId, (float) $vat);
+            }
+
+            $index = 0;
+            foreach ($groupLines as $line) {
+                $target = $packages[$index % $packageCount];
+                InvoiceInLine::updatePackage($line->id, $target->id);
+                $index++;
+            }
+        }
+    }
+
+    private function buildVatGroups(array $lines): array
+    {
+        $groups = [];
+
+        foreach ($lines as $line) {
+            $vat = number_format($line->tax_percent, 2, '.', '');
+            $groups[$vat][] = $line;
+        }
+
+        ksort($groups, SORT_NUMERIC);
+
+        return $groups;
+    }
+
+    private function vatRates(array $lines): array
+    {
+        $rates = [];
+
+        foreach ($lines as $line) {
+            $rates[number_format($line->tax_percent, 2, '.', '')] = true;
+        }
+
+        $vatRates = array_keys($rates);
+        sort($vatRates, SORT_NUMERIC);
+
+        return $vatRates;
+    }
+
+    private function packageDefaults(array $packages, array $vatRates): array
+    {
+        $counts = [];
+
+        foreach ($packages as $package) {
+            $vat = number_format($package->vat_percent, 2, '.', '');
+            $counts[$vat] = ($counts[$vat] ?? 0) + 1;
+        }
+
+        $defaults = [];
+        foreach ($vatRates as $vat) {
+            $defaults[$vat] = $counts[$vat] ?? 1;
+        }
+
+        return $defaults;
+    }
+
+    private function groupLinesByPackage(array $lines, array $packages): array
+    {
+        $grouped = [];
+
+        foreach ($packages as $package) {
+            $grouped[$package->id] = [];
+        }
+
+        $grouped[0] = [];
+
+        foreach ($lines as $line) {
+            $key = $line->package_id ?? 0;
+            $grouped[$key][] = $line;
+        }
+
+        return $grouped;
     }
 
     private function ensurePackageAutoIncrement(): void

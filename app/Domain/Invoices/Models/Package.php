@@ -9,15 +9,17 @@ class Package
     public int $id;
     public int $invoice_in_id;
     public ?string $label;
+    public float $vat_percent;
 
-    public static function create(int $invoiceId, ?string $label = null): self
+    public static function create(int $invoiceId, float $vatPercent, ?string $label = null): self
     {
         Database::execute(
-            'INSERT INTO packages (invoice_in_id, label, created_at)
-             VALUES (:invoice_in_id, :label, :created_at)',
+            'INSERT INTO packages (invoice_in_id, label, vat_percent, created_at)
+             VALUES (:invoice_in_id, :label, :vat_percent, :created_at)',
             [
                 'invoice_in_id' => $invoiceId,
                 'label' => $label,
+                'vat_percent' => $vatPercent,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
         );
@@ -68,12 +70,21 @@ class Package
         }
     }
 
+    public static function updateVat(int $packageId, float $vatPercent): void
+    {
+        Database::execute(
+            'UPDATE packages SET vat_percent = :vat WHERE id = :id',
+            ['vat' => $vatPercent, 'id' => $packageId]
+        );
+    }
+
     public static function fromArray(array $row): self
     {
         $package = new self();
         $package->id = (int) $row['id'];
         $package->invoice_in_id = (int) $row['invoice_in_id'];
         $package->label = $row['label'];
+        $package->vat_percent = isset($row['vat_percent']) ? (float) $row['vat_percent'] : 0.0;
 
         return $package;
     }

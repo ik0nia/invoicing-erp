@@ -87,6 +87,19 @@ class InvoiceInLine
         );
     }
 
+    public static function find(int $lineId): ?self
+    {
+        if (!Database::tableExists('invoice_in_lines')) {
+            return null;
+        }
+
+        $row = Database::fetchOne('SELECT * FROM invoice_in_lines WHERE id = :id LIMIT 1', [
+            'id' => $lineId,
+        ]);
+
+        return $row ? self::fromArray($row) : null;
+    }
+
     public static function fromArray(array $row): self
     {
         $line = new self();

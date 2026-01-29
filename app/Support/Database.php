@@ -80,6 +80,19 @@ class Database
         return $row !== false;
     }
 
+    public static function columnExists(string $table, string $column): bool
+    {
+        try {
+            $stmt = self::pdo()->prepare('SHOW COLUMNS FROM `' . $table . '` LIKE :column');
+            $stmt->execute(['column' => $column]);
+            $row = $stmt->fetch();
+        } catch (PDOException $exception) {
+            return false;
+        }
+
+        return $row !== false;
+    }
+
     public static function fetchValue(string $sql, array $params = []): mixed
     {
         $row = self::fetchOne($sql, $params);

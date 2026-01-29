@@ -39,38 +39,57 @@
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold text-slate-900">Pachete</h2>
-            <div class="flex gap-2">
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <input type="hidden" name="action" value="create">
-                    <button class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900">
-                        Adauga pachet
-                    </button>
-                </form>
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <input type="hidden" name="action" value="auto">
-                    <button class="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                        Auto pe TVA
-                    </button>
-                </form>
-            </div>
         </div>
 
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input type="hidden" name="action" value="generate">
+
+            <?php if (empty($vatRates)): ?>
+                <div class="text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
+            <?php else: ?>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <?php foreach ($vatRates as $vatRate): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="vat_<?= htmlspecialchars($vatRate) ?>">
+                                Numar pachete pentru TVA <?= htmlspecialchars($vatRate) ?>%
+                            </label>
+                            <input
+                                id="vat_<?= htmlspecialchars($vatRate) ?>"
+                                name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
+                                type="number"
+                                min="1"
+                                value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
+                                class="mt-1 w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                            >
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="mt-4 text-xs text-slate-500">
+                    Impartirea se face automat in functie de cotele TVA. Poti muta manual produse intre pachete cu aceeasi TVA.
+                </div>
+                <div class="mt-4">
+                    <button class="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                        Genereaza pachete
+                    </button>
+                </div>
+            <?php endif; ?>
+        </form>
+
         <?php if (empty($packages)): ?>
-            <p class="mt-4 text-sm text-slate-500">Nu exista pachete. Foloseste butoanele de mai sus.</p>
+            <p class="mt-4 text-sm text-slate-500">Nu exista pachete. Genereaza pachete din formularul de mai sus.</p>
         <?php else: ?>
             <div class="mt-4 space-y-3">
                 <?php foreach ($packages as $package): ?>
                     <?php $stat = $packageStats[$package->id] ?? null; ?>
                     <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                         <div class="font-medium text-slate-900">
-                            <?= htmlspecialchars($package->label ?: 'Pachet #' . $package->id) ?>
+                            <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
                         </div>
                         <?php if ($stat): ?>
                             <div class="mt-1 text-slate-500">
+                                TVA <?= number_format($stat['vat_percent'], 2, '.', ' ') ?>% ·
                                 <?= (int) $stat['line_count'] ?> produse ·
                                 <?= number_format($stat['total_vat'], 2, '.', ' ') ?> RON cu TVA
                             </div>
@@ -109,6 +128,77 @@
             </div>
         <?php endif; ?>
     </div>
+</div>
+
+<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">Organizare produse (drag & drop)</h2>
+    <p class="mt-2 text-sm text-slate-500">
+        Poti muta produsele intre pachete doar daca au aceeasi cota TVA.
+    </p>
+
+    <div class="mt-4 grid gap-4 lg:grid-cols-3">
+        <?php foreach ($packages as $package): ?>
+            <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
+            <div
+                class="rounded border border-slate-200 bg-slate-50 p-4"
+                data-drop-zone
+                data-package-id="<?= (int) $package->id ?>"
+                data-vat="<?= htmlspecialchars(number_format($package->vat_percent, 2, '.', '')) ?>"
+            >
+                <div class="text-sm font-semibold text-slate-900">
+                    <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
+                </div>
+                <div class="text-xs text-slate-500">TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
+                <div class="mt-3 space-y-2 min-h-[40px]">
+                    <?php if (empty($packageLines)): ?>
+                        <div class="text-xs text-slate-400">Fara produse</div>
+                    <?php else: ?>
+                        <?php foreach ($packageLines as $line): ?>
+                            <div
+                                class="cursor-move rounded bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                                draggable="true"
+                                data-line-draggable
+                                data-line-id="<?= (int) $line->id ?>"
+                                data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
+                            >
+                                <?= htmlspecialchars($line->product_name) ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+
+        <div
+            class="rounded border border-dashed border-slate-300 bg-white p-4"
+            data-drop-zone
+            data-package-id="0"
+            data-vat=""
+        >
+            <div class="text-sm font-semibold text-slate-900">Nealocat</div>
+            <div class="text-xs text-slate-500">Produse fara pachet</div>
+            <div class="mt-3 space-y-2 min-h-[40px]">
+                <?php foreach (($linesByPackage[0] ?? []) as $line): ?>
+                    <div
+                        class="cursor-move rounded bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                        draggable="true"
+                        data-line-draggable
+                        data-line-id="<?= (int) $line->id ?>"
+                        data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
+                    >
+                        <?= htmlspecialchars($line->product_name) ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+
+    <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+        <input type="hidden" name="line_id" value="">
+        <input type="hidden" name="package_id" value="">
+    </form>
 </div>
 
 <div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -152,11 +242,17 @@
                                 <select name="package_id" class="rounded border border-slate-300 px-2 py-1 text-sm">
                                     <option value="">Nealocat</option>
                                     <?php foreach ($packages as $package): ?>
+                                        <?php
+                                            $allowed = abs($package->vat_percent - $line->tax_percent) < 0.01 || $package->vat_percent <= 0;
+                                        ?>
+                                        <?php if (!$allowed): ?>
+                                            <?php continue; ?>
+                                        <?php endif; ?>
                                         <option
                                             value="<?= (int) $package->id ?>"
                                             <?= $line->package_id === $package->id ? 'selected' : '' ?>
                                         >
-                                            <?= htmlspecialchars($package->label ?: 'Pachet #' . $package->id) ?>
+                                            <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->id) ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -170,3 +266,59 @@
         </table>
     </div>
 </div>
+
+<script>
+    (function () {
+        const form = document.getElementById('move-line-form');
+        if (!form) {
+            return;
+        }
+
+        let draggedLineId = null;
+        let draggedVat = null;
+
+        document.querySelectorAll('[data-line-draggable]').forEach((item) => {
+            item.addEventListener('dragstart', (event) => {
+                draggedLineId = item.dataset.lineId || null;
+                draggedVat = item.dataset.vat || null;
+                event.dataTransfer.effectAllowed = 'move';
+            });
+        });
+
+        document.querySelectorAll('[data-drop-zone]').forEach((zone) => {
+            zone.addEventListener('dragover', (event) => {
+                if (!draggedLineId) {
+                    return;
+                }
+                const zoneVat = zone.dataset.vat || '';
+                if (zoneVat !== '' && draggedVat !== '' && zoneVat !== draggedVat) {
+                    return;
+                }
+                event.preventDefault();
+                zone.classList.add('ring-2', 'ring-blue-300');
+            });
+
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('ring-2', 'ring-blue-300');
+            });
+
+            zone.addEventListener('drop', (event) => {
+                event.preventDefault();
+                zone.classList.remove('ring-2', 'ring-blue-300');
+                if (!draggedLineId) {
+                    return;
+                }
+
+                const zoneVat = zone.dataset.vat || '';
+                if (zoneVat !== '' && draggedVat !== '' && zoneVat !== draggedVat) {
+                    alert('Poti muta doar produse cu aceeasi cota TVA.');
+                    return;
+                }
+
+                form.querySelector('input[name="line_id"]').value = draggedLineId;
+                form.querySelector('input[name="package_id"]').value = zone.dataset.packageId || '';
+                form.submit();
+            });
+        });
+    })();
+</script>
