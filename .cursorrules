@@ -1,0 +1,9 @@
+ERP Laravel Romania - reguli de proiect
+
+- Aplicatie ERP pentru persoane juridice din Romania.
+- Nu exista persoane fizice; toate entitatile sunt firme (SRL, SA, PFA, II, IF).
+- Codurile fiscale sunt romanesti (CUI).
+- Moneda implicita: RON. Limba: romana.
+- UI foloseste Tailwind CSS cu accent principal albastru.
+- Structura modulara (DDD): app/Domain/* si app/Support/*.
+- Nu modifica folderul vendor/.
