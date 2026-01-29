@@ -20,6 +20,7 @@ Aplicatie ERP custom (fara dependinte composer) pentru firme din Romania.
    - `APP_URL`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
 5. Uploadeaza toate fisierele pe hosting.
 6. Deschide in browser:
+   - `/install` pentru configurare automata `.env`
    - `/setup` pentru a crea primul admin
 
 Recomandat: seteaza document root catre folderul `public/`.

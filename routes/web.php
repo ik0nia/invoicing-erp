@@ -1,15 +1,23 @@
 <?php
 
+use App\Domain\Settings\Http\Controllers\InstallController;
 use App\Domain\Users\Http\Controllers\AuthController;
 use App\Domain\Users\Http\Controllers\SetupController;
 
 $router->get('/', function (): void {
+    if (!file_exists(BASE_PATH . '/.env')) {
+        App\Support\Response::redirect('/install');
+    }
+
     if (!App\Domain\Users\Models\User::exists()) {
         App\Support\Response::redirect('/setup');
     }
 
     App\Support\Response::redirect('/admin/setari/branding');
 });
+
+$router->get('/install', [InstallController::class, 'show']);
+$router->post('/install', [InstallController::class, 'store']);
 
 $router->get('/setup', [SetupController::class, 'show']);
 $router->post('/setup', [SetupController::class, 'create']);
