@@ -31,6 +31,40 @@ class Commission
         return $row ? self::fromArray($row) : null;
     }
 
+    public static function allWithPartners(): array
+    {
+        if (!Database::tableExists('commissions')) {
+            return [];
+        }
+
+        return Database::fetchAll(
+            'SELECT c.*, sp.denumire AS supplier_name, cp.denumire AS client_name
+             FROM commissions c
+             LEFT JOIN partners sp ON sp.cui = c.supplier_cui
+             LEFT JOIN partners cp ON cp.cui = c.client_cui
+             ORDER BY supplier_name ASC, client_name ASC'
+        );
+    }
+
+    public static function createOrUpdate(string $supplierCui, string $clientCui, float $commission): void
+    {
+        Database::execute(
+            'INSERT INTO commissions (supplier_cui, client_cui, commission, created_at, updated_at)
+             VALUES (:supplier, :client, :commission, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE commission = VALUES(commission), updated_at = NOW()',
+            [
+                'supplier' => $supplierCui,
+                'client' => $clientCui,
+                'commission' => $commission,
+            ]
+        );
+    }
+
+    public static function deleteById(int $id): void
+    {
+        Database::execute('DELETE FROM commissions WHERE id = :id', ['id' => $id]);
+    }
+
     public static function fromArray(array $row): self
     {
         $commission = new self();

@@ -24,26 +24,44 @@ if ($base !== '' && str_starts_with($currentPath, $base)) {
     $currentPath = $currentPath === '' ? '/' : $currentPath;
 }
 
-$menu = [
-    [
-        'label' => 'Dashboard',
-        'path' => '/admin/dashboard',
-        'active' => str_starts_with($currentPath, '/admin/dashboard'),
+$menuSections = [
+    'General' => [
+        [
+            'label' => 'Dashboard',
+            'path' => '/admin/dashboard',
+            'active' => str_starts_with($currentPath, '/admin/dashboard'),
+        ],
     ],
-    [
-        'label' => 'Facturi intrare',
-        'path' => '/admin/facturi',
-        'active' => str_starts_with($currentPath, '/admin/facturi'),
+    'Facturare' => [
+        [
+            'label' => 'Facturi intrare',
+            'path' => '/admin/facturi',
+            'active' => str_starts_with($currentPath, '/admin/facturi'),
+        ],
     ],
-    [
-        'label' => 'Setari branding',
-        'path' => '/admin/setari/branding',
-        'active' => str_starts_with($currentPath, '/admin/setari/branding'),
+    'Companii' => [
+        [
+            'label' => 'Companii',
+            'path' => '/admin/companii',
+            'active' => str_starts_with($currentPath, '/admin/companii'),
+        ],
+        [
+            'label' => 'Asocieri clienti',
+            'path' => '/admin/asocieri',
+            'active' => str_starts_with($currentPath, '/admin/asocieri'),
+        ],
     ],
-    [
-        'label' => 'Import date vechi',
-        'path' => '/admin/setari/import-date',
-        'active' => str_starts_with($currentPath, '/admin/setari/import-date'),
+    'Setari' => [
+        [
+            'label' => 'Setari branding',
+            'path' => '/admin/setari/branding',
+            'active' => str_starts_with($currentPath, '/admin/setari/branding'),
+        ],
+        [
+            'label' => 'Import date vechi',
+            'path' => '/admin/setari/import-date',
+            'active' => str_starts_with($currentPath, '/admin/setari/import-date'),
+        ],
     ],
 ];
 ?>
@@ -70,28 +88,26 @@ $menu = [
                     <span class="text-lg font-semibold text-blue-700">ERP Intern</span>
                 <?php endif; ?>
             </div>
-            <nav class="px-4 py-6 text-sm">
-                <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Meniu</div>
-                <ul class="space-y-2">
-                    <?php foreach ($menu as $item): ?>
-                        <li>
-                            <a
-                                href="<?= App\Support\Url::to($item['path']) ?>"
-                                class="flex items-center gap-2 rounded px-3 py-2 font-medium <?= $item['active'] ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100' ?>"
-                            >
-                                <?= htmlspecialchars($item['label']) ?>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                    <li class="rounded px-3 py-2 text-slate-400">
-                        <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">In curand</span>
-                        <div class="mt-2 space-y-1">
-                            <div class="text-sm">Companii</div>
-                            <div class="text-sm">Utilizatori</div>
-                            <div class="text-sm">Facturi</div>
+            <nav class="px-4 py-6 text-sm space-y-6">
+                <?php foreach ($menuSections as $sectionLabel => $items): ?>
+                    <div>
+                        <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <?= htmlspecialchars($sectionLabel) ?>
                         </div>
-                    </li>
-                </ul>
+                        <ul class="space-y-2">
+                            <?php foreach ($items as $item): ?>
+                                <li>
+                                    <a
+                                        href="<?= App\Support\Url::to($item['path']) ?>"
+                                        class="flex items-center gap-2 rounded px-3 py-2 font-medium <?= $item['active'] ? 'bg-blue-100 text-blue-800' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' ?>"
+                                    >
+                                        <?= htmlspecialchars($item['label']) ?>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endforeach; ?>
             </nav>
         </aside>
 

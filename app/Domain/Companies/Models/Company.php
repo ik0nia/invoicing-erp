@@ -50,4 +50,87 @@ class Company
 
         return $row ? self::fromArray($row) : null;
     }
+
+    public static function findByCui(string $cui): ?self
+    {
+        $row = Database::fetchOne('SELECT * FROM companies WHERE cui = :cui LIMIT 1', [
+            'cui' => $cui,
+        ]);
+
+        return $row ? self::fromArray($row) : null;
+    }
+
+    public static function save(array $data): self
+    {
+        $now = date('Y-m-d H:i:s');
+
+        Database::execute(
+            'INSERT INTO companies (
+                denumire,
+                tip_firma,
+                cui,
+                nr_reg_comertului,
+                platitor_tva,
+                adresa,
+                localitate,
+                judet,
+                tara,
+                email,
+                telefon,
+                tip_companie,
+                activ,
+                created_at,
+                updated_at
+            ) VALUES (
+                :denumire,
+                :tip_firma,
+                :cui,
+                :nr_reg_comertului,
+                :platitor_tva,
+                :adresa,
+                :localitate,
+                :judet,
+                :tara,
+                :email,
+                :telefon,
+                :tip_companie,
+                :activ,
+                :created_at,
+                :updated_at
+            )
+            ON DUPLICATE KEY UPDATE
+                denumire = VALUES(denumire),
+                tip_firma = VALUES(tip_firma),
+                nr_reg_comertului = VALUES(nr_reg_comertului),
+                platitor_tva = VALUES(platitor_tva),
+                adresa = VALUES(adresa),
+                localitate = VALUES(localitate),
+                judet = VALUES(judet),
+                tara = VALUES(tara),
+                email = VALUES(email),
+                telefon = VALUES(telefon),
+                tip_companie = VALUES(tip_companie),
+                activ = VALUES(activ),
+                updated_at = VALUES(updated_at)',
+            [
+                'denumire' => $data['denumire'],
+                'tip_firma' => $data['tip_firma'],
+                'cui' => $data['cui'],
+                'nr_reg_comertului' => $data['nr_reg_comertului'],
+                'platitor_tva' => $data['platitor_tva'],
+                'adresa' => $data['adresa'],
+                'localitate' => $data['localitate'],
+                'judet' => $data['judet'],
+                'tara' => $data['tara'],
+                'email' => $data['email'],
+                'telefon' => $data['telefon'],
+                'tip_companie' => $data['tip_companie'],
+                'activ' => $data['activ'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        return self::findByCui($data['cui']);
+    }
 }
