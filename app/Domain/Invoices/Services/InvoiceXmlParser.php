@@ -22,6 +22,11 @@ class InvoiceXmlParser
 
         $xml = $this->loadXml($contents);
         if (!$xml) {
+            $fallback = $this->parseByRegex($contents);
+            if ($fallback !== null) {
+                return $fallback;
+            }
+
             $message = $this->libxmlErrorMessage();
             throw new \RuntimeException('XML invalid.' . ($message ? ' ' . $message : ''));
         }
@@ -170,6 +175,123 @@ class InvoiceXmlParser
         $column = $first->column ?? 0;
 
         return 'Detalii: ' . $message . ($line ? ' (linia ' . $line . ', coloana ' . $column . ')' : '');
+    }
+
+    private function parseByRegex(string $contents): ?array
+    {
+        if (!str_contains($contents, '<Invoice')) {
+            return null;
+        }
+
+        $invoiceNumber = $this->firstTagValue($contents, 'cbc:ID');
+        $issueDate = $this->firstTagValue($contents, 'cbc:IssueDate');
+        $dueDate = $this->firstTagValue($contents, 'cbc:DueDate');
+        $currency = $this->firstTagValue($contents, 'cbc:DocumentCurrencyCode') ?: 'RON';
+
+        $supplierBlock = $this->extractBlock($contents, 'cac:AccountingSupplierParty');
+        $customerBlock = $this->extractBlock($contents, 'cac:AccountingCustomerParty');
+
+        [$supplierCui, $supplierName] = $this->partyFromBlock($supplierBlock);
+        [$customerCui, $customerName] = $this->partyFromBlock($customerBlock);
+
+        $totalWithoutVat = (float) $this->firstTagValue($contents, 'cbc:TaxExclusiveAmount');
+        $totalVat = (float) $this->firstTagValue($contents, 'cbc:TaxAmount');
+        $totalWithVat = (float) $this->firstTagValue($contents, 'cbc:TaxInclusiveAmount');
+
+        if ($totalWithVat <= 0) {
+            $totalWithVat = (float) $this->firstTagValue($contents, 'cbc:PayableAmount');
+        }
+
+        $lines = [];
+        if (preg_match_all('/<cac:InvoiceLine\b[^>]*>(.*?)<\/cac:InvoiceLine>/s', $contents, $matches)) {
+            foreach ($matches[1] as $lineBlock) {
+                $lineNo = $this->firstTagValue($lineBlock, 'cbc:ID') ?: '';
+                $productName = $this->firstTagValue($lineBlock, 'cbc:Name') ?: '';
+                $lineTotal = (float) $this->firstTagValue($lineBlock, 'cbc:LineExtensionAmount');
+                $unitPrice = (float) $this->firstTagValue($lineBlock, 'cbc:PriceAmount');
+                $taxPercent = (float) $this->firstTagValue($lineBlock, 'cbc:Percent');
+
+                [$quantity, $unitCode] = $this->quantityFromBlock($lineBlock);
+                $lineTotalVat = round($lineTotal * (1 + $taxPercent / 100), 2);
+
+                $lines[] = [
+                    'line_no' => $lineNo,
+                    'product_name' => $productName,
+                    'quantity' => $quantity,
+                    'unit_code' => $unitCode,
+                    'unit_price' => $unitPrice,
+                    'line_total' => $lineTotal,
+                    'tax_percent' => $taxPercent,
+                    'line_total_vat' => $lineTotalVat,
+                ];
+            }
+        }
+
+        if ($invoiceNumber === null || $issueDate === null || empty($lines)) {
+            return null;
+        }
+
+        return [
+            'invoice_number' => $invoiceNumber,
+            'issue_date' => $issueDate,
+            'due_date' => $dueDate ?: null,
+            'currency' => $currency,
+            'supplier_cui' => $supplierCui,
+            'supplier_name' => $supplierName,
+            'customer_cui' => $customerCui,
+            'customer_name' => $customerName,
+            'total_without_vat' => $totalWithoutVat,
+            'total_vat' => $totalVat,
+            'total_with_vat' => $totalWithVat,
+            'lines' => $lines,
+        ];
+    }
+
+    private function extractBlock(string $contents, string $tag): ?string
+    {
+        $tag = preg_quote($tag, '/');
+
+        if (preg_match('/<' . $tag . '\b[^>]*>(.*?)<\/' . $tag . '>/s', $contents, $match)) {
+            return $match[1];
+        }
+
+        return null;
+    }
+
+    private function firstTagValue(string $contents, string $tag): ?string
+    {
+        $tag = preg_quote($tag, '/');
+
+        if (preg_match('/<' . $tag . '\b[^>]*>(.*?)<\/' . $tag . '>/s', $contents, $match)) {
+            return trim($match[1]);
+        }
+
+        return null;
+    }
+
+    private function partyFromBlock(?string $block): array
+    {
+        if (!$block) {
+            return ['', ''];
+        }
+
+        $companyId = $this->firstTagValue($block, 'cbc:CompanyID')
+            ?: $this->firstTagValue($block, 'cbc:ID');
+        $registration = $this->firstTagValue($block, 'cbc:RegistrationName')
+            ?: $this->firstTagValue($block, 'cbc:Name');
+
+        $cui = $this->normalizeCui($companyId);
+
+        return [$cui, $registration ?: ''];
+    }
+
+    private function quantityFromBlock(string $block): array
+    {
+        if (preg_match('/<cbc:InvoicedQuantity[^>]*unitCode="([^"]+)"[^>]*>(.*?)<\/cbc:InvoicedQuantity>/s', $block, $match)) {
+            return [(float) trim($match[2]), trim($match[1]) ?: 'BUC'];
+        }
+
+        return [0.0, 'BUC'];
     }
 
     private function partyData(?\SimpleXMLElement $party): array
