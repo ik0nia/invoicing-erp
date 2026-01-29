@@ -10,10 +10,20 @@ class InvoiceXmlParser
 
     public function parse(string $filePath): array
     {
-        $xml = simplexml_load_file($filePath);
+        $contents = file_get_contents($filePath);
+
+        if ($contents === false || trim($contents) === '') {
+            throw new \RuntimeException('Fisierul XML este gol sau nu poate fi citit.');
+        }
+
+        $contents = $this->stripBom($contents);
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($contents, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOCDATA);
 
         if (!$xml) {
-            throw new \RuntimeException('XML invalid.');
+            $message = $this->libxmlErrorMessage();
+            throw new \RuntimeException('XML invalid.' . ($message ? ' ' . $message : ''));
         }
 
         $xml->registerXPathNamespace('inv', self::NS_INVOICE);
@@ -79,6 +89,34 @@ class InvoiceXmlParser
             'total_with_vat' => $totalWithVat,
             'lines' => $lines,
         ];
+    }
+
+    private function stripBom(string $contents): string
+    {
+        if (str_starts_with($contents, "\xEF\xBB\xBF")) {
+            return substr($contents, 3);
+        }
+
+        return $contents;
+    }
+
+    private function libxmlErrorMessage(): ?string
+    {
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+
+        if (!$errors) {
+            return null;
+        }
+
+        $first = $errors[0];
+        $message = trim($first->message ?? '');
+
+        if ($message === '') {
+            return null;
+        }
+
+        return 'Detalii: ' . $message;
     }
 
     private function partyData(?\SimpleXMLElement $party): array
