@@ -11,7 +11,7 @@ class AuthController
     public function showLogin(): void
     {
         if (Auth::check()) {
-            Response::redirect('/admin/setari/branding');
+            Response::redirect('/admin/dashboard');
         }
 
         Response::view('auth/login');
@@ -37,7 +37,7 @@ class AuthController
             Response::redirect('/login');
         }
 
-        Response::redirect('/admin/setari/branding');
+        Response::redirect('/admin/dashboard');
     }
 
     public function logout(): void
