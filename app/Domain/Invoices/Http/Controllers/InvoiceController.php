@@ -1665,8 +1665,8 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $last = (int) $settings->get('order_note.last_no', 0);
-        $next = $last > 0 ? $last + 1 : 1;
+        $last = (int) $settings->get('order_note.last_no', 999);
+        $next = $last > 0 ? $last + 1 : 1000;
 
         $baseDate = $invoice->issue_date ?: date('Y-m-d');
         $baseTs = strtotime($baseDate);

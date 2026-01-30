@@ -25,11 +25,7 @@
         <div class="mt-2 space-y-1 text-slate-600">
             <div>CUI: <?= htmlspecialchars($clientCui) ?></div>
             <?php if (!empty($clientCompany)): ?>
-                <div>Nr. Reg. Comertului: <?= htmlspecialchars($clientCompany->nr_reg_comertului ?? '') ?></div>
                 <div>Adresa: <?= htmlspecialchars($clientCompany->adresa ?? '') ?>, <?= htmlspecialchars($clientCompany->localitate ?? '') ?>, <?= htmlspecialchars($clientCompany->judet ?? '') ?></div>
-                <div>Tara: <?= htmlspecialchars($clientCompany->tara ?? '') ?></div>
-                <div>Telefon: <?= htmlspecialchars($clientCompany->telefon ?? '') ?></div>
-                <div>Email: <?= htmlspecialchars($clientCompany->email ?? '') ?></div>
             <?php endif; ?>
         </div>
     </div>
