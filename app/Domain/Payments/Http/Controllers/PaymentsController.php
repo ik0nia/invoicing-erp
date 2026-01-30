@@ -170,10 +170,21 @@ class PaymentsController
             $invoices = $this->supplierInvoicesWithBalances($supplierCui);
         }
 
+        $supplierSummary = null;
+        if ($supplierCui !== '') {
+            foreach ($this->supplierSummary() as $row) {
+                if ($row['supplier_cui'] === $supplierCui) {
+                    $supplierSummary = $row;
+                    break;
+                }
+            }
+        }
+
         Response::view('admin/payments/out/create', [
             'suppliers' => $suppliers,
             'supplierCui' => $supplierCui,
             'invoices' => $invoices,
+            'supplierSummary' => $supplierSummary,
         ]);
     }
 

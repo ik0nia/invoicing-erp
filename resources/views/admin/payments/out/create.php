@@ -47,12 +47,24 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-700" for="amount">Suma platita</label>
-            <input
-                id="amount"
-                name="amount"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
+            <div class="mt-1 flex flex-wrap items-center gap-2">
+                <input
+                    id="amount"
+                    name="amount"
+                    type="text"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                <?php if (!empty($supplierSummary)): ?>
+                    <button
+                        type="button"
+                        class="rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        id="fill-available"
+                        data-amount="<?= htmlspecialchars(number_format((float) $supplierSummary['due'], 2, '.', '')) ?>"
+                    >
+                        Plateste tot (<?= number_format((float) $supplierSummary['due'], 2, '.', ' ') ?> RON)
+                    </button>
+                <?php endif; ?>
+            </div>
         </div>
         <div class="md:col-span-2">
             <label class="block text-sm font-medium text-slate-700" for="notes">Observatii</label>
@@ -124,3 +136,18 @@
         </button>
     </div>
 </form>
+
+<script>
+    (function () {
+        const btn = document.getElementById('fill-available');
+        const amountInput = document.getElementById('amount');
+        if (!btn || !amountInput) {
+            return;
+        }
+        btn.addEventListener('click', () => {
+            const amount = btn.dataset.amount || '';
+            amountInput.value = amount;
+            amountInput.dispatchEvent(new Event('input'));
+        });
+    })();
+</script>
