@@ -70,7 +70,6 @@ class PaymentsController
         $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
         $paidAt = trim((string) ($_POST['paid_at'] ?? ''));
         $amountInput = $this->parseNumber($_POST['amount'] ?? null);
-        $reference = trim((string) ($_POST['reference'] ?? ''));
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $allocationsInput = $_POST['allocations'] ?? [];
 
@@ -109,14 +108,13 @@ class PaymentsController
         }
 
         Database::execute(
-            'INSERT INTO payments_in (client_cui, client_name, amount, paid_at, reference, notes, created_at)
-             VALUES (:client_cui, :client_name, :amount, :paid_at, :reference, :notes, :created_at)',
+            'INSERT INTO payments_in (client_cui, client_name, amount, paid_at, notes, created_at)
+             VALUES (:client_cui, :client_name, :amount, :paid_at, :notes, :created_at)',
             [
                 'client_cui' => $clientCui,
                 'client_name' => $clientName,
                 'amount' => $amount,
                 'paid_at' => $paidAt,
-                'reference' => $reference,
                 'notes' => $notes,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -197,7 +195,6 @@ class PaymentsController
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $paidAt = trim((string) ($_POST['paid_at'] ?? ''));
         $amountInput = $this->parseNumber($_POST['amount'] ?? null);
-        $reference = trim((string) ($_POST['reference'] ?? ''));
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $allocationsInput = $_POST['allocations'] ?? [];
 
@@ -236,14 +233,13 @@ class PaymentsController
         }
 
         Database::execute(
-            'INSERT INTO payments_out (supplier_cui, supplier_name, amount, paid_at, reference, notes, created_at)
-             VALUES (:supplier_cui, :supplier_name, :amount, :paid_at, :reference, :notes, :created_at)',
+            'INSERT INTO payments_out (supplier_cui, supplier_name, amount, paid_at, notes, created_at)
+             VALUES (:supplier_cui, :supplier_name, :amount, :paid_at, :notes, :created_at)',
             [
                 'supplier_cui' => $supplierCui,
                 'supplier_name' => $supplierName,
                 'amount' => $amount,
                 'paid_at' => $paidAt,
-                'reference' => $reference,
                 'notes' => $notes,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -525,7 +521,6 @@ class PaymentsController
                     client_name VARCHAR(255) NOT NULL,
                     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
                     paid_at DATE NOT NULL,
-                    reference VARCHAR(64) NULL,
                     notes TEXT NULL,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -546,7 +541,6 @@ class PaymentsController
                     supplier_name VARCHAR(255) NOT NULL,
                     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
                     paid_at DATE NOT NULL,
-                    reference VARCHAR(64) NULL,
                     notes TEXT NULL,
                     email_sent_at DATETIME NULL,
                     email_status VARCHAR(32) NULL,

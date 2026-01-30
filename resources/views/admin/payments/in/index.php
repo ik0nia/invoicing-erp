@@ -21,7 +21,7 @@
                 <th class="px-4 py-2">Client</th>
                 <th class="px-4 py-2">Suma</th>
                 <th class="px-4 py-2">Alocat</th>
-                <th class="px-4 py-2">Referinta</th>
+                <th class="px-4 py-2">Observatii</th>
             </tr>
         </thead>
         <tbody>
@@ -38,7 +38,7 @@
                         </td>
                         <td class="px-4 py-2"><?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</td>
                         <td class="px-4 py-2"><?= number_format((float) $payment['allocated'], 2, '.', ' ') ?> RON</td>
-                        <td class="px-4 py-2"><?= htmlspecialchars($payment['reference'] ?? '') ?></td>
+                        <td class="px-4 py-2"><?= htmlspecialchars($payment['notes'] ?? '') ?></td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>

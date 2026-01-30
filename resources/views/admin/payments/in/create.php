@@ -54,15 +54,6 @@
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="reference">Referinta</label>
-            <input
-                id="reference"
-                name="reference"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
         <div class="md:col-span-2">
             <label class="block text-sm font-medium text-slate-700" for="notes">Observatii</label>
             <input
@@ -114,7 +105,8 @@
                                     <input
                                         name="allocations[<?= (int) $invoice['id'] ?>]"
                                         type="text"
-                                        class="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
+                                        class="w-28 rounded border border-slate-300 px-2 py-1 text-sm allocation-input"
+                                        data-balance="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
                                     >
                                 </td>
                             </tr>
@@ -131,3 +123,45 @@
         </button>
     </div>
 </form>
+
+<script>
+    (function () {
+        const amountInput = document.getElementById('amount');
+        const allocations = Array.from(document.querySelectorAll('.allocation-input'));
+
+        const parseAmount = (value) => {
+            if (!value) {
+                return 0;
+            }
+            const normalized = String(value).replace(/\s+/g, '').replace(',', '.');
+            const number = parseFloat(normalized);
+            return Number.isFinite(number) ? number : 0;
+        };
+
+        const distribute = () => {
+            const total = parseAmount(amountInput?.value);
+            if (!amountInput || allocations.length === 0) {
+                return;
+            }
+
+            if (total <= 0) {
+                allocations.forEach((input) => {
+                    input.value = '';
+                });
+                return;
+            }
+
+            let remaining = total;
+            allocations.forEach((input) => {
+                const balance = parseAmount(input.dataset.balance || '0');
+                const allocate = Math.min(balance, remaining);
+                input.value = allocate > 0 ? allocate.toFixed(2) : '';
+                remaining = Math.max(0, remaining - allocate);
+            });
+        };
+
+        if (amountInput) {
+            amountInput.addEventListener('input', distribute);
+        }
+    })();
+</script>

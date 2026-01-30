@@ -133,7 +133,6 @@ CREATE TABLE payments_in (
     client_name VARCHAR(255) NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     paid_at DATE NOT NULL,
-    reference VARCHAR(64) NULL,
     notes TEXT NULL,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -152,7 +151,6 @@ CREATE TABLE payments_out (
     supplier_name VARCHAR(255) NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     paid_at DATE NOT NULL,
-    reference VARCHAR(64) NULL,
     notes TEXT NULL,
     email_sent_at DATETIME NULL,
     email_status VARCHAR(32) NULL,

@@ -29,7 +29,7 @@
                 <th class="px-4 py-2">Furnizor</th>
                 <th class="px-4 py-2">Suma</th>
                 <th class="px-4 py-2">Alocat</th>
-                <th class="px-4 py-2">Referinta</th>
+                <th class="px-4 py-2">Observatii</th>
                 <th class="px-4 py-2">Email</th>
             </tr>
         </thead>
@@ -47,7 +47,7 @@
                         </td>
                         <td class="px-4 py-2"><?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</td>
                         <td class="px-4 py-2"><?= number_format((float) $payment['allocated'], 2, '.', ' ') ?> RON</td>
-                        <td class="px-4 py-2"><?= htmlspecialchars($payment['reference'] ?? '') ?></td>
+                        <td class="px-4 py-2"><?= htmlspecialchars($payment['notes'] ?? '') ?></td>
                         <td class="px-4 py-2 text-xs">
                             <?= htmlspecialchars($payment['email_status'] ?? '') ?>
                         </td>
