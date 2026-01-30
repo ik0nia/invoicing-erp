@@ -32,8 +32,6 @@ class SettingsController
         }
 
         $fgoApiKey = (string) $this->settings->get('fgo.api_key', '');
-        $fgoSecret = (string) $this->settings->get('fgo.secret_key', '');
-        $fgoSecretMasked = $fgoSecret !== '' ? str_repeat('*', max(0, strlen($fgoSecret) - 4)) . substr($fgoSecret, -4) : '';
         $fgoSeries = (string) $this->settings->get('fgo.series', '');
         $fgoSeriesList = $this->settings->get('fgo.series_list', []);
         if (!is_array($fgoSeriesList)) {
@@ -46,7 +44,6 @@ class SettingsController
             'logoPath' => $logoPath,
             'logoUrl' => $logoUrl,
             'fgoApiKey' => $fgoApiKey,
-            'fgoSecretMasked' => $fgoSecretMasked,
             'fgoSeries' => $fgoSeries,
             'fgoSeriesList' => $fgoSeriesList,
             'fgoSeriesListText' => $fgoSeriesListText,
@@ -127,7 +124,6 @@ class SettingsController
         }
 
         $apiKey = trim($_POST['fgo_api_key'] ?? '');
-        $secretKey = trim($_POST['fgo_secret_key'] ?? '');
         $series = trim($_POST['fgo_series'] ?? '');
         $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
@@ -136,11 +132,6 @@ class SettingsController
 
         if ($apiKey !== '') {
             $this->settings->set('fgo.api_key', $apiKey);
-            $savedSomething = true;
-        }
-
-        if ($secretKey !== '') {
-            $this->settings->set('fgo.secret_key', $secretKey);
             $savedSomething = true;
         }
 

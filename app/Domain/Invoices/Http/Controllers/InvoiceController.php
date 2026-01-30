@@ -336,8 +336,11 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
-        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $secret = trim((string) $settings->get('fgo.api_key', ''));
+        if ($secret === '') {
+            $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        }
         $seriesOptions = $settings->get('fgo.series_list', []);
         if (!is_array($seriesOptions)) {
             $seriesOptions = [];
@@ -354,7 +357,7 @@ class InvoiceController
         }
 
         if ($codUnic === '' || $secret === '' || $series === '') {
-            Session::flash('error', 'Completeaza Cod unic, Cheie privata si Serie in setarile FGO.');
+            Session::flash('error', 'Completeaza Cheia API si seria FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -507,12 +510,15 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
-        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $secret = trim((string) $settings->get('fgo.api_key', ''));
+        if ($secret === '') {
+            $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        }
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cod unic si Cheie privata in setarile FGO.');
+            Session::flash('error', 'Completeaza Cheia API in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -576,12 +582,15 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
-        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $secret = trim((string) $settings->get('fgo.api_key', ''));
+        if ($secret === '') {
+            $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        }
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cod unic si Cheie privata in setarile FGO.');
+            Session::flash('error', 'Completeaza Cheia API in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 

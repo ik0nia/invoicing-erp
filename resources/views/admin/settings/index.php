@@ -45,7 +45,7 @@
 
         <div class="mt-4 grid gap-4 md:grid-cols-2">
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="fgo_api_key">Cod unic (CUI firma)</label>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_api_key">Cheie API FGO</label>
                 <input
                     id="fgo_api_key"
                     name="fgo_api_key"
@@ -53,22 +53,7 @@
                     value="<?= htmlspecialchars($fgoApiKey ?? '') ?>"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 >
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="fgo_secret_key">Cheie privata (API)</label>
-                <input
-                    id="fgo_secret_key"
-                    name="fgo_secret_key"
-                    type="password"
-                    value=""
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-                <?php if (!empty($fgoSecretMasked)): ?>
-                    <p class="mt-1 text-xs text-slate-600">Cheie existenta: <?= htmlspecialchars($fgoSecretMasked) ?></p>
-                <?php else: ?>
-                    <p class="mt-1 text-xs text-slate-600">Nu exista cheie salvata.</p>
-                <?php endif; ?>
-                <p class="text-xs text-slate-600">Se genereaza in FGO: Setari → Utilizatori → utilizator API.</p>
+                <p class="mt-1 text-xs text-slate-600">CUI-ul emitentului se ia automat din furnizorul facturii.</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="fgo_series_list">Serii FGO disponibile</label>
