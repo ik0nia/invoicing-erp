@@ -10,6 +10,8 @@ $router->post('/admin/setari', [SettingsController::class, 'update']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
+$router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);
+$router->post('/admin/facturi/adauga', [InvoiceController::class, 'storeManual']);
 $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);

@@ -6,6 +6,15 @@
         Incarca un fisier XML (UBL e-Factura) pentru a crea factura de intrare.
     </p>
 
+    <div class="mt-4">
+        <a
+            href="<?= App\Support\Url::to('admin/facturi/adauga') ?>"
+            class="inline-flex rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+            Adauga factura
+        </a>
+    </div>
+
     <form method="POST" action="<?= App\Support\Url::to('admin/facturi/import') ?>" enctype="multipart/form-data" class="mt-6 space-y-4">
         <?= App\Support\Csrf::input() ?>
 

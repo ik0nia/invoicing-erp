@@ -148,6 +148,21 @@ class InvoiceController
         Response::view('admin/invoices/import');
     }
 
+    public function showManual(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $form = Session::pull('manual_invoice', []);
+
+        Response::view('admin/invoices/manual', [
+            'form' => $form,
+        ]);
+    }
+
     public function import(): void
     {
         Auth::requireAdmin();
@@ -206,6 +221,154 @@ class InvoiceController
         $this->generatePackages($invoice->id);
 
         Session::flash('status', 'Factura a fost importata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
+    }
+
+    public function storeManual(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru facturi. Importa schema manual.');
+            Response::redirect('/admin/facturi');
+        }
+
+        $payload = $_POST;
+        $supplierName = trim($payload['supplier_name'] ?? '');
+        $supplierCui = trim($payload['supplier_cui'] ?? '');
+        $customerName = trim($payload['customer_name'] ?? '');
+        $customerCui = trim($payload['customer_cui'] ?? '');
+        $invoiceNumber = trim($payload['invoice_number'] ?? '');
+        $invoiceSeries = trim($payload['invoice_series'] ?? '');
+        $invoiceNo = trim($payload['invoice_no'] ?? '');
+        $issueDate = trim($payload['issue_date'] ?? '');
+        $dueDate = trim($payload['due_date'] ?? '');
+        $currency = trim($payload['currency'] ?? 'RON');
+
+        $errors = [];
+
+        if ($invoiceNumber === '') {
+            $errors[] = 'Completeaza numarul facturii.';
+        }
+        if ($supplierName === '' || $supplierCui === '') {
+            $errors[] = 'Completeaza furnizorul (denumire si CUI).';
+        }
+        if ($customerName === '' || $customerCui === '') {
+            $errors[] = 'Completeaza clientul (denumire si CUI).';
+        }
+        if ($issueDate === '') {
+            $errors[] = 'Completeaza data emiterii.';
+        }
+
+        $linesInput = $payload['lines'] ?? [];
+        $lines = [];
+        $lineIndex = 1;
+
+        foreach ((array) $linesInput as $line) {
+            $name = trim($line['product_name'] ?? '');
+            $unit = trim($line['unit_code'] ?? '');
+            $qtyRaw = $line['quantity'] ?? '';
+            $priceRaw = $line['unit_price'] ?? '';
+            $taxRaw = $line['tax_percent'] ?? '';
+
+            if ($name === '' && $unit === '' && trim((string) $qtyRaw) === '' && trim((string) $priceRaw) === '' && trim((string) $taxRaw) === '') {
+                continue;
+            }
+
+            $qty = $this->parseNumber($qtyRaw);
+            $price = $this->parseNumber($priceRaw);
+            $tax = $this->parseNumber($taxRaw);
+            $lineErrors = [];
+
+            if ($name === '' || $unit === '') {
+                $lineErrors[] = 'Completeaza denumirea si unitatea pentru produsul #' . $lineIndex . '.';
+            }
+            if ($qty === null || $qty <= 0) {
+                $lineErrors[] = 'Cantitatea produsului #' . $lineIndex . ' trebuie sa fie > 0.';
+            }
+            if ($price === null || $price < 0) {
+                $lineErrors[] = 'Pretul produsului #' . $lineIndex . ' este invalid.';
+            }
+            if ($tax === null || $tax < 0) {
+                $lineErrors[] = 'Cota TVA a produsului #' . $lineIndex . ' este invalida.';
+            }
+
+            if (!empty($lineErrors)) {
+                $errors = array_merge($errors, $lineErrors);
+                $lineIndex++;
+                continue;
+            }
+
+            $lineTotal = round($qty * $price, 2);
+            $lineTotalVat = round($lineTotal * (1 + ($tax / 100)), 2);
+
+            $lines[] = [
+                'line_no' => (string) $lineIndex,
+                'product_name' => $name,
+                'quantity' => $qty,
+                'unit_code' => $unit,
+                'unit_price' => $price,
+                'line_total' => $lineTotal,
+                'tax_percent' => $tax,
+                'line_total_vat' => $lineTotalVat,
+            ];
+
+            $lineIndex++;
+        }
+
+        if (empty($lines)) {
+            $errors[] = 'Adauga cel putin un produs pe factura.';
+        }
+
+        if (!empty($errors)) {
+            Session::flash('error', implode(' ', $errors));
+            Session::flash('manual_invoice', $payload);
+            Response::redirect('/admin/facturi/adauga');
+        }
+
+        if ($this->invoiceExists($supplierCui, $invoiceSeries, $invoiceNo, $invoiceNumber)) {
+            Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
+            Session::flash('manual_invoice', $payload);
+            Response::redirect('/admin/facturi/adauga');
+        }
+
+        $totalWithoutVat = 0.0;
+        $totalWithVat = 0.0;
+
+        foreach ($lines as $line) {
+            $totalWithoutVat += $line['line_total'];
+            $totalWithVat += $line['line_total_vat'];
+        }
+
+        $totalVat = round($totalWithVat - $totalWithoutVat, 2);
+
+        $invoice = InvoiceIn::create([
+            'invoice_number' => $invoiceNumber,
+            'invoice_series' => $invoiceSeries,
+            'invoice_no' => $invoiceNo,
+            'supplier_cui' => $supplierCui,
+            'supplier_name' => $supplierName,
+            'customer_cui' => $customerCui,
+            'customer_name' => $customerName,
+            'issue_date' => $issueDate,
+            'due_date' => $dueDate !== '' ? $dueDate : null,
+            'currency' => $currency !== '' ? $currency : 'RON',
+            'total_without_vat' => round($totalWithoutVat, 2),
+            'total_vat' => $totalVat,
+            'total_with_vat' => round($totalWithVat, 2),
+            'xml_path' => null,
+        ]);
+
+        Partner::createIfMissing($supplierCui, $supplierName);
+        Partner::createIfMissing($customerCui, $customerName);
+
+        foreach ($lines as $line) {
+            InvoiceInLine::create($invoice->id, $line);
+        }
+
+        $this->generatePackages($invoice->id);
+
+        Session::flash('status', 'Factura a fost adaugata manual.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
     }
 
@@ -1357,5 +1520,20 @@ class InvoiceController
         }
 
         return $value;
+    }
+
+    private function parseNumber(mixed $value): ?float
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = str_replace([' ', ','], ['', '.'], $raw);
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        return (float) $normalized;
     }
 }
