@@ -24,44 +24,29 @@
     </a>
 </div>
 
-<div class="mt-6 grid gap-4 md:grid-cols-3">
+<div class="mt-6 grid gap-4 lg:grid-cols-2">
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <div class="text-slate-500">Furnizor</div>
         <div class="mt-1 font-medium text-slate-900"><?= htmlspecialchars($invoice->supplier_name) ?></div>
-        <div class="text-slate-500">CUI: <?= htmlspecialchars($invoice->supplier_cui) ?></div>
-    </div>
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <div class="text-slate-500">Client initial</div>
-        <div class="mt-1 font-medium text-slate-900"><?= htmlspecialchars($invoice->customer_name) ?></div>
-        <div class="text-slate-500">CUI: <?= htmlspecialchars($invoice->customer_cui) ?></div>
-    </div>
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <div class="text-slate-500">Total factura</div>
-        <div class="mt-1 text-lg font-semibold text-slate-900">
-            <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
+        <div class="mt-2 space-y-1 text-slate-600">
+            <div><span class="text-slate-500">CUI:</span> <?= htmlspecialchars($invoice->supplier_cui) ?></div>
+            <?php if (!empty($invoice->invoice_series) || !empty($invoice->invoice_no)): ?>
+                <div>
+                    <span class="text-slate-500">Serie/Numar:</span>
+                    <?= htmlspecialchars(trim($invoice->invoice_series . ' ' . $invoice->invoice_no)) ?>
+                </div>
+            <?php endif; ?>
+            <div><span class="text-slate-500">Factura:</span> <?= htmlspecialchars($invoice->invoice_number) ?></div>
+            <div><span class="text-slate-500">Data emitere:</span> <?= htmlspecialchars($invoice->issue_date) ?></div>
+            <div><span class="text-slate-500">Scadenta:</span> <?= htmlspecialchars($invoice->due_date ?: '—') ?></div>
+            <div><span class="text-slate-500">Moneda:</span> <?= htmlspecialchars($invoice->currency) ?></div>
+            <div><span class="text-slate-500">Total factura:</span> <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON</div>
+            <div><span class="text-slate-500">Fara TVA:</span> <?= number_format($invoice->total_without_vat, 2, '.', ' ') ?> RON</div>
+            <div><span class="text-slate-500">TVA:</span> <?= number_format($invoice->total_vat, 2, '.', ' ') ?> RON</div>
         </div>
-        <div class="text-slate-500">Fara TVA: <?= number_format($invoice->total_without_vat, 2, '.', ' ') ?> RON</div>
     </div>
-</div>
-
-<div class="mt-4 flex flex-wrap items-center gap-3">
-    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
-        <?= App\Support\Csrf::input() ?>
-        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-        <button
-            type="submit"
-            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
-        >
-            Sterge factura
-        </button>
-    </form>
-    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
-</div>
-
-<div class="mt-8">
-    <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Client de facturat</h2>
+    <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <h2 class="text-base font-semibold text-slate-900">Client de facturat</h2>
         <p class="mt-2 text-sm text-slate-600">
             Alege clientul pentru a calcula comisionul pe pachete.
         </p>
@@ -71,7 +56,6 @@
         <?php else: ?>
             <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form">
                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                <input type="hidden" name="anchor" value="client-select">
                 <input type="hidden" name="anchor" value="client-select">
                 <div>
                     <label class="block text-sm font-medium text-slate-700" for="client-search">Cauta client</label>
@@ -135,6 +119,21 @@
             <?php endif; ?>
         <?php endif; ?>
     </div>
+</div>
+
+<div class="mt-4 flex flex-wrap items-center gap-3">
+    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+        <button
+            type="submit"
+            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
+        >
+            Sterge factura
+        </button>
+    </form>
+    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
 </div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
