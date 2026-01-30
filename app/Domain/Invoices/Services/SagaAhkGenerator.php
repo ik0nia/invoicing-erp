@@ -49,7 +49,7 @@ class SagaAhkGenerator
         $lines[] = '    Send("!a")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("' . $this->escapeText($date) . '")';
+        $lines[] = '    SendText("' . $this->formatSendText($date) . '")';
         $lines[] = '    Sleep(150)';
         $lines[] = '    Send("{Down}")';
         $lines[] = '    Sleep(150)';
@@ -60,7 +60,7 @@ class SagaAhkGenerator
         $lines[] = '    Send("{Tab}")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("' . $this->escapeText($label) . '")';
+        $lines[] = '    SendText("' . $this->formatSendText($label) . '")';
         $lines[] = '';
         $lines[] = '    ; === CE AI CERUT NOU ===';
         $lines[] = '';
@@ -74,13 +74,13 @@ class SagaAhkGenerator
         $lines[] = '    Send("{Left}")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("' . $this->escapeText($packageNo) . '") ; Cod pachet';
+        $lines[] = '    SendText("' . $this->formatSendText($packageNo) . '") ; Cod pachet';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
         $lines[] = '    Send("{Tab}{Tab}") ; aici Tab Tab poate fi inlocuit dupa nevoie';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("buc")';
+        $lines[] = '    SendText("' . $this->formatSendText('buc') . '")';
         $lines[] = '';
         $lines[] = '    Sleep(200)';
         $lines[] = '    Send("!s")';
@@ -94,13 +94,13 @@ class SagaAhkGenerator
         $lines[] = '    Send("{Tab}")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("1")';
+        $lines[] = '    SendText("' . $this->formatSendText('1') . '")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
         $lines[] = '    Send("{Tab}")';
         $lines[] = '';
         $lines[] = '    Sleep(300)';
-        $lines[] = '    SendText("' . $this->escapeText($total) . '") ; valoare produs finit';
+        $lines[] = '    SendText("' . $this->formatSendText($total) . '") ; valoare produs finit';
         $lines[] = '';
         $lines[] = '    Sleep(200)';
         $lines[] = '    Send("!s")';
@@ -127,9 +127,9 @@ class SagaAhkGenerator
 
     private function buildFirstItemLines(array $item): array
     {
-        $name = $this->escapeText((string) ($item['name'] ?? 'Produs'));
-        $qty = $this->formatNumber((float) ($item['quantity'] ?? 0), 3);
-        $total = $this->formatNumber((float) ($item['total'] ?? 0), 2);
+        $name = $this->formatSendText((string) ($item['name'] ?? 'Produs'));
+        $qty = $this->formatSendText($this->formatNumber((float) ($item['quantity'] ?? 0), 3));
+        $total = $this->formatSendText($this->formatNumber((float) ($item['total'] ?? 0), 2));
 
         return [
             '    ; === Adaugare primul produs ===',
@@ -167,9 +167,9 @@ class SagaAhkGenerator
 
     private function buildNextItemLines(array $item, int $index): array
     {
-        $name = $this->escapeText((string) ($item['name'] ?? 'Produs'));
-        $qty = $this->formatNumber((float) ($item['quantity'] ?? 0), 3);
-        $total = $this->formatNumber((float) ($item['total'] ?? 0), 2);
+        $name = $this->formatSendText((string) ($item['name'] ?? 'Produs'));
+        $qty = $this->formatSendText($this->formatNumber((float) ($item['quantity'] ?? 0), 3));
+        $total = $this->formatSendText($this->formatNumber((float) ($item['total'] ?? 0), 2));
 
         return [
             '; === Adaugare Produs ' . $index . ' ===',
@@ -210,6 +210,17 @@ class SagaAhkGenerator
         $value = trim($value);
 
         return $value === '' ? '-' : $value;
+    }
+
+    private function formatSendText(string $value): string
+    {
+        $value = $this->escapeText($value);
+
+        if (function_exists('mb_strtoupper')) {
+            return mb_strtoupper($value, 'UTF-8');
+        }
+
+        return strtoupper($value);
     }
 
     private function formatNumber(float $value, int $decimals): string
