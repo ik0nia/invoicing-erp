@@ -13,6 +13,7 @@ $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
+$router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);

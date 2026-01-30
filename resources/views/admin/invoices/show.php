@@ -345,9 +345,28 @@
             <?= App\Support\Csrf::input() ?>
             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
             <input type="hidden" name="action" value="confirm">
-            <button class="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+            <button class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                 Confirma pachetele
             </button>
+        </form>
+    <?php endif; ?>
+
+    <?php if (!empty($isConfirmed) && !empty($packages) && !empty($isAdmin)): ?>
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>" class="mt-4">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <?php if (!empty($selectedClientCui)): ?>
+                <input type="hidden" name="client_cui" value="<?= htmlspecialchars($selectedClientCui) ?>">
+            <?php endif; ?>
+            <button
+                class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                <?= empty($selectedClientCui) ? 'disabled' : '' ?>
+            >
+                Genereaza factura
+            </button>
+            <?php if (empty($selectedClientCui)): ?>
+                <div class="mt-2 text-xs text-slate-500">Selecteaza clientul pentru a genera factura.</div>
+            <?php endif; ?>
         </form>
     <?php endif; ?>
 

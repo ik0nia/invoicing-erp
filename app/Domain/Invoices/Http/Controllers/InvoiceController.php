@@ -43,6 +43,8 @@ class InvoiceController
             $clients = Commission::forSupplierWithPartners($invoice->supplier_cui);
             $commissionPercent = null;
             $selectedClientName = '';
+            $user = Auth::user();
+            $isAdmin = $user ? $user->isAdmin() : false;
 
             if ($selectedClientCui !== '') {
                 foreach ($clients as $client) {
@@ -70,6 +72,7 @@ class InvoiceController
                 'selectedClientName' => $selectedClientName,
                 'commissionPercent' => $commissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
+                'isAdmin' => $isAdmin,
             ]);
         }
 
@@ -241,6 +244,30 @@ class InvoiceController
 
         Session::flash('status', 'Factura de intrare a fost stearsa.');
         Response::redirect('/admin/facturi');
+    }
+
+    public function generateInvoice(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->isInvoiceConfirmed($invoiceId)) {
+            Session::flash('error', 'Confirma pachetele inainte de generare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if ($clientCui === '') {
+            Session::flash('error', 'Selecteaza clientul pentru generarea facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        }
+
+        Session::flash('status', 'Generarea facturii va fi activata in pasul urmator.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
     public function moveLine(): void
