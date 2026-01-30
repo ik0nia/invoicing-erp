@@ -7,6 +7,7 @@ use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\FgoClient;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
+use App\Domain\Invoices\Services\SagaAhkGenerator;
 use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
@@ -108,6 +109,31 @@ class InvoiceController
 
         Response::view('admin/invoices/index', [
             'invoices' => $invoices,
+        ]);
+    }
+
+    public function confirmedPackages(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT p.*, i.invoice_number, i.supplier_name, i.issue_date, i.packages_confirmed_at
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE i.packages_confirmed = 1
+             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC'
+        );
+
+        $packageIds = array_map(static fn ($row) => (int) $row['id'], $rows);
+        $totals = $this->packageTotalsForIds($packageIds);
+
+        Response::view('admin/invoices/confirmed', [
+            'packages' => $rows,
+            'totals' => $totals,
         ]);
     }
 
@@ -239,6 +265,7 @@ class InvoiceController
             }
 
             $this->confirmPackages($invoiceId);
+            $this->storeSagaFiles($invoiceId);
             Session::flash('status', 'Pachetele au fost confirmate.');
         }
 
@@ -602,6 +629,114 @@ class InvoiceController
 
         Session::flash('status', 'Factura FGO a fost stornata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
+    public function downloadPackageSaga(): void
+    {
+        Auth::requireAdmin();
+
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
+        if (!$packageId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $package = Package::find($packageId);
+        if (!$package) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($package->invoice_in_id);
+        if (!$invoice || empty($invoice->packages_confirmed)) {
+            Session::flash('error', 'Pachetele nu sunt confirmate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $package->invoice_in_id . '#drag-drop');
+        }
+
+        $lines = InvoiceInLine::forPackage($packageId);
+        $packageStats = $this->packageStats($lines, [$package]);
+        $linesByPackage = $this->groupLinesByPackage($lines, [$package]);
+        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
+
+        $packagesData = $this->buildSagaPackagesData([$package], $linesByPackage, $packageStats, $date);
+        $content = (new SagaAhkGenerator())->buildScript($packagesData, $date);
+        $filename = 'pachet_' . $this->safeFileName((string) $package->package_no) . '.ahk';
+
+        $this->downloadAhk($filename, $content);
+    }
+
+    public function downloadInvoiceSaga(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice || empty($invoice->packages_confirmed)) {
+            Session::flash('error', 'Pachetele nu sunt confirmate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($packages)) {
+            Session::flash('error', 'Nu exista pachete pentru export.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packageStats = $this->packageStats($lines, $packages);
+        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
+
+        $packagesData = $this->buildSagaPackagesData($packages, $linesByPackage, $packageStats, $date);
+        $content = (new SagaAhkGenerator())->buildScript($packagesData, $date);
+        $filename = 'pachete_' . $this->safeFileName($invoice->invoice_number) . '.ahk';
+
+        $this->downloadAhk($filename, $content);
+    }
+
+    public function downloadSelectedSaga(): void
+    {
+        Auth::requireAdmin();
+
+        $packageIds = $_POST['package_ids'] ?? [];
+        $packageIds = array_values(array_filter(array_map('intval', (array) $packageIds)));
+
+        if (empty($packageIds)) {
+            Session::flash('error', 'Selecteaza cel putin un pachet.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $packages = $this->fetchConfirmedPackagesByIds($packageIds);
+        if (empty($packages)) {
+            Session::flash('error', 'Nu exista pachete confirmate pentru export.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $packagesData = [];
+        foreach ($packages as $packageRow) {
+            $package = Package::fromArray($packageRow);
+            $lines = InvoiceInLine::forPackage($package->id);
+            $stats = $this->packageStats($lines, [$package]);
+            $linesByPackage = $this->groupLinesByPackage($lines, [$package]);
+            $date = $this->formatSagaDate($packageRow['packages_confirmed_at'] ?? $packageRow['issue_date'] ?? null);
+
+            $data = $this->buildSagaPackagesData([$package], $linesByPackage, $stats, $date);
+            if (!empty($data[0])) {
+                $packagesData[] = $data[0];
+            }
+        }
+
+        if (empty($packagesData)) {
+            Session::flash('error', 'Nu exista produse pentru pachetele selectate.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $content = (new SagaAhkGenerator())->buildScript($packagesData, $this->formatSagaDate(null));
+        $filename = 'pachete_selectate_' . date('Ymd_His') . '.ahk';
+
+        $this->downloadAhk($filename, $content);
     }
 
     public function moveLine(): void
@@ -1027,6 +1162,162 @@ class InvoiceController
         $invoice = InvoiceIn::find($invoiceId);
 
         return $invoice ? (bool) $invoice->packages_confirmed : false;
+    }
+
+    private function buildSagaPackagesData(array $packages, array $linesByPackage, array $packageStats, string $date): array
+    {
+        $data = [];
+
+        foreach ($packages as $package) {
+            $lines = $linesByPackage[$package->id] ?? [];
+            $items = [];
+
+            foreach ($lines as $line) {
+                $items[] = [
+                    'name' => $line->product_name,
+                    'quantity' => $line->quantity,
+                    'total' => $line->line_total_vat,
+                ];
+            }
+
+            $stat = $packageStats[$package->id] ?? null;
+            $total = $stat ? (float) $stat['total_vat'] : 0.0;
+
+            $data[] = [
+                'package_no' => $package->package_no,
+                'label' => $package->label ?: 'Pachet #' . $package->package_no,
+                'total' => $total,
+                'lines' => $items,
+                'date' => $date,
+            ];
+        }
+
+        return $data;
+    }
+
+    private function formatSagaDate(?string $date): string
+    {
+        if ($date) {
+            $timestamp = strtotime($date);
+            if ($timestamp !== false) {
+                return date('d.m.Y', $timestamp);
+            }
+        }
+
+        return date('d.m.Y');
+    }
+
+    private function safeFileName(string $value): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $value);
+
+        return $safe !== '' ? $safe : 'document';
+    }
+
+    private function downloadAhk(string $filename, string $content): void
+    {
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($content));
+        echo $content;
+        exit;
+    }
+
+    private function storeSagaFiles(int $invoiceId): void
+    {
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            return;
+        }
+
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($packages)) {
+            return;
+        }
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packageStats = $this->packageStats($lines, $packages);
+        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
+        $generator = new SagaAhkGenerator();
+
+        $packagesData = $this->buildSagaPackagesData($packages, $linesByPackage, $packageStats, $date);
+
+        $dir = BASE_PATH . '/storage/saga/invoice_' . $invoiceId;
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        foreach ($packagesData as $packageData) {
+            $fileName = 'pachet_' . $this->safeFileName((string) $packageData['package_no']) . '.ahk';
+            $content = $generator->buildScript([$packageData], $date);
+            file_put_contents($dir . '/' . $fileName, $content);
+        }
+
+        $allFile = 'pachete_' . $this->safeFileName($invoice->invoice_number) . '.ahk';
+        $allContent = $generator->buildScript($packagesData, $date);
+        file_put_contents($dir . '/' . $allFile, $allContent);
+    }
+
+    private function fetchConfirmedPackagesByIds(array $packageIds): array
+    {
+        if (empty($packageIds) || !Database::tableExists('packages')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+
+        foreach ($packageIds as $index => $id) {
+            $key = 'id' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $id;
+        }
+
+        $sql = 'SELECT p.*, i.invoice_number, i.issue_date, i.packages_confirmed_at
+                FROM packages p
+                JOIN invoices_in i ON i.id = p.invoice_in_id
+                WHERE i.packages_confirmed = 1
+                  AND p.id IN (' . implode(',', $placeholders) . ')
+                ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC';
+
+        return Database::fetchAll($sql, $params);
+    }
+
+    private function packageTotalsForIds(array $packageIds): array
+    {
+        if (empty($packageIds) || !Database::tableExists('invoice_in_lines')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+
+        foreach ($packageIds as $index => $id) {
+            $key = 'p' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $id;
+        }
+
+        $sql = 'SELECT package_id, COUNT(*) AS line_count,
+                       COALESCE(SUM(line_total), 0) AS total,
+                       COALESCE(SUM(line_total_vat), 0) AS total_vat
+                FROM invoice_in_lines
+                WHERE package_id IN (' . implode(',', $placeholders) . ')
+                GROUP BY package_id';
+
+        $rows = Database::fetchAll($sql, $params);
+        $totals = [];
+
+        foreach ($rows as $row) {
+            $totals[(int) $row['package_id']] = [
+                'line_count' => (int) $row['line_count'],
+                'total' => (float) $row['total'],
+                'total_vat' => (float) $row['total_vat'],
+            ];
+        }
+
+        return $totals;
     }
 
     private function ensurePackageAutoIncrement(): void

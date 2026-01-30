@@ -76,6 +76,20 @@ class InvoiceInLine
         return array_map([self::class, 'fromArray'], $rows);
     }
 
+    public static function forPackage(int $packageId): array
+    {
+        if (!Database::tableExists('invoice_in_lines')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT * FROM invoice_in_lines WHERE package_id = :package ORDER BY id ASC',
+            ['package' => $packageId]
+        );
+
+        return array_map([self::class, 'fromArray'], $rows);
+    }
+
     public static function updatePackage(int $lineId, ?int $packageId): void
     {
         Database::execute(

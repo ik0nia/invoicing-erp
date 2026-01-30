@@ -18,6 +18,7 @@
 /public/storage
 /storage/erp
 /storage/invoices_in
+/storage/saga
 /storage/cache/settings.php
 /storage/*.key
 /storage/pail

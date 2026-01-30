@@ -38,6 +38,11 @@ $menuSections = [
             'path' => '/admin/facturi',
             'active' => str_starts_with($currentPath, '/admin/facturi'),
         ],
+        [
+            'label' => 'Pachete confirmate',
+            'path' => '/admin/pachete-confirmate',
+            'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
+        ],
     ],
     'Companii' => [
         [

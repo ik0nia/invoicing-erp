@@ -9,11 +9,15 @@ $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
+$router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
+$router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'downloadPackageSaga']);
+$router->post('/admin/facturi/saga/factura', [InvoiceController::class, 'downloadInvoiceSaga']);
+$router->post('/admin/pachete-confirmate/descarca', [InvoiceController::class, 'downloadSelectedSaga']);
 $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
