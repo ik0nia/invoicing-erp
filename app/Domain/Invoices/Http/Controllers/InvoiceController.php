@@ -585,7 +585,7 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $codUnic = preg_replace('/\D+/', '', (string) $settings->get('company.cui', ''));
         $secret = trim((string) $settings->get('fgo.api_key', ''));
         if ($secret === '') {
             $secret = trim((string) $settings->get('fgo.secret_key', ''));
@@ -606,7 +606,7 @@ class InvoiceController
         }
 
         if ($codUnic === '' || $secret === '' || $series === '') {
-            Session::flash('error', 'Completeaza Cheia API si seria FGO.');
+            Session::flash('error', 'Completeaza CUI companie, Cheia API si seria FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -759,7 +759,7 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $codUnic = preg_replace('/\D+/', '', (string) $settings->get('company.cui', ''));
         $secret = trim((string) $settings->get('fgo.api_key', ''));
         if ($secret === '') {
             $secret = trim((string) $settings->get('fgo.secret_key', ''));
@@ -767,7 +767,7 @@ class InvoiceController
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cheia API in setarile FGO.');
+            Session::flash('error', 'Completeaza CUI companie si Cheia API in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -831,7 +831,7 @@ class InvoiceController
         }
 
         $settings = new SettingsService();
-        $codUnic = preg_replace('/\D+/', '', (string) $invoice->supplier_cui);
+        $codUnic = preg_replace('/\D+/', '', (string) $settings->get('company.cui', ''));
         $secret = trim((string) $settings->get('fgo.api_key', ''));
         if ($secret === '') {
             $secret = trim((string) $settings->get('fgo.secret_key', ''));
@@ -839,7 +839,7 @@ class InvoiceController
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cheia API in setarile FGO.');
+            Session::flash('error', 'Completeaza CUI companie si Cheia API in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
