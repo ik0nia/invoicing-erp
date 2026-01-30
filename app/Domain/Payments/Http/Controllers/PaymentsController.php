@@ -35,6 +35,46 @@ class PaymentsController
         ]);
     }
 
+    public function historyIn(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
+        $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+
+        $where = [];
+        $params = [];
+
+        if ($dateFrom !== '') {
+            $where[] = 'p.paid_at >= :from';
+            $params['from'] = $dateFrom;
+        }
+        if ($dateTo !== '') {
+            $where[] = 'p.paid_at <= :to';
+            $params['to'] = $dateTo;
+        }
+
+        $sql = 'SELECT p.* FROM payments_in p';
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY p.paid_at DESC, p.id DESC';
+
+        $payments = Database::fetchAll($sql, $params);
+        $allocations = $this->fetchAllocations('payment_in_allocations', 'payment_in_id', $payments, 'invoice_in_id');
+
+        Response::view('admin/payments/in/history', [
+            'payments' => $payments,
+            'allocations' => $allocations,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+        ]);
+    }
+
     public function createIn(): void
     {
         Auth::requireAdmin();
@@ -152,6 +192,127 @@ class PaymentsController
         Response::view('admin/payments/out/index', [
             'suppliers' => $suppliers,
         ]);
+    }
+
+    public function historyOut(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
+        $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+
+        $where = [];
+        $params = [];
+
+        if ($dateFrom !== '') {
+            $where[] = 'p.paid_at >= :from';
+            $params['from'] = $dateFrom;
+        }
+        if ($dateTo !== '') {
+            $where[] = 'p.paid_at <= :to';
+            $params['to'] = $dateTo;
+        }
+        if ($supplierCui !== '') {
+            $where[] = 'p.supplier_cui = :supplier';
+            $params['supplier'] = $supplierCui;
+        }
+
+        $sql = 'SELECT p.* FROM payments_out p';
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY p.paid_at DESC, p.id DESC';
+
+        $payments = Database::fetchAll($sql, $params);
+        $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
+        $suppliers = $this->paymentSuppliers();
+
+        Response::view('admin/payments/out/history', [
+            'payments' => $payments,
+            'allocations' => $allocations,
+            'suppliers' => $suppliers,
+            'supplierCui' => $supplierCui,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+        ]);
+    }
+
+    public function exportOut(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
+        $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+
+        $where = [];
+        $params = [];
+
+        if ($dateFrom !== '') {
+            $where[] = 'p.paid_at >= :from';
+            $params['from'] = $dateFrom;
+        }
+        if ($dateTo !== '') {
+            $where[] = 'p.paid_at <= :to';
+            $params['to'] = $dateTo;
+        }
+        if ($supplierCui !== '') {
+            $where[] = 'p.supplier_cui = :supplier';
+            $params['supplier'] = $supplierCui;
+        }
+
+        $sql = 'SELECT p.* FROM payments_out p';
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY p.paid_at DESC, p.id DESC';
+
+        $payments = Database::fetchAll($sql, $params);
+        $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
+
+        $filename = 'plati_furnizori_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Data', 'Furnizor', 'CUI', 'Suma plata', 'Factura', 'Suma alocata']);
+
+        foreach ($payments as $payment) {
+            $rows = $allocations[$payment['id']] ?? [];
+            if (empty($rows)) {
+                fputcsv($out, [
+                    $payment['paid_at'],
+                    $payment['supplier_name'],
+                    $payment['supplier_cui'],
+                    number_format((float) $payment['amount'], 2, '.', ''),
+                    '',
+                    '',
+                ]);
+                continue;
+            }
+            foreach ($rows as $alloc) {
+                fputcsv($out, [
+                    $payment['paid_at'],
+                    $payment['supplier_name'],
+                    $payment['supplier_cui'],
+                    number_format((float) $payment['amount'], 2, '.', ''),
+                    $alloc['invoice_number'] ?? '',
+                    number_format((float) $alloc['amount'], 2, '.', ''),
+                ]);
+            }
+        }
+
+        fclose($out);
+        exit;
     }
 
     public function createOut(): void
@@ -495,6 +656,51 @@ class PaymentsController
         }
 
         return $invoices;
+    }
+
+    private function paymentSuppliers(): array
+    {
+        if (!Database::tableExists('payments_out')) {
+            return [];
+        }
+
+        return Database::fetchAll(
+            'SELECT DISTINCT supplier_cui, supplier_name
+             FROM payments_out
+             ORDER BY supplier_name ASC'
+        );
+    }
+
+    private function fetchAllocations(string $table, string $paymentKey, array $payments, string $invoiceKey): array
+    {
+        $ids = array_map(static fn (array $row) => (int) $row['id'], $payments);
+        if (empty($ids)) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $id) {
+            $key = 'id' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $id;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT a.*, i.invoice_number
+             FROM ' . $table . ' a
+             LEFT JOIN invoices_in i ON i.id = a.' . $invoiceKey . '
+             WHERE a.' . $paymentKey . ' IN (' . implode(',', $placeholders) . ')
+             ORDER BY a.' . $paymentKey . ' ASC, a.id ASC',
+            $params
+        );
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $grouped[$row[$paymentKey]][] = $row;
+        }
+
+        return $grouped;
     }
 
     private function supplierSummary(): array

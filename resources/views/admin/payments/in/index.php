@@ -5,12 +5,20 @@
         <h1 class="text-xl font-semibold text-slate-900">Incasari clienti</h1>
         <p class="mt-1 text-sm text-slate-500">Evidenta incasarilor si alocarilor pe facturi.</p>
     </div>
-    <a
-        href="<?= App\Support\Url::to('admin/incasari/adauga') ?>"
-        class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-    >
-        Adauga incasare
-    </a>
+    <div class="flex flex-wrap items-center gap-2">
+        <a
+            href="<?= App\Support\Url::to('admin/incasari/istoric') ?>"
+            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Istoric
+        </a>
+        <a
+            href="<?= App\Support\Url::to('admin/incasari/adauga') ?>"
+            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+        >
+            Adauga incasare
+        </a>
+    </div>
 </div>
 
 <div class="mt-6 overflow-x-auto rounded border border-slate-200 bg-white">

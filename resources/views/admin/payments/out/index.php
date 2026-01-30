@@ -6,6 +6,12 @@
         <p class="mt-1 text-sm text-slate-500">Furnizori cu sume disponibile de plata.</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
+        <a
+            href="<?= App\Support\Url::to('admin/plati/istoric') ?>"
+            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Istoric
+        </a>
         <form method="POST" action="<?= App\Support\Url::to('admin/plati/email-azi') ?>">
             <?= App\Support\Csrf::input() ?>
             <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">

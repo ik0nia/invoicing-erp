@@ -39,9 +39,12 @@ $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
 $router->get('/admin/incasari', [PaymentsController::class, 'indexIn']);
 $router->get('/admin/incasari/adauga', [PaymentsController::class, 'createIn']);
 $router->post('/admin/incasari/adauga', [PaymentsController::class, 'storeIn']);
+$router->get('/admin/incasari/istoric', [PaymentsController::class, 'historyIn']);
 $router->get('/admin/plati', [PaymentsController::class, 'indexOut']);
 $router->get('/admin/plati/adauga', [PaymentsController::class, 'createOut']);
 $router->post('/admin/plati/adauga', [PaymentsController::class, 'storeOut']);
+$router->get('/admin/plati/istoric', [PaymentsController::class, 'historyOut']);
+$router->get('/admin/plati/export', [PaymentsController::class, 'exportOut']);
 $router->post('/admin/plati/email-azi', [PaymentsController::class, 'sendDailyEmails']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
