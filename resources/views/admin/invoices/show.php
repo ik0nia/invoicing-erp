@@ -403,30 +403,37 @@
                             <a
                                 href="<?= htmlspecialchars($invoice->fgo_link) ?>"
                                 target="_blank"
-                                class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                             >
-                                Vezi PDF
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                                    <path d="M14 3v6h6" />
+                                </svg>
+                                Factura <?= htmlspecialchars(trim($invoice->fgo_series . ' ' . $invoice->fgo_number)) ?>
                             </a>
                         <?php endif; ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print') ?>" target="_blank">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                            <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                Download PDF
-                            </button>
-                        </form>
                         <a
                             href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id) ?>"
                             target="_blank"
-                            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                                <path d="M14 3v6h6" />
+                            </svg>
                             Afiseaza anexa
                         </a>
                         <a
                             href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id) ?>"
                             target="_blank"
-                            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                                <path d="M14 3v6h6" />
+                                <path d="M9 14h6" />
+                                <path d="M9 18h6" />
+                            </svg>
                             Nota de comanda
                         </a>
                         <?php if (empty($invoice->fgo_storno_number)): ?>
@@ -434,21 +441,26 @@
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                                 <button
-                                    class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                    class="inline-flex items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
                                     onclick="return confirm('Sigur vrei sa stornezi factura FGO?')"
                                 >
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <path d="M12 5v4l3-3M12 5a7 7 0 1 1-6.33 4" />
+                                    </svg>
                                     Storneaza
                                 </button>
                             </form>
                         <?php else: ?>
-                            <span class="text-xs font-semibold text-amber-700">
-                                Storno: <?= htmlspecialchars(trim($invoice->fgo_storno_series . ' ' . $invoice->fgo_storno_number)) ?>
-                            </span>
                             <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print-storno') ?>" target="_blank">
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                    Download PDF Storno
+                                <button class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                                        <path d="M14 3v6h6" />
+                                        <path d="M8 14h8" />
+                                    </svg>
+                                    PDF Storno <?= htmlspecialchars(trim($invoice->fgo_storno_series . ' ' . $invoice->fgo_storno_number)) ?>
                                 </button>
                             </form>
                         <?php endif; ?>
