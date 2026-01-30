@@ -15,7 +15,7 @@ class SagaAhkGenerator
             if ($index > 0) {
                 $lines[] = '';
             }
-            $lines = array_merge($lines, $this->buildPackageLines($package, $defaultDate));
+            $lines = array_merge($lines, $this->buildPackageLines($package, $defaultDate, $index === 0));
             $index++;
         }
 
@@ -24,7 +24,7 @@ class SagaAhkGenerator
         return implode("\n", $lines) . "\n";
     }
 
-    private function buildPackageLines(array $package, string $defaultDate): array
+    private function buildPackageLines(array $package, string $defaultDate, bool $selectGestiune): array
     {
         $packageNo = (string) ($package['package_no'] ?? '');
         $label = (string) ($package['label'] ?? '');
@@ -50,8 +50,10 @@ class SagaAhkGenerator
         $lines[] = '';
         $lines[] = '    Sleep(300)';
         $lines[] = '    SendText("' . $this->formatSendText($date) . '")';
-        $lines[] = '    Sleep(150)';
-        $lines[] = '    Send("{Down}")';
+        if ($selectGestiune) {
+            $lines[] = '    Sleep(150)';
+            $lines[] = '    Send("{Down}")';
+        }
         $lines[] = '    Sleep(150)';
         $lines[] = '    Send("{Tab}")';
         $lines[] = '    Sleep(300)';
