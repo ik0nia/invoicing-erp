@@ -5,7 +5,9 @@ namespace App\Domain\Invoices\Http\Controllers;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
+use App\Domain\Invoices\Services\FgoClient;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
+use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
@@ -281,6 +283,11 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
+        if (!empty($invoice->fgo_number)) {
+            Session::flash('error', 'Factura FGO a fost deja generata.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
         if ($clientCui === '' && !empty($invoice->selected_client_cui)) {
             $clientCui = preg_replace('/\D+/', '', (string) $invoice->selected_client_cui);
         }
@@ -290,7 +297,287 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
         }
 
-        Session::flash('status', 'Generarea facturii va fi activata in pasul urmator.');
+        $settings = new SettingsService();
+        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
+        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $series = trim((string) $settings->get('fgo.series', ''));
+        $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
+
+        if ($codUnic === '' || $secret === '' || $series === '') {
+            Session::flash('error', 'Completeaza Cod unic, Secret key si Serie in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $clientCompany = Company::findByCui($clientCui);
+        if (!$clientCompany) {
+            Session::flash('error', 'Completeaza datele clientului in pagina Companii.');
+            Response::redirect('/admin/companii');
+        }
+
+        $clientCountry = $this->normalizeCountry($clientCompany->tara ?? '');
+        $missing = [];
+
+        if (trim($clientCompany->denumire ?? '') === '') {
+            $missing[] = 'denumire';
+        }
+        if (trim($clientCompany->adresa ?? '') === '') {
+            $missing[] = 'adresa';
+        }
+        if (trim($clientCompany->localitate ?? '') === '') {
+            $missing[] = 'localitate';
+        }
+        if ($clientCountry === 'RO' && trim($clientCompany->judet ?? '') === '') {
+            $missing[] = 'judet';
+        }
+
+        if (!empty($missing)) {
+            Session::flash('error', 'Completeaza datele clientului: ' . implode(', ', $missing) . '.');
+            Response::redirect('/admin/companii/edit?cui=' . urlencode($clientCui));
+        }
+
+        $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+        if (!$commission) {
+            Session::flash('error', 'Nu exista comision pentru acest client.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        }
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($packages)) {
+            Session::flash('error', 'Nu exista pachete pentru facturare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $packageStats = $this->packageStats($lines, $packages);
+        $content = [];
+
+        foreach ($packages as $package) {
+            if (!isset($packageStats[$package->id])) {
+                continue;
+            }
+
+            $stat = $packageStats[$package->id];
+            $total = $this->applyCommission($stat['total_vat'], $commission->commission);
+
+            $content[] = [
+                'Denumire' => $package->label ?: 'Pachet #' . $package->package_no,
+                'UM' => 'BUC',
+                'NrProduse' => 1,
+                'CotaTVA' => (float) $package->vat_percent,
+                'PretTotal' => number_format($total, 2, '.', ''),
+            ];
+        }
+
+        if (empty($content)) {
+            Session::flash('error', 'Nu am putut construi continutul facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $payload = [
+            'CodUnic' => $codUnic,
+            'Hash' => FgoClient::hashForEmitere($codUnic, $secret, $clientCompany->denumire),
+            'Valuta' => $invoice->currency ?: 'RON',
+            'TipFactura' => 'Factura',
+            'Serie' => $series,
+            'DataEmitere' => date('Y-m-d'),
+            'VerificareDuplicat' => 'true',
+            'IdExtern' => 'INV-IN-' . $invoice->id,
+            'Client' => [
+                'Denumire' => $clientCompany->denumire,
+                'CodUnic' => $clientCompany->cui,
+                'NrRegCom' => $clientCompany->nr_reg_comertului,
+                'Email' => $clientCompany->email,
+                'Telefon' => $clientCompany->telefon,
+                'Tara' => $clientCountry,
+                'Judet' => $clientCompany->judet,
+                'Localitate' => $clientCompany->localitate,
+                'Adresa' => $clientCompany->adresa,
+                'Tip' => 'PJ',
+                'PlatitorTVA' => $clientCompany->platitor_tva ? 'true' : 'false',
+            ],
+            'Continut' => $content,
+            'PlatformaUrl' => FgoClient::platformUrl(),
+        ];
+
+        if (!empty($invoice->due_date)) {
+            $payload['DataScadenta'] = $invoice->due_date;
+        }
+
+        $client = new FgoClient($baseUrl);
+        $response = $client->post('factura/emitere', $payload);
+
+        if (empty($response['Success'])) {
+            $message = isset($response['Message']) ? (string) $response['Message'] : 'Eroare emitere factura FGO.';
+            Session::flash('error', $message);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $factura = $response['Factura'] ?? [];
+        $fgoNumber = (string) ($factura['Numar'] ?? '');
+        $fgoSeries = (string) ($factura['Serie'] ?? $series);
+        $fgoLink = (string) ($factura['Link'] ?? '');
+
+        if ($fgoNumber === '') {
+            Session::flash('error', 'Factura FGO nu a returnat numarul emis.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET fgo_series = :serie, fgo_number = :numar, fgo_link = :link, updated_at = :now WHERE id = :id',
+            [
+                'serie' => $fgoSeries,
+                'numar' => $fgoNumber,
+                'link' => $fgoLink,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
+        Session::flash('status', 'Factura FGO a fost generata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
+    public function printInvoice(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice || empty($invoice->fgo_number) || empty($invoice->fgo_series)) {
+            Session::flash('error', 'Factura FGO nu este disponibila pentru printare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $settings = new SettingsService();
+        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
+        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
+
+        if ($codUnic === '' || $secret === '') {
+            Session::flash('error', 'Completeaza Cod unic si Secret key in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $payload = [
+            'CodUnic' => $codUnic,
+            'Hash' => FgoClient::hashForNumber($codUnic, $secret, $invoice->fgo_number),
+            'Serie' => $invoice->fgo_series,
+            'Numar' => $invoice->fgo_number,
+            'PlatformaUrl' => FgoClient::platformUrl(),
+        ];
+
+        $client = new FgoClient($baseUrl);
+        $response = $client->post('factura/print', $payload);
+
+        if (empty($response['Success'])) {
+            $message = isset($response['Message']) ? (string) $response['Message'] : 'Eroare la printare FGO.';
+            Session::flash('error', $message);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $factura = $response['Factura'] ?? [];
+        $link = (string) ($factura['Link'] ?? '');
+
+        if ($link !== '') {
+            Database::execute(
+                'UPDATE invoices_in SET fgo_link = :link, updated_at = :now WHERE id = :id',
+                [
+                    'link' => $link,
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+        }
+
+        Session::flash('status', 'Factura FGO a fost printata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
+    public function stornoInvoice(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice || empty($invoice->fgo_number) || empty($invoice->fgo_series)) {
+            Session::flash('error', 'Factura FGO nu este disponibila pentru stornare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if (!empty($invoice->fgo_storno_number)) {
+            Session::flash('error', 'Factura FGO este deja stornata.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $settings = new SettingsService();
+        $codUnic = trim((string) $settings->get('fgo.api_key', ''));
+        $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
+
+        if ($codUnic === '' || $secret === '') {
+            Session::flash('error', 'Completeaza Cod unic si Secret key in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $payload = [
+            'CodUnic' => $codUnic,
+            'Hash' => FgoClient::hashForNumber($codUnic, $secret, $invoice->fgo_number),
+            'Serie' => $invoice->fgo_series,
+            'Numar' => $invoice->fgo_number,
+            'PlatformaUrl' => FgoClient::platformUrl(),
+        ];
+
+        $client = new FgoClient($baseUrl);
+        $response = $client->post('factura/stornare', $payload);
+
+        if (empty($response['Success'])) {
+            $message = isset($response['Message']) ? (string) $response['Message'] : 'Eroare la stornare FGO.';
+            Session::flash('error', $message);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $factura = $response['Factura'] ?? [];
+        $stornoSeries = (string) ($factura['Serie'] ?? '');
+        $stornoNumber = (string) ($factura['Numar'] ?? '');
+        $stornoLink = (string) ($factura['Link'] ?? '');
+
+        if ($stornoNumber === '') {
+            Session::flash('error', 'Factura FGO storno nu a returnat numarul emis.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET fgo_storno_series = :serie, fgo_storno_number = :numar, fgo_storno_link = :link, updated_at = :now WHERE id = :id',
+            [
+                'serie' => $stornoSeries,
+                'numar' => $stornoNumber,
+                'link' => $stornoLink,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
+        Session::flash('status', 'Factura FGO a fost stornata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
@@ -405,6 +692,12 @@ class InvoiceController
                     xml_path VARCHAR(255) NULL,
                     packages_confirmed TINYINT(1) NOT NULL DEFAULT 0,
                     packages_confirmed_at DATETIME NULL,
+                    fgo_series VARCHAR(32) NULL,
+                    fgo_number VARCHAR(32) NULL,
+                    fgo_link VARCHAR(255) NULL,
+                    fgo_storno_series VARCHAR(32) NULL,
+                    fgo_storno_number VARCHAR(32) NULL,
+                    fgo_storno_link VARCHAR(255) NULL,
                     created_at DATETIME NULL,
                     updated_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -461,6 +754,24 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'packages_confirmed_at')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN packages_confirmed_at DATETIME NULL AFTER packages_confirmed');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_series')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_series VARCHAR(32) NULL AFTER packages_confirmed_at');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_number')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_number VARCHAR(32) NULL AFTER fgo_series');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_link')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_number');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_series')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_series VARCHAR(32) NULL AFTER fgo_link');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_number')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_number VARCHAR(32) NULL AFTER fgo_storno_series');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_link')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_link VARCHAR(255) NULL AFTER fgo_storno_number');
         }
 
         $this->ensurePackageAutoIncrement();
@@ -702,5 +1013,26 @@ class InvoiceController
         if ($count === 0) {
             Database::execute('ALTER TABLE packages AUTO_INCREMENT = 10000');
         }
+    }
+
+    private function normalizeCountry(string $country): string
+    {
+        $value = trim($country);
+        if ($value === '') {
+            return 'RO';
+        }
+
+        $normalized = $value;
+        $translit = @iconv('UTF-8', 'ASCII//TRANSLIT', $value);
+        if ($translit !== false) {
+            $normalized = $translit;
+        }
+
+        $lower = strtolower($normalized);
+        if ($lower === 'romania' || $lower === 'ro') {
+            return 'RO';
+        }
+
+        return $value;
     }
 }

@@ -90,6 +90,12 @@ CREATE TABLE invoices_in (
     xml_path VARCHAR(255) NULL,
     packages_confirmed TINYINT(1) NOT NULL DEFAULT 0,
     packages_confirmed_at DATETIME NULL,
+    fgo_series VARCHAR(32) NULL,
+    fgo_number VARCHAR(32) NULL,
+    fgo_link VARCHAR(255) NULL,
+    fgo_storno_series VARCHAR(32) NULL,
+    fgo_storno_number VARCHAR(32) NULL,
+    fgo_storno_link VARCHAR(255) NULL,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -135,55 +135,52 @@
     <?php if (empty($vatRates)): ?>
         <div class="mt-4 text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
     <?php else: ?>
-        <form
-            method="POST"
-            action="<?= App\Support\Url::to('admin/facturi/pachete') ?>"
-            class="mt-4 flex flex-wrap items-center gap-3"
-            id="packages-form"
-        >
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <input type="hidden" name="action" value="generate">
+        <?php if (empty($isConfirmed)): ?>
+            <form
+                method="POST"
+                action="<?= App\Support\Url::to('admin/facturi/pachete') ?>"
+                class="mt-4 flex flex-wrap items-center gap-3"
+                id="packages-form"
+            >
+                <?= App\Support\Csrf::input() ?>
+                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                <input type="hidden" name="action" value="generate">
 
-            <?php foreach ($vatRates as $vatRate): ?>
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-semibold text-slate-600">TVA <?= htmlspecialchars($vatRate) ?>%</span>
-                    <div class="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
-                        <button
-                            type="button"
-                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                            data-counter-decrement
-                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                        >−</button>
-                        <input
-                            id="vat_<?= htmlspecialchars($vatRate) ?>"
-                            name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
-                            type="number"
-                            min="1"
-                            value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
-                            class="w-12 border-none text-center text-sm"
-                            data-counter-input
-                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                        >
-                        <button
-                            type="button"
-                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                            data-counter-increment
-                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                        >+</button>
+                <?php foreach ($vatRates as $vatRate): ?>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-semibold text-slate-600">TVA <?= htmlspecialchars($vatRate) ?>%</span>
+                        <div class="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
+                            <button
+                                type="button"
+                                class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                                data-counter-decrement
+                                data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                            >−</button>
+                            <input
+                                id="vat_<?= htmlspecialchars($vatRate) ?>"
+                                name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
+                                type="number"
+                                min="1"
+                                value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
+                                class="w-12 border-none text-center text-sm"
+                                data-counter-input
+                            >
+                            <button
+                                type="button"
+                                class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                                data-counter-increment
+                                data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                            >+</button>
+                        </div>
                     </div>
-                </div>
-            <?php endforeach; ?>
-        </form>
+                <?php endforeach; ?>
+            </form>
 
-        <?php if (!empty($isConfirmed)): ?>
-            <div class="mt-4 text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
-        <?php else: ?>
             <div class="mt-4 text-xs text-slate-500">
                 Modificarea numarului de pachete aplica automat reorganizarea.
             </div>
+        <?php else: ?>
+            <div class="mt-4 text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
         <?php endif; ?>
     <?php endif; ?>
 
@@ -336,22 +333,74 @@
     <?php endif; ?>
 
     <?php if (!empty($isConfirmed) && !empty($packages) && !empty($isAdmin)): ?>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>" class="mt-4 flex justify-end">
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <?php if (!empty($selectedClientCui)): ?>
-                <input type="hidden" name="client_cui" value="<?= htmlspecialchars($selectedClientCui) ?>">
+        <div class="mt-4 space-y-2">
+            <?php if (empty($invoice->fgo_number)): ?>
+                <div class="flex justify-end">
+                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                        <?php if (!empty($selectedClientCui)): ?>
+                            <input type="hidden" name="client_cui" value="<?= htmlspecialchars($selectedClientCui) ?>">
+                        <?php endif; ?>
+                        <button
+                            class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            <?= empty($selectedClientCui) ? 'disabled' : '' ?>
+                        >
+                            Genereaza factura FGO
+                        </button>
+                    </form>
+                </div>
+                <?php if (empty($selectedClientCui)): ?>
+                    <div class="text-xs text-right text-slate-500">Selecteaza clientul pentru a genera factura.</div>
+                <?php endif; ?>
+            <?php else: ?>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="text-sm text-slate-600">
+                        Factura FGO:
+                        <strong><?= htmlspecialchars(trim($invoice->fgo_series . ' ' . $invoice->fgo_number)) ?></strong>
+                        <?php if (!empty($invoice->fgo_storno_number)): ?>
+                            <span class="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                Stornata
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <?php if (!empty($invoice->fgo_link)): ?>
+                            <a
+                                href="<?= htmlspecialchars($invoice->fgo_link) ?>"
+                                target="_blank"
+                                class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                Vezi PDF
+                            </a>
+                        <?php endif; ?>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                Printeaza
+                            </button>
+                        </form>
+                        <?php if (empty($invoice->fgo_storno_number)): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/storno') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <button
+                                    class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                    onclick="return confirm('Sigur vrei sa stornezi factura FGO?')"
+                                >
+                                    Storneaza
+                                </button>
+                            </form>
+                        <?php else: ?>
+                            <span class="text-xs font-semibold text-amber-700">
+                                Storno: <?= htmlspecialchars(trim($invoice->fgo_storno_series . ' ' . $invoice->fgo_storno_number)) ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                </div>
             <?php endif; ?>
-            <button
-                class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                <?= empty($selectedClientCui) ? 'disabled' : '' ?>
-            >
-                Genereaza factura
-            </button>
-            <?php if (empty($selectedClientCui)): ?>
-                <div class="mt-2 text-xs text-slate-500">Selecteaza clientul pentru a genera factura.</div>
-            <?php endif; ?>
-        </form>
+        </div>
     <?php endif; ?>
 
     <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">

@@ -70,6 +70,29 @@
                 <?php endif; ?>
                 <p class="text-xs text-slate-600">Lasa gol pentru a pastra cheia actuala.</p>
             </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_series">Serie factura FGO</label>
+                <input
+                    id="fgo_series"
+                    name="fgo_series"
+                    type="text"
+                    value="<?= htmlspecialchars($fgoSeries ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                <p class="text-xs text-slate-600">Serie definita in FGO (Setari → Serii documente).</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_base_url">API URL (optional)</label>
+                <input
+                    id="fgo_base_url"
+                    name="fgo_base_url"
+                    type="text"
+                    value="<?= htmlspecialchars($fgoBaseUrl ?? '') ?>"
+                    placeholder="https://api.fgo.ro/v1"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                <p class="text-xs text-slate-600">Lasa gol pentru productia FGO.</p>
+            </div>
         </div>
     </div>
 

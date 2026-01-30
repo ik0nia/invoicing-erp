@@ -34,12 +34,16 @@ class SettingsController
         $fgoApiKey = (string) $this->settings->get('fgo.api_key', '');
         $fgoSecret = (string) $this->settings->get('fgo.secret_key', '');
         $fgoSecretMasked = $fgoSecret !== '' ? str_repeat('*', max(0, strlen($fgoSecret) - 4)) . substr($fgoSecret, -4) : '';
+        $fgoSeries = (string) $this->settings->get('fgo.series', '');
+        $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
 
         Response::view('admin/settings/index', [
             'logoPath' => $logoPath,
             'logoUrl' => $logoUrl,
             'fgoApiKey' => $fgoApiKey,
             'fgoSecretMasked' => $fgoSecretMasked,
+            'fgoSeries' => $fgoSeries,
+            'fgoBaseUrl' => $fgoBaseUrl,
         ]);
     }
 
@@ -117,6 +121,8 @@ class SettingsController
 
         $apiKey = trim($_POST['fgo_api_key'] ?? '');
         $secretKey = trim($_POST['fgo_secret_key'] ?? '');
+        $series = trim($_POST['fgo_series'] ?? '');
+        $baseUrl = trim($_POST['fgo_base_url'] ?? '');
 
         $savedSomething = $logoUpdated;
 
@@ -127,6 +133,16 @@ class SettingsController
 
         if ($secretKey !== '') {
             $this->settings->set('fgo.secret_key', $secretKey);
+            $savedSomething = true;
+        }
+
+        if ($series !== '') {
+            $this->settings->set('fgo.series', $series);
+            $savedSomething = true;
+        }
+
+        if ($baseUrl !== '') {
+            $this->settings->set('fgo.base_url', $baseUrl);
             $savedSomething = true;
         }
 
