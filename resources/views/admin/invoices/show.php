@@ -422,6 +422,13 @@
                         >
                             Afiseaza Aviz
                         </a>
+                        <a
+                            href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id) ?>"
+                            target="_blank"
+                            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Nota de comanda
+                        </a>
                         <?php if (empty($invoice->fgo_storno_number)): ?>
                             <form method="POST" action="<?= App\Support\Url::to('admin/facturi/storno') ?>">
                                 <?= App\Support\Csrf::input() ?>

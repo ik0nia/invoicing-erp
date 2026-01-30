@@ -231,6 +231,52 @@ class InvoiceController
         ], 'layouts/print');
     }
 
+    public function showOrderNote(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            Response::abort(404, 'Factura nu a fost gasita.');
+        }
+
+        $this->ensureOrderNote($invoice);
+        $invoice = InvoiceIn::find($invoiceId);
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+
+        $clientCui = $invoice->selected_client_cui ?: $invoice->customer_cui;
+        $clientName = '';
+        $clientCompany = null;
+
+        if ($clientCui !== '') {
+            $clientCompany = Company::findByCui($clientCui);
+            if ($clientCompany) {
+                $clientName = $clientCompany->denumire;
+            } else {
+                $partner = Partner::findByCui($clientCui);
+                $clientName = $partner ? $partner->denumire : '';
+            }
+        }
+
+        Response::view('admin/invoices/order_note', [
+            'invoice' => $invoice,
+            'lines' => $lines,
+            'clientCui' => $clientCui,
+            'clientName' => $clientName,
+            'clientCompany' => $clientCompany,
+        ], 'layouts/print');
+    }
+
     public function showManual(): void
     {
         Auth::requireAdmin();
@@ -1214,6 +1260,8 @@ class InvoiceController
                     fgo_storno_series VARCHAR(32) NULL,
                     fgo_storno_number VARCHAR(32) NULL,
                     fgo_storno_link VARCHAR(255) NULL,
+                    order_note_no INT NULL,
+                    order_note_date DATE NULL,
                     created_at DATETIME NULL,
                     updated_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -1288,6 +1336,12 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_link')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_link VARCHAR(255) NULL AFTER fgo_storno_number');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'order_note_no')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_no INT NULL AFTER fgo_storno_link');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'order_note_date')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_date DATE NULL AFTER order_note_no');
         }
 
         $this->ensurePackageAutoIncrement();
@@ -1602,6 +1656,37 @@ class InvoiceController
         }
 
         return $data;
+    }
+
+    private function ensureOrderNote(InvoiceIn $invoice): void
+    {
+        if ($invoice->order_note_no && $invoice->order_note_date) {
+            return;
+        }
+
+        $settings = new SettingsService();
+        $last = (int) $settings->get('order_note.last_no', 0);
+        $next = $last > 0 ? $last + 1 : 1;
+
+        $baseDate = $invoice->issue_date ?: date('Y-m-d');
+        $baseTs = strtotime($baseDate);
+        if ($baseTs === false) {
+            $baseTs = time();
+        }
+        $daysBack = random_int(0, 15);
+        $noteDate = date('Y-m-d', strtotime('-' . $daysBack . ' days', $baseTs));
+
+        Database::execute(
+            'UPDATE invoices_in SET order_note_no = :no, order_note_date = :date, updated_at = :now WHERE id = :id',
+            [
+                'no' => $next,
+                'date' => $noteDate,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
+        $settings->set('order_note.last_no', $next);
     }
 
     private function storeSagaFiles(int $invoiceId): void

@@ -30,6 +30,8 @@ class InvoiceIn
     public ?string $fgo_storno_series = null;
     public ?string $fgo_storno_number = null;
     public ?string $fgo_storno_link = null;
+    public ?int $order_note_no = null;
+    public ?string $order_note_date = null;
 
     public static function create(array $data): self
     {
@@ -145,6 +147,8 @@ class InvoiceIn
         $invoice->fgo_storno_series = $row['fgo_storno_series'] ?? null;
         $invoice->fgo_storno_number = $row['fgo_storno_number'] ?? null;
         $invoice->fgo_storno_link = $row['fgo_storno_link'] ?? null;
+        $invoice->order_note_no = isset($row['order_note_no']) ? (int) $row['order_note_no'] : null;
+        $invoice->order_note_date = $row['order_note_date'] ?? null;
 
         return $invoice;
     }
