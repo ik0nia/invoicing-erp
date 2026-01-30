@@ -151,11 +151,22 @@
                 return;
             }
 
+            const sorted = allocations
+                .map((input) => ({
+                    input,
+                    balance: parseAmount(input.dataset.balance || '0'),
+                }))
+                .filter((item) => item.balance > 0)
+                .sort((a, b) => a.balance - b.balance);
+
             let remaining = total;
             allocations.forEach((input) => {
-                const balance = parseAmount(input.dataset.balance || '0');
-                const allocate = Math.min(balance, remaining);
-                input.value = allocate > 0 ? allocate.toFixed(2) : '';
+                input.value = '';
+            });
+
+            sorted.forEach((item) => {
+                const allocate = Math.min(item.balance, remaining);
+                item.input.value = allocate > 0 ? allocate.toFixed(2) : '';
                 remaining = Math.max(0, remaining - allocate);
             });
         };
