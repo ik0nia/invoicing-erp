@@ -14,6 +14,7 @@ class InvoiceIn
     public string $supplier_name;
     public string $customer_cui;
     public string $customer_name;
+    public ?string $selected_client_cui = null;
     public string $issue_date;
     public ?string $due_date;
     public string $currency;
@@ -122,6 +123,7 @@ class InvoiceIn
         $invoice->supplier_name = $row['supplier_name'];
         $invoice->customer_cui = $row['customer_cui'];
         $invoice->customer_name = $row['customer_name'];
+        $invoice->selected_client_cui = $row['selected_client_cui'] ?? null;
         $invoice->issue_date = $row['issue_date'];
         $invoice->due_date = $row['due_date'];
         $invoice->currency = $row['currency'];

@@ -45,6 +45,21 @@ class InvoiceController
             $selectedClientName = '';
             $user = Auth::user();
             $isAdmin = $user ? $user->isAdmin() : false;
+            $storedClientCui = $invoice->selected_client_cui ?? '';
+
+            if ($selectedClientCui === '' && $storedClientCui !== '') {
+                $selectedClientCui = $storedClientCui;
+            } elseif ($selectedClientCui !== '' && $selectedClientCui !== $storedClientCui) {
+                Database::execute(
+                    'UPDATE invoices_in SET selected_client_cui = :client, updated_at = :now WHERE id = :id',
+                    [
+                        'client' => $selectedClientCui,
+                        'now' => date('Y-m-d H:i:s'),
+                        'id' => $invoice->id,
+                    ]
+                );
+                $invoice->selected_client_cui = $selectedClientCui;
+            }
 
             if ($selectedClientCui !== '') {
                 foreach ($clients as $client) {
@@ -256,9 +271,18 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            Response::redirect('/admin/facturi');
+        }
+
         if (!$this->isInvoiceConfirmed($invoiceId)) {
             Session::flash('error', 'Confirma pachetele inainte de generare.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if ($clientCui === '' && !empty($invoice->selected_client_cui)) {
+            $clientCui = preg_replace('/\D+/', '', (string) $invoice->selected_client_cui);
         }
 
         if ($clientCui === '') {
@@ -371,6 +395,7 @@ class InvoiceController
                     supplier_name VARCHAR(255) NOT NULL,
                     customer_cui VARCHAR(32) NOT NULL,
                     customer_name VARCHAR(255) NOT NULL,
+                    selected_client_cui VARCHAR(32) NULL,
                     issue_date DATE NOT NULL,
                     due_date DATE NULL,
                     currency VARCHAR(8) NOT NULL,
@@ -427,6 +452,9 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'invoice_no')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN invoice_no VARCHAR(32) NOT NULL DEFAULT "" AFTER invoice_series');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'selected_client_cui')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN selected_client_cui VARCHAR(32) NULL AFTER customer_name');
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'packages_confirmed')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN packages_confirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER xml_path');

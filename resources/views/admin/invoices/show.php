@@ -218,7 +218,7 @@
         };
     ?>
 
-    <div class="mt-4 grid gap-4 lg:grid-cols-3">
+    <div class="mt-4 grid gap-4" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
         <?php foreach ($packages as $package): ?>
             <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
             <?php $stat = $packageStats[$package->id] ?? null; ?>
@@ -341,7 +341,7 @@
     <?php endif; ?>
 
     <?php if (empty($isConfirmed) && !empty($packages)): ?>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-6">
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-6 flex justify-end">
             <?= App\Support\Csrf::input() ?>
             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
             <input type="hidden" name="action" value="confirm">
@@ -352,7 +352,7 @@
     <?php endif; ?>
 
     <?php if (!empty($isConfirmed) && !empty($packages) && !empty($isAdmin)): ?>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>" class="mt-4">
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>" class="mt-4 flex justify-end">
             <?= App\Support\Csrf::input() ?>
             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
             <?php if (!empty($selectedClientCui)): ?>
@@ -376,76 +376,6 @@
         <input type="hidden" name="line_id" value="">
         <input type="hidden" name="package_id" value="">
     </form>
-</div>
-
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-    <h2 class="text-lg font-semibold text-slate-900">Produse din factura</h2>
-    <div class="mt-4 overflow-x-auto">
-        <table class="w-full text-left text-sm">
-            <thead class="bg-slate-50 text-slate-600">
-                <tr>
-                    <th class="px-3 py-2">Produs</th>
-                    <th class="px-3 py-2">Cantitate</th>
-                    <th class="px-3 py-2">Pret</th>
-                    <th class="px-3 py-2">TVA</th>
-                    <th class="px-3 py-2">Total</th>
-                    <th class="px-3 py-2">Pachet</th>
-                    <th class="px-3 py-2"></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($lines as $line): ?>
-                    <tr class="border-b border-slate-100">
-                        <td class="px-3 py-2">
-                            <?= htmlspecialchars($line->product_name) ?>
-                        </td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
-                        </td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?= number_format($line->unit_price, 2, '.', ' ') ?>
-                        </td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?= number_format($line->tax_percent, 2, '.', ' ') ?>%
-                        </td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?= number_format($line->line_total_vat, 2, '.', ' ') ?>
-                        </td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?php if (!empty($isConfirmed)): ?>
-                                <span class="text-xs text-slate-400">Confirmat</span>
-                            <?php else: ?>
-                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="flex items-center gap-2">
-                                    <?= App\Support\Csrf::input() ?>
-                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                    <input type="hidden" name="line_id" value="<?= (int) $line->id ?>">
-                                    <select name="package_id" class="rounded border border-slate-300 px-2 py-1 text-sm">
-                                        <option value="">Nealocat</option>
-                                        <?php foreach ($packages as $package): ?>
-                                            <?php
-                                                $allowed = abs($package->vat_percent - $line->tax_percent) < 0.01 || $package->vat_percent <= 0;
-                                            ?>
-                                            <?php if (!$allowed): ?>
-                                                <?php continue; ?>
-                                            <?php endif; ?>
-                                            <option
-                                                value="<?= (int) $package->id ?>"
-                                                <?= $line->package_id === $package->id ? 'selected' : '' ?>
-                                            >
-                                                <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <button class="text-blue-700 hover:text-blue-800">Muta</button>
-                                </form>
-                            <?php endif; ?>
-                        </td>
-                        <td class="px-3 py-2 text-slate-600"></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
 </div>
 
 <script>

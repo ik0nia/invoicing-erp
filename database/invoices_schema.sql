@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS invoices_in (
     supplier_name VARCHAR(255) NOT NULL,
     customer_cui VARCHAR(32) NOT NULL,
     customer_name VARCHAR(255) NOT NULL,
+    selected_client_cui VARCHAR(32) NULL,
     issue_date DATE NOT NULL,
     due_date DATE NULL,
     currency VARCHAR(8) NOT NULL,
