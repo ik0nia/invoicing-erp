@@ -12,7 +12,11 @@
             <p class="mt-1 text-sm text-slate-600">
                 Factura: <strong><?= htmlspecialchars($reference) ?></strong>
             </p>
-            <p class="text-xs text-slate-500">Data: <?= htmlspecialchars($invoice->issue_date) ?></p>
+            <?php
+                $dateDisplay = $invoice->issue_date ? date('d.m.Y', strtotime($invoice->issue_date)) : '';
+            ?>
+            <p class="text-xs text-slate-500">Data: <?= htmlspecialchars($dateDisplay) ?></p>
+            <p class="text-xs text-slate-500">Acest document este nefiscal.</p>
         </div>
         <a
             href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice->id) ?>"
@@ -108,10 +112,10 @@
 
     <div class="mt-6 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
         <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3">
-            Total aviz fara TVA: <strong><?= number_format($totalWithout, 2, '.', ' ') ?> RON</strong>
+            Total anexa fara TVA: <strong><?= number_format($totalWithout, 2, '.', ' ') ?> RON</strong>
         </div>
         <div class="rounded border border-slate-200 bg-slate-50 px-4 py-3">
-            Total aviz cu TVA: <strong><?= number_format($totalWith, 2, '.', ' ') ?> RON</strong>
+            Total anexa cu TVA: <strong><?= number_format($totalWith, 2, '.', ' ') ?> RON</strong>
         </div>
     </div>
 </div>
