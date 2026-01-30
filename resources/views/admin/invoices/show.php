@@ -24,8 +24,8 @@
     </a>
 </div>
 
-<div class="mt-6 grid gap-4 lg:grid-cols-2">
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+<div class="mt-6 grid gap-4 lg:grid-cols-3">
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm lg:col-span-1">
         <div class="text-slate-500">Furnizor</div>
         <div class="mt-1 font-medium text-slate-900"><?= htmlspecialchars($invoice->supplier_name) ?></div>
         <div class="mt-2 space-y-1 text-slate-600">
@@ -45,7 +45,7 @@
             <div><span class="text-slate-500">TVA:</span> <?= number_format($invoice->total_vat, 2, '.', ' ') ?> RON</div>
         </div>
     </div>
-    <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+    <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-4 text-sm lg:col-span-2">
         <h2 class="text-base font-semibold text-slate-900">Client de facturat</h2>
         <p class="mt-2 text-sm text-slate-600">
             Alege clientul pentru a calcula comisionul pe pachete.
@@ -119,21 +119,6 @@
             <?php endif; ?>
         <?php endif; ?>
     </div>
-</div>
-
-<div class="mt-4 flex flex-wrap items-center gap-3">
-    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
-        <?= App\Support\Csrf::input() ?>
-        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-        <button
-            type="submit"
-            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
-        >
-            Sterge factura
-        </button>
-    </form>
-    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
 </div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
@@ -375,6 +360,21 @@
         <input type="hidden" name="line_id" value="">
         <input type="hidden" name="package_id" value="">
     </form>
+</div>
+
+<div class="mt-8 flex flex-wrap items-center gap-3">
+    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+        <button
+            type="submit"
+            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
+        >
+            Sterge factura
+        </button>
+    </form>
+    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
 </div>
 
 <script>
