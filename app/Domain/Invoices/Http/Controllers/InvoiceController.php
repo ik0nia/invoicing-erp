@@ -377,6 +377,17 @@ class InvoiceController
             'xml_path' => null,
         ]);
 
+        if ($customerCui !== '') {
+            Database::execute(
+                'UPDATE invoices_in SET selected_client_cui = :client, updated_at = :now WHERE id = :id',
+                [
+                    'client' => $customerCui,
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+        }
+
         Partner::createIfMissing($supplierCui, $supplierName);
         Partner::createIfMissing($customerCui, $customerName);
 
