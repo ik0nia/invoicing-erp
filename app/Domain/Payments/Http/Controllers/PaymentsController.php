@@ -35,6 +35,27 @@ class PaymentsController
         ]);
     }
 
+    public function deleteIn(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru incasari.');
+            Response::redirect('/admin/incasari');
+        }
+
+        $paymentId = isset($_POST['payment_id']) ? (int) $_POST['payment_id'] : 0;
+        if (!$paymentId) {
+            Response::redirect('/admin/incasari');
+        }
+
+        Database::execute('DELETE FROM payment_in_allocations WHERE payment_in_id = :id', ['id' => $paymentId]);
+        Database::execute('DELETE FROM payments_in WHERE id = :id', ['id' => $paymentId]);
+
+        Session::flash('status', 'Incasarea a fost stearsa.');
+        Response::redirect('/admin/incasari');
+    }
+
     public function historyIn(): void
     {
         Auth::requireAdmin();
@@ -192,6 +213,27 @@ class PaymentsController
         Response::view('admin/payments/out/index', [
             'suppliers' => $suppliers,
         ]);
+    }
+
+    public function deleteOut(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru plati.');
+            Response::redirect('/admin/plati');
+        }
+
+        $paymentId = isset($_POST['payment_id']) ? (int) $_POST['payment_id'] : 0;
+        if (!$paymentId) {
+            Response::redirect('/admin/plati');
+        }
+
+        Database::execute('DELETE FROM payment_out_allocations WHERE payment_out_id = :id', ['id' => $paymentId]);
+        Database::execute('DELETE FROM payments_out WHERE id = :id', ['id' => $paymentId]);
+
+        Session::flash('status', 'Plata a fost stearsa.');
+        Response::redirect('/admin/plati');
     }
 
     public function historyOut(): void

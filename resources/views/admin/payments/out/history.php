@@ -83,8 +83,18 @@
                     <div class="font-semibold text-slate-900">
                         <?= htmlspecialchars($payment['supplier_name'] ?? $payment['supplier_cui']) ?>
                     </div>
-                    <div class="text-xs text-slate-600">
-                        <?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <span><?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</span>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/plati/sterge') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
+                            <button
+                                class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                                onclick="return confirm('Stergi plata selectata?')"
+                            >
+                                Sterge
+                            </button>
+                        </form>
                     </div>
                 </div>
                 <?php if (!empty($payment['notes'])): ?>
