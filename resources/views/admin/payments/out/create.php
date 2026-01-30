@@ -83,14 +83,13 @@
                         <th class="px-4 py-2">Total furnizor</th>
                         <th class="px-4 py-2">Platit</th>
                         <th class="px-4 py-2">Rest</th>
-                        <th class="px-4 py-2">Disponibil</th>
                         <th class="px-4 py-2">Aloca</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($invoices)): ?>
                         <tr>
-                            <td colspan="8" class="px-4 py-6 text-center text-slate-500">Selecteaza un furnizor pentru a vedea facturile.</td>
+                            <td colspan="7" class="px-4 py-6 text-center text-slate-500">Selecteaza un furnizor pentru a vedea facturile.</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($invoices as $invoice): ?>
@@ -99,7 +98,7 @@
                                     <input
                                         type="checkbox"
                                         class="invoice-check"
-                                        data-balance="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                        data-allocatable="<?= htmlspecialchars(number_format(min($invoice['balance'], $invoice['available']), 2, '.', '')) ?>"
                                     >
                                 </td>
                                 <td class="px-4 py-2">
@@ -114,13 +113,12 @@
                                 <td class="px-4 py-2"><?= number_format($invoice['total_supplier'], 2, '.', ' ') ?> RON</td>
                                 <td class="px-4 py-2"><?= number_format($invoice['paid'], 2, '.', ' ') ?> RON</td>
                                 <td class="px-4 py-2"><?= number_format($invoice['balance'], 2, '.', ' ') ?> RON</td>
-                                <td class="px-4 py-2"><?= number_format($invoice['available'], 2, '.', ' ') ?> RON</td>
                                 <td class="px-4 py-2">
                                     <input
                                         name="allocations[<?= (int) $invoice['id'] ?>]"
                                         type="text"
                                         class="w-28 rounded border border-slate-300 px-2 py-1 text-sm allocation-input bg-slate-100"
-                                        data-balance="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                        data-allocatable="<?= htmlspecialchars(number_format(min($invoice['balance'], $invoice['available']), 2, '.', '')) ?>"
                                         readonly
                                     >
                                 </td>
@@ -171,8 +169,8 @@
                     return;
                 }
                 const input = allocations[idx];
-                const balance = parseAmount(input.dataset.balance || '0');
-                const allocate = Math.min(balance, remaining);
+                const allocatable = parseAmount(input.dataset.allocatable || '0');
+                const allocate = Math.min(allocatable, remaining);
                 input.value = allocate > 0 ? allocate.toFixed(2) : '';
                 remaining = Math.max(0, remaining - allocate);
             });

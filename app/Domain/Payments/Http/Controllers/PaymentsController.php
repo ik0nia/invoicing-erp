@@ -478,9 +478,10 @@ class PaymentsController
             $totalSupplier = (float) $row['total_with_vat'];
             $paid = (float) $row['paid'];
             $collected = (float) $row['collected'];
-            $available = $commission !== null && $commission !== 0.0
+            $collectedNet = $commission !== null && $commission !== 0.0
                 ? $this->applyCommission($collected, -abs($commission))
                 : $collected;
+            $available = max(0, $collectedNet - $paid);
 
             $invoices[] = [
                 'id' => (int) $row['id'],
