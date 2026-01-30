@@ -24,7 +24,7 @@ class SagaAhkGenerator
         return implode("\n", $lines) . "\n";
     }
 
-    private function buildPackageLines(array $package, string $defaultDate, bool $selectGestiune): array
+    private function buildPackageLines(array $package, string $defaultDate, bool $isFirstPackage): array
     {
         $packageNo = (string) ($package['package_no'] ?? '');
         $label = (string) ($package['label'] ?? '');
@@ -50,7 +50,7 @@ class SagaAhkGenerator
         $lines[] = '';
         $lines[] = '    Sleep(300)';
         $lines[] = '    SendText("' . $this->formatSendText($date) . '")';
-        if ($selectGestiune) {
+        if ($isFirstPackage) {
             $lines[] = '    Sleep(150)';
             $lines[] = '    Send("{Down}")';
         }
@@ -112,7 +112,11 @@ class SagaAhkGenerator
         $items = is_array($items) ? array_values($items) : [];
 
         if (!empty($items)) {
-            $lines = array_merge($lines, $this->buildFirstItemLines($items[0]));
+            if ($isFirstPackage) {
+                $lines = array_merge($lines, $this->buildFirstItemLines($items[0]));
+            } else {
+                $lines = array_merge($lines, $this->buildFirstItemLinesAlt($items[0]));
+            }
 
             for ($i = 1; $i < count($items); $i++) {
                 $lines = array_merge($lines, $this->buildNextItemLines($items[$i], $i + 1));
@@ -175,6 +179,43 @@ class SagaAhkGenerator
 
         return [
             '; === Adaugare Produs ' . $index . ' ===',
+            '',
+            '    Sleep(300)',
+            '    Send("!d")              ; Alt + D',
+            '    Sleep(200)',
+            '    Send("{Tab}")',
+            '    Sleep(150)',
+            '    Send("{Tab}")',
+            '    Sleep(150)',
+            '    Send("{Tab}")',
+            '    Sleep(150)',
+            '    Sleep(300)',
+            '    SendText("' . $name . '") ; text',
+            '',
+            '    Sleep(300)',
+            '    Send("{Tab}")',
+            '    Sleep(300)',
+            '    SendText("' . $qty . '")            ; cantitate',
+            '',
+            '    Sleep(300)',
+            '    Send("{Tab}")',
+            '    Sleep(300)',
+            '    SendText("' . $total . '")       ; valoare',
+            '',
+            '    Sleep(200)',
+            '    Send("!s")               ; Alt + S',
+            '',
+        ];
+    }
+
+    private function buildFirstItemLinesAlt(array $item): array
+    {
+        $name = $this->formatSendText((string) ($item['name'] ?? 'Produs'));
+        $qty = $this->formatSendText($this->formatNumber((float) ($item['quantity'] ?? 0), 3));
+        $total = $this->formatSendText($this->formatNumber((float) ($item['total'] ?? 0), 2));
+
+        return [
+            '    ; === Adaugare primul produs ===',
             '',
             '    Sleep(300)',
             '    Send("!d")              ; Alt + D',
