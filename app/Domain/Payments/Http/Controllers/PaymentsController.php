@@ -53,7 +53,7 @@ class PaymentsController
         Database::execute('DELETE FROM payments_in WHERE id = :id', ['id' => $paymentId]);
 
         Session::flash('status', 'Incasarea a fost stearsa.');
-        Response::redirect('/admin/incasari');
+        Response::redirect('/admin/incasari/istoric');
     }
 
     public function historyIn(): void
@@ -233,7 +233,7 @@ class PaymentsController
         Database::execute('DELETE FROM payments_out WHERE id = :id', ['id' => $paymentId]);
 
         Session::flash('status', 'Plata a fost stearsa.');
-        Response::redirect('/admin/plati');
+        Response::redirect('/admin/plati/istoric');
     }
 
     public function historyOut(): void
