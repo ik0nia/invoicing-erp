@@ -196,16 +196,6 @@
 
         <div class="grid gap-4 md:grid-cols-4">
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="invoice_number">Numar factura</label>
-                <input
-                    id="invoice_number"
-                    name="invoice_number"
-                    type="text"
-                    value="<?= htmlspecialchars($form['invoice_number'] ?? '') ?>"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-            </div>
-            <div>
                 <label class="block text-sm font-medium text-slate-700" for="invoice_series">Serie</label>
                 <input
                     id="invoice_series"
@@ -216,22 +206,12 @@
                 >
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="invoice_no">Numar (serie+numar)</label>
+                <label class="block text-sm font-medium text-slate-700" for="invoice_no">Numar factura</label>
                 <input
                     id="invoice_no"
                     name="invoice_no"
                     type="text"
                     value="<?= htmlspecialchars($form['invoice_no'] ?? '') ?>"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="currency">Moneda</label>
-                <input
-                    id="currency"
-                    name="currency"
-                    type="text"
-                    value="<?= htmlspecialchars($form['currency'] ?? 'RON') ?>"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 >
             </div>
@@ -278,12 +258,14 @@
                             <th class="px-3 py-2">UM</th>
                             <th class="px-3 py-2">Pret unit.</th>
                             <th class="px-3 py-2">TVA %</th>
+                            <th class="px-3 py-2">Total fara TVA</th>
+                            <th class="px-3 py-2">Total cu TVA</th>
                             <th class="px-3 py-2"></th>
                         </tr>
                     </thead>
                     <tbody id="lines-body">
                         <?php foreach ($lines as $index => $line): ?>
-                            <tr class="border-b border-slate-100" data-line-row>
+                            <tr class="border-b border-slate-100" data-line-row data-line-index="<?= (int) $index ?>">
                                 <td class="px-3 py-2">
                                     <input
                                         name="lines[<?= (int) $index ?>][product_name]"
@@ -332,6 +314,8 @@
                                         <?php endforeach; ?>
                                     </select>
                                 </td>
+                                <td class="px-3 py-2 text-slate-600" data-line-total>0.00</td>
+                                <td class="px-3 py-2 text-slate-600" data-line-total-vat>0.00</td>
                                 <td class="px-3 py-2 text-right">
                                     <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" data-remove-line>
                                         Sterge
@@ -341,6 +325,17 @@
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
+                <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                    Total fara TVA: <strong data-total-without>0.00</strong> RON
+                </div>
+                <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                    TVA total: <strong data-total-vat>0.00</strong> RON
+                </div>
+                <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                    Total cu TVA: <strong data-total-with>0.00</strong> RON
+                </div>
             </div>
         </div>
 
@@ -378,7 +373,7 @@
 
         const buildRow = (index) => {
             return `
-                <tr class="border-b border-slate-100" data-line-row>
+                <tr class="border-b border-slate-100" data-line-row data-line-index="${index}">
                     <td class="px-3 py-2">
                         <input name="lines[${index}][product_name]" type="text" class="w-full rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
@@ -398,6 +393,8 @@
                             ${buildOptions(vats, '21')}
                         </select>
                     </td>
+                    <td class="px-3 py-2 text-slate-600" data-line-total>0.00</td>
+                    <td class="px-3 py-2 text-slate-600" data-line-total-vat>0.00</td>
                     <td class="px-3 py-2 text-right">
                         <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" data-remove-line> Sterge </button>
                     </td>
@@ -411,6 +408,7 @@
                     const row = btn.closest('[data-line-row]');
                     if (row) {
                         row.remove();
+                        requestTotals();
                     }
                 });
             });
@@ -420,9 +418,89 @@
             const index = body.querySelectorAll('[data-line-row]').length;
             body.insertAdjacentHTML('beforeend', buildRow(index));
             refreshRemove();
+            bindLineInputs();
+            requestTotals();
         });
 
         refreshRemove();
+
+        const bindLineInputs = () => {
+            body.querySelectorAll('input, select').forEach((input) => {
+                input.addEventListener('input', scheduleTotals);
+                input.addEventListener('change', scheduleTotals);
+            });
+        };
+
+        const totals = {
+            without: document.querySelector('[data-total-without]'),
+            vat: document.querySelector('[data-total-vat]'),
+            with: document.querySelector('[data-total-with]'),
+        };
+
+        const requestTotals = () => {
+            const token = document.querySelector('input[name="_token"]');
+            const lines = Array.from(body.querySelectorAll('[data-line-row]')).map((row) => {
+                const index = row.dataset.lineIndex || '0';
+                const quantity = row.querySelector('input[name*="[quantity]"]')?.value || '';
+                const unitPrice = row.querySelector('input[name*="[unit_price]"]')?.value || '';
+                const taxPercent = row.querySelector('select[name*="[tax_percent]"]')?.value || '';
+                return {
+                    index,
+                    quantity,
+                    unit_price: unitPrice,
+                    tax_percent: taxPercent,
+                };
+            });
+
+            const params = new URLSearchParams();
+            params.append('_token', token ? token.value : '');
+            params.append('lines_json', JSON.stringify(lines));
+
+            fetch('<?= App\Support\Url::to('admin/facturi/calc-totals') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (!data || !data.success) {
+                        return;
+                    }
+                    const lineMap = {};
+                    (data.lines || []).forEach((line) => {
+                        lineMap[String(line.index)] = line;
+                    });
+                    body.querySelectorAll('[data-line-row]').forEach((row) => {
+                        const index = String(row.dataset.lineIndex || '');
+                        const line = lineMap[index];
+                        const totalCell = row.querySelector('[data-line-total]');
+                        const totalVatCell = row.querySelector('[data-line-total-vat]');
+                        if (line && totalCell && totalVatCell) {
+                            totalCell.textContent = Number(line.total || 0).toFixed(2);
+                            totalVatCell.textContent = Number(line.total_vat || 0).toFixed(2);
+                        } else {
+                            if (totalCell) totalCell.textContent = '0.00';
+                            if (totalVatCell) totalVatCell.textContent = '0.00';
+                        }
+                    });
+
+                    if (totals.without) totals.without.textContent = Number(data.totals?.without_vat || 0).toFixed(2);
+                    if (totals.vat) totals.vat.textContent = Number(data.totals?.vat || 0).toFixed(2);
+                    if (totals.with) totals.with.textContent = Number(data.totals?.with_vat || 0).toFixed(2);
+                })
+                .catch(() => {});
+        };
+
+        let totalsTimer = null;
+        const scheduleTotals = () => {
+            if (totalsTimer) {
+                clearTimeout(totalsTimer);
+            }
+            totalsTimer = setTimeout(requestTotals, 250);
+        };
+
+        bindLineInputs();
+        requestTotals();
 
         const supplierSelect = document.getElementById('supplier_select');
         const supplierCui = document.getElementById('supplier_cui_display');

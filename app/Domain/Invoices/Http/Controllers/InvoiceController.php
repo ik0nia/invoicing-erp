@@ -242,12 +242,11 @@ class InvoiceController
         $supplierCui = trim($payload['supplier_cui'] ?? '');
         $customerName = trim($payload['customer_name'] ?? '');
         $customerCui = trim($payload['customer_cui'] ?? '');
-        $invoiceNumber = trim($payload['invoice_number'] ?? '');
         $invoiceSeries = trim($payload['invoice_series'] ?? '');
         $invoiceNo = trim($payload['invoice_no'] ?? '');
         $issueDate = trim($payload['issue_date'] ?? '');
         $dueDate = trim($payload['due_date'] ?? '');
-        $currency = trim($payload['currency'] ?? 'RON');
+        $currency = 'RON';
 
         $errors = [];
 
@@ -264,8 +263,8 @@ class InvoiceController
             }
         }
 
-        if ($invoiceNumber === '') {
-            $errors[] = 'Completeaza numarul facturii.';
+        if ($invoiceSeries === '' || $invoiceNo === '') {
+            $errors[] = 'Completeaza seria si numarul facturii.';
         }
         if ($supplierName === '' || $supplierCui === '') {
             $errors[] = 'Completeaza furnizorul (denumire si CUI).';
@@ -343,6 +342,8 @@ class InvoiceController
             Response::redirect('/admin/facturi/adauga');
         }
 
+        $invoiceNumber = trim($invoiceSeries . ' ' . $invoiceNo);
+
         if ($this->invoiceExists($supplierCui, $invoiceSeries, $invoiceNo, $invoiceNumber)) {
             Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
             Session::flash('manual_invoice', $payload);
@@ -369,7 +370,7 @@ class InvoiceController
             'customer_name' => $customerName,
             'issue_date' => $issueDate,
             'due_date' => $dueDate !== '' ? $dueDate : null,
-            'currency' => $currency !== '' ? $currency : 'RON',
+            'currency' => $currency,
             'total_without_vat' => round($totalWithoutVat, 2),
             'total_vat' => $totalVat,
             'total_with_vat' => round($totalWithVat, 2),
@@ -387,6 +388,63 @@ class InvoiceController
 
         Session::flash('status', 'Factura a fost adaugata manual.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
+    }
+
+    public function calcManualTotals(): void
+    {
+        Auth::requireAdmin();
+
+        $raw = $_POST['lines_json'] ?? '';
+        $lines = json_decode((string) $raw, true);
+
+        if (!is_array($lines)) {
+            $lines = [];
+        }
+
+        $responseLines = [];
+        $totalWithout = 0.0;
+        $totalWith = 0.0;
+
+        foreach ($lines as $line) {
+            $index = (int) ($line['index'] ?? 0);
+            $qty = $this->parseNumber($line['quantity'] ?? null);
+            $price = $this->parseNumber($line['unit_price'] ?? null);
+            $tax = $this->parseNumber($line['tax_percent'] ?? null);
+
+            if ($qty === null || $price === null || $tax === null) {
+                $responseLines[] = [
+                    'index' => $index,
+                    'total' => 0,
+                    'total_vat' => 0,
+                ];
+                continue;
+            }
+
+            $lineTotal = round($qty * $price, 2);
+            $lineTotalVat = round($lineTotal * (1 + ($tax / 100)), 2);
+            $totalWithout += $lineTotal;
+            $totalWith += $lineTotalVat;
+
+            $responseLines[] = [
+                'index' => $index,
+                'total' => $lineTotal,
+                'total_vat' => $lineTotalVat,
+            ];
+        }
+
+        $totalVat = round($totalWith - $totalWithout, 2);
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'lines' => $responseLines,
+            'totals' => [
+                'without_vat' => round($totalWithout, 2),
+                'vat' => $totalVat,
+                'with_vat' => round($totalWith, 2),
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     public function packages(): void
