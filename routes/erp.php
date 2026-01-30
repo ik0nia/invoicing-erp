@@ -31,6 +31,7 @@ $router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'download
 $router->post('/admin/facturi/saga/factura', [InvoiceController::class, 'downloadInvoiceSaga']);
 $router->post('/admin/pachete-confirmate/descarca', [InvoiceController::class, 'downloadSelectedSaga']);
 $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']);
+$router->post('/admin/facturi/print-storno', [InvoiceController::class, 'printStornoInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
 

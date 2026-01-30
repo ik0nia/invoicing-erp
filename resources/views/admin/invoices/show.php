@@ -444,6 +444,13 @@
                             <span class="text-xs font-semibold text-amber-700">
                                 Storno: <?= htmlspecialchars(trim($invoice->fgo_storno_series . ' ' . $invoice->fgo_storno_number)) ?>
                             </span>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print-storno') ?>" target="_blank">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                    Download PDF Storno
+                                </button>
+                            </form>
                         <?php endif; ?>
                     </div>
                 </div>

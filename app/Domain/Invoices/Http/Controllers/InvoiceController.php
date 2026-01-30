@@ -1050,6 +1050,90 @@ class InvoiceController
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
+    public function printStornoInvoice(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice || empty($invoice->fgo_storno_number) || empty($invoice->fgo_storno_series)) {
+            Session::flash('error', 'Factura storno nu este disponibila pentru printare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $settings = new SettingsService();
+        $codUnic = preg_replace('/\D+/', '', (string) $settings->get('company.cui', ''));
+        $secret = trim((string) $settings->get('fgo.api_key', ''));
+        if ($secret === '') {
+            $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        }
+        $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
+
+        if ($codUnic === '' || $secret === '') {
+            Session::flash('error', 'Completeaza CUI companie si Cheia API in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $payload = [
+            'CodUnic' => $codUnic,
+            'Hash' => FgoClient::hashForNumber($codUnic, $secret, $invoice->fgo_storno_number),
+            'Serie' => $invoice->fgo_storno_series,
+            'Numar' => $invoice->fgo_storno_number,
+            'PlatformaUrl' => FgoClient::platformUrl(),
+        ];
+
+        $client = new FgoClient($baseUrl);
+        $response = $client->post('factura/print', $payload);
+
+        if (empty($response['Success'])) {
+            $message = isset($response['Message']) ? (string) $response['Message'] : 'Eroare la printare FGO.';
+            Session::flash('error', $message);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $factura = $response['Factura'] ?? [];
+        $link = (string) ($factura['Link'] ?? '');
+
+        if ($link !== '') {
+            Database::execute(
+                'UPDATE invoices_in SET fgo_storno_link = :link, updated_at = :now WHERE id = :id',
+                [
+                    'link' => $link,
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+        } else {
+            $link = (string) ($invoice->fgo_storno_link ?? '');
+        }
+
+        if ($link !== '') {
+            $filename = 'storno_' . $this->safeFileName(trim($invoice->fgo_storno_series . '_' . $invoice->fgo_storno_number)) . '.pdf';
+            $content = $this->fetchRemoteFile($link);
+            if ($content !== null) {
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Length: ' . strlen($content));
+                echo $content;
+                exit;
+            }
+
+            header('Location: ' . $link);
+            exit;
+        }
+
+        Session::flash('status', 'Factura storno a fost printata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
     public function downloadPackageSaga(): void
     {
         Auth::requireAdmin();
