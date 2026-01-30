@@ -158,10 +158,12 @@ class InvoiceController
 
         $form = Session::pull('manual_invoice', []);
         $partners = Partner::all();
+        $commissions = Commission::allWithPartners();
 
         Response::view('admin/invoices/manual', [
             'form' => $form,
             'partners' => $partners,
+            'commissions' => $commissions,
         ]);
     }
 

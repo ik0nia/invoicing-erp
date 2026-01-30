@@ -3,6 +3,7 @@
     $form = $form ?? [];
     $partners = $partners ?? [];
     $lines = $form['lines'] ?? [];
+    $commissions = $commissions ?? [];
     $unitOptions = [
         'BUC', 'SET', 'PACH', 'BAX', 'CUT', 'ROLA',
         'KG', 'G', 'L', 'ML', 'M', 'M2', 'M3',
@@ -10,6 +11,15 @@
         'DOZA', 'FLACON', 'SAC', 'BIDON',
     ];
     $vatOptions = ['21', '11', '0'];
+    $commissionOptions = [];
+    foreach ($commissions as $row) {
+        $commissionOptions[] = [
+            'supplier_cui' => (string) ($row['supplier_cui'] ?? ''),
+            'client_cui' => (string) ($row['client_cui'] ?? ''),
+            'client_name' => (string) ($row['client_name'] ?? ''),
+            'commission' => (float) ($row['commission'] ?? 0),
+        ];
+    }
 
     if (empty($lines)) {
         $lines = [
@@ -104,7 +114,30 @@
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
                 <div class="text-sm font-semibold text-slate-700">Client</div>
                 <div class="mt-3 space-y-3">
-                    <?php if (!empty($partners)): ?>
+                    <?php if (!empty($commissionOptions)): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_select">Client asociat</label>
+                            <select
+                                id="customer_select"
+                                name="customer_cui"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                                <option value="">Selecteaza furnizorul</option>
+                            </select>
+                            <input type="hidden" name="customer_name" value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_cui_display">CUI</label>
+                            <input
+                                id="customer_cui_display"
+                                type="text"
+                                value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
+                                readonly
+                            >
+                        </div>
+                        <div class="text-xs font-semibold text-slate-600" id="customer_commission">Comision: -</div>
+                    <?php elseif (!empty($partners)): ?>
                         <div>
                             <label class="block text-sm font-medium text-slate-700" for="customer_select">Denumire</label>
                             <select
@@ -332,6 +365,9 @@
 
         const units = <?= json_encode($unitOptions, JSON_UNESCAPED_UNICODE) ?>;
         const vats = <?= json_encode($vatOptions, JSON_UNESCAPED_UNICODE) ?>;
+        const commissions = <?= json_encode($commissionOptions, JSON_UNESCAPED_UNICODE) ?>;
+        const initialSupplier = <?= json_encode($form['supplier_cui'] ?? '') ?>;
+        const initialClient = <?= json_encode($form['customer_cui'] ?? '') ?>;
 
         const buildOptions = (items, selected) => {
             return items.map((item) => {
@@ -391,27 +427,94 @@
         const supplierSelect = document.getElementById('supplier_select');
         const supplierCui = document.getElementById('supplier_cui_display');
         const supplierName = document.querySelector('input[name="supplier_name"]');
-        if (supplierSelect && supplierCui && supplierName) {
-            const updateSupplier = () => {
-                const option = supplierSelect.selectedOptions[0];
-                supplierCui.value = supplierSelect.value || '';
-                supplierName.value = option ? (option.dataset.name || '') : '';
-            };
-            supplierSelect.addEventListener('change', updateSupplier);
-            updateSupplier();
-        }
-
         const customerSelect = document.getElementById('customer_select');
         const customerCui = document.getElementById('customer_cui_display');
         const customerName = document.querySelector('input[name="customer_name"]');
-        if (customerSelect && customerCui && customerName) {
-            const updateCustomer = () => {
-                const option = customerSelect.selectedOptions[0];
-                customerCui.value = customerSelect.value || '';
-                customerName.value = option ? (option.dataset.name || '') : '';
-            };
-            customerSelect.addEventListener('change', updateCustomer);
-            updateCustomer();
+        const commissionDisplay = document.getElementById('customer_commission');
+
+        const commissionsBySupplier = {};
+        commissions.forEach((item) => {
+            if (!item.supplier_cui || !item.client_cui) {
+                return;
+            }
+            if (!commissionsBySupplier[item.supplier_cui]) {
+                commissionsBySupplier[item.supplier_cui] = [];
+            }
+            commissionsBySupplier[item.supplier_cui].push(item);
+        });
+
+        const updateSupplier = () => {
+            if (!supplierSelect || !supplierCui || !supplierName) {
+                return;
+            }
+            const option = supplierSelect.selectedOptions[0];
+            supplierCui.value = supplierSelect.value || '';
+            supplierName.value = option ? (option.dataset.name || '') : '';
+        };
+
+        const updateCustomerMeta = () => {
+            if (!customerSelect || !customerCui || !customerName) {
+                return;
+            }
+            const option = customerSelect.selectedOptions[0];
+            customerCui.value = customerSelect.value || '';
+            customerName.value = option ? (option.dataset.name || '') : '';
+            if (commissionDisplay) {
+                const commission = option ? (option.dataset.commission || '') : '';
+                commissionDisplay.textContent = commission ? `Comision: ${commission}%` : 'Comision: -';
+            }
+        };
+
+        const updateCustomerOptions = (supplierCuiValue, selectedCui) => {
+            if (!customerSelect) {
+                return;
+            }
+            const items = commissionsBySupplier[supplierCuiValue] || [];
+            customerSelect.innerHTML = '';
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = items.length ? 'Selecteaza client' : 'Nu exista clienti asociati';
+            customerSelect.appendChild(placeholder);
+            customerSelect.disabled = items.length === 0;
+
+            items.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.client_cui;
+                option.dataset.name = item.client_name || '';
+                option.dataset.commission = String(item.commission ?? '');
+                const labelName = item.client_name || item.client_cui;
+                option.textContent = `${labelName} · ${item.client_cui} · ${item.commission}%`;
+                if (selectedCui && selectedCui === item.client_cui) {
+                    option.selected = true;
+                }
+                customerSelect.appendChild(option);
+            });
+
+            updateCustomerMeta();
+        };
+
+        if (supplierSelect) {
+            supplierSelect.addEventListener('change', () => {
+                updateSupplier();
+                updateCustomerOptions(supplierSelect.value, '');
+            });
+        }
+
+        if (customerSelect) {
+            customerSelect.addEventListener('change', updateCustomerMeta);
+        }
+
+        updateSupplier();
+
+        if (supplierSelect && commissions.length > 0) {
+            if (initialSupplier && supplierSelect.value !== initialSupplier) {
+                supplierSelect.value = initialSupplier;
+                updateSupplier();
+            }
+            updateCustomerOptions(supplierSelect.value, initialClient);
+        } else {
+            updateCustomerMeta();
         }
     })();
 </script>
