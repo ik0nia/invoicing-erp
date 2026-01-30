@@ -3,14 +3,22 @@
 <div class="flex items-center justify-between">
     <div>
         <h1 class="text-xl font-semibold text-slate-900">Facturi intrare</h1>
-        <p class="mt-1 text-sm text-slate-500">Factura primite prin XML.</p>
+        <p class="mt-1 text-sm text-slate-500">Facturi importate din XML sau adaugate manual.</p>
     </div>
-    <a
-        href="<?= App\Support\Url::to('admin/facturi/import') ?>"
-        class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-    >
-        Importa XML
-    </a>
+    <div class="flex flex-wrap items-center gap-2">
+        <a
+            href="<?= App\Support\Url::to('admin/facturi/adauga') ?>"
+            class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+        >
+            Adauga factura
+        </a>
+        <a
+            href="<?= App\Support\Url::to('admin/facturi/import') ?>"
+            class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow hover:bg-slate-50"
+        >
+            Importa XML
+        </a>
+    </div>
 </div>
 
 <div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
