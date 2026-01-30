@@ -11,6 +11,150 @@
     <?= App\Support\Csrf::input() ?>
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold text-slate-900">Date companie</h2>
+        <p class="mt-1 text-sm text-slate-600">Informatii despre firma emitenta.</p>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_denumire">Denumire</label>
+                <input
+                    id="company_denumire"
+                    name="company_denumire"
+                    type="text"
+                    value="<?= htmlspecialchars($company['denumire'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_tip_firma">Tip firma</label>
+                <select
+                    id="company_tip_firma"
+                    name="company_tip_firma"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                    <option value="">Selecteaza</option>
+                    <?php foreach (['SRL', 'SA', 'PFA', 'II', 'IF'] as $tip): ?>
+                        <option value="<?= $tip ?>" <?= ($company['tip_firma'] ?? '') === $tip ? 'selected' : '' ?>>
+                            <?= $tip ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_cui">CUI</label>
+                <input
+                    id="company_cui"
+                    name="company_cui"
+                    type="text"
+                    value="<?= htmlspecialchars($company['cui'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_nr_reg_comertului">Nr. Reg. Comertului</label>
+                <input
+                    id="company_nr_reg_comertului"
+                    name="company_nr_reg_comertului"
+                    type="text"
+                    value="<?= htmlspecialchars($company['nr_reg_comertului'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_platitor_tva">Platitor TVA</label>
+                <select
+                    id="company_platitor_tva"
+                    name="company_platitor_tva"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                    <option value="0" <?= empty($company['platitor_tva']) ? 'selected' : '' ?>>Nu</option>
+                    <option value="1" <?= !empty($company['platitor_tva']) ? 'selected' : '' ?>>Da</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_tara">Tara</label>
+                <input
+                    id="company_tara"
+                    name="company_tara"
+                    type="text"
+                    value="<?= htmlspecialchars($company['tara'] ?? 'Romania') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700" for="company_adresa">Adresa</label>
+                <input
+                    id="company_adresa"
+                    name="company_adresa"
+                    type="text"
+                    value="<?= htmlspecialchars($company['adresa'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_localitate">Localitate</label>
+                <input
+                    id="company_localitate"
+                    name="company_localitate"
+                    type="text"
+                    value="<?= htmlspecialchars($company['localitate'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_judet">Judet</label>
+                <input
+                    id="company_judet"
+                    name="company_judet"
+                    type="text"
+                    value="<?= htmlspecialchars($company['judet'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_email">Email</label>
+                <input
+                    id="company_email"
+                    name="company_email"
+                    type="email"
+                    value="<?= htmlspecialchars($company['email'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_telefon">Telefon</label>
+                <input
+                    id="company_telefon"
+                    name="company_telefon"
+                    type="text"
+                    value="<?= htmlspecialchars($company['telefon'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_banca">Banca</label>
+                <input
+                    id="company_banca"
+                    name="company_banca"
+                    type="text"
+                    value="<?= htmlspecialchars($company['banca'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="company_iban">Cont bancar (IBAN)</label>
+                <input
+                    id="company_iban"
+                    name="company_iban"
+                    type="text"
+                    value="<?= htmlspecialchars($company['iban'] ?? '') ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+        </div>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Branding</h2>
         <p class="mt-1 text-sm text-slate-600">Actualizeaza logo-ul aplicatiei ERP.</p>
 

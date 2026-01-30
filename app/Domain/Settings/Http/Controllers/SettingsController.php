@@ -39,6 +39,21 @@ class SettingsController
         }
         $fgoSeriesListText = implode(', ', $fgoSeriesList);
         $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
+        $company = [
+            'denumire' => (string) $this->settings->get('company.denumire', ''),
+            'tip_firma' => (string) $this->settings->get('company.tip_firma', ''),
+            'cui' => (string) $this->settings->get('company.cui', ''),
+            'nr_reg_comertului' => (string) $this->settings->get('company.nr_reg_comertului', ''),
+            'platitor_tva' => (bool) $this->settings->get('company.platitor_tva', false),
+            'adresa' => (string) $this->settings->get('company.adresa', ''),
+            'localitate' => (string) $this->settings->get('company.localitate', ''),
+            'judet' => (string) $this->settings->get('company.judet', ''),
+            'tara' => (string) $this->settings->get('company.tara', 'Romania'),
+            'email' => (string) $this->settings->get('company.email', ''),
+            'telefon' => (string) $this->settings->get('company.telefon', ''),
+            'banca' => (string) $this->settings->get('company.banca', ''),
+            'iban' => (string) $this->settings->get('company.iban', ''),
+        ];
 
         Response::view('admin/settings/index', [
             'logoPath' => $logoPath,
@@ -48,6 +63,7 @@ class SettingsController
             'fgoSeriesList' => $fgoSeriesList,
             'fgoSeriesListText' => $fgoSeriesListText,
             'fgoBaseUrl' => $fgoBaseUrl,
+            'company' => $company,
         ]);
     }
 
@@ -127,6 +143,21 @@ class SettingsController
         $series = trim($_POST['fgo_series'] ?? '');
         $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
+        $companyData = [
+            'denumire' => trim($_POST['company_denumire'] ?? ''),
+            'tip_firma' => trim($_POST['company_tip_firma'] ?? ''),
+            'cui' => trim($_POST['company_cui'] ?? ''),
+            'nr_reg_comertului' => trim($_POST['company_nr_reg_comertului'] ?? ''),
+            'platitor_tva' => ($_POST['company_platitor_tva'] ?? '') === '1',
+            'adresa' => trim($_POST['company_adresa'] ?? ''),
+            'localitate' => trim($_POST['company_localitate'] ?? ''),
+            'judet' => trim($_POST['company_judet'] ?? ''),
+            'tara' => trim($_POST['company_tara'] ?? ''),
+            'email' => trim($_POST['company_email'] ?? ''),
+            'telefon' => trim($_POST['company_telefon'] ?? ''),
+            'banca' => trim($_POST['company_banca'] ?? ''),
+            'iban' => trim($_POST['company_iban'] ?? ''),
+        ];
 
         $savedSomething = $logoUpdated;
 
@@ -166,6 +197,11 @@ class SettingsController
             $this->settings->set('fgo.base_url', $baseUrl);
             $savedSomething = true;
         }
+
+        foreach ($companyData as $key => $value) {
+            $this->settings->set('company.' . $key, $value);
+        }
+        $savedSomething = true;
 
         if ($savedSomething) {
             Session::flash('status', 'Setarile au fost salvate.');
