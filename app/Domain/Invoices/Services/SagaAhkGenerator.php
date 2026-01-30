@@ -37,15 +37,13 @@ class SagaAhkGenerator
 
         $lines = [];
         $lines[] = '    ; Creare de Pachet in Saga';
-        if ($isFirstPackage) {
-            $lines[] = '    Send("{Alt down}")';
-            $lines[] = '    Sleep(100)';
-            $lines[] = '    Send("o")';
-            $lines[] = '    Sleep(200)';
-            $lines[] = '    Send("p")';
-            $lines[] = '    Sleep(100)';
-            $lines[] = '    Send("{Alt up}")';
-        }
+        $lines[] = '    Send("{Alt down}")';
+        $lines[] = '    Sleep(100)';
+        $lines[] = '    Send("o")';
+        $lines[] = '    Sleep(200)';
+        $lines[] = '    Send("p")';
+        $lines[] = '    Sleep(100)';
+        $lines[] = '    Send("{Alt up}")';
         $lines[] = '';
         $lines[] = '    Sleep(200)';
         $lines[] = '    Send("!a")';
