@@ -195,6 +195,13 @@ class InvoiceController
             'banca' => (string) $settings->get('company.banca', ''),
             'iban' => (string) $settings->get('company.iban', ''),
         ];
+        $brandingLogo = (string) $settings->get('branding.logo_path', '');
+        if ($brandingLogo !== '') {
+            $absolutePath = BASE_PATH . '/' . ltrim($brandingLogo, '/');
+            if (file_exists($absolutePath)) {
+                $company['logo_url'] = \App\Support\Url::asset($brandingLogo);
+            }
+        }
 
         $clientCui = $invoice->selected_client_cui ?? '';
         $clientName = '';
