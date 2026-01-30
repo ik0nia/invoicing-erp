@@ -420,7 +420,7 @@
                             target="_blank"
                             class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                            Afiseaza Aviz
+                            Afiseaza anexa
                         </a>
                         <a
                             href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id) ?>"
