@@ -212,7 +212,7 @@
             >
                 <div class="flex items-start justify-between gap-2">
                     <div class="text-sm font-semibold text-slate-900">
-                        <?= htmlspecialchars($package->label ?: 'Pachet de produse #' . $package->package_no) ?>
+                        <?= htmlspecialchars('Pachet de produse #' . $package->package_no) ?>
                     </div>
                     <?php if (!empty($isConfirmed)): ?>
                         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">

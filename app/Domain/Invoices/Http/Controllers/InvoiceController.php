@@ -810,7 +810,7 @@ class InvoiceController
             $total = $this->applyCommission($stat['total_vat'], $commission->commission);
 
             $content[] = [
-                'Denumire' => $package->label ?: 'Pachet #' . $package->package_no,
+                'Denumire' => 'Pachet de produse #' . $package->package_no,
                 'UM' => 'BUC',
                 'NrProduse' => 1,
                 'CotaTVA' => (float) $package->vat_percent,
@@ -1224,7 +1224,7 @@ class InvoiceController
 
         foreach ($packages as $package) {
             $stats[$package->id] = [
-                'label' => $package->label ?: 'Pachet de produse #' . $package->package_no,
+                'label' => 'Pachet de produse #' . $package->package_no,
                 'package_no' => $package->package_no,
                 'vat_percent' => $package->vat_percent,
                 'line_count' => 0,
@@ -1612,7 +1612,7 @@ class InvoiceController
 
             $data[] = [
                 'package_no' => $package->package_no,
-                'label' => $package->label ?: 'Pachet #' . $package->package_no,
+                'label' => 'Pachet de produse #' . $package->package_no,
                 'total' => $total,
                 'lines' => $items,
                 'date' => $date,

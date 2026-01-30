@@ -59,7 +59,7 @@
             <?php else: ?>
                 <ul class="mt-3 space-y-2 text-sm">
                     <?php foreach ($pendingPackages as $package): ?>
-                        <?php $label = $package['label'] ?: 'Pachet #' . $package['package_no']; ?>
+                        <?php $label = 'Pachet de produse #' . $package['package_no']; ?>
                         <li class="rounded border border-slate-200 bg-white px-3 py-2">
                             <div class="flex flex-wrap items-center justify-between gap-2">
                                 <a

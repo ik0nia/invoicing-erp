@@ -51,7 +51,7 @@
                         <?php
                             $packageId = (int) $row['id'];
                             $stat = $totals[$packageId] ?? ['line_count' => 0, 'total_vat' => 0];
-                            $label = $row['label'] ?: 'Pachet #' . $row['package_no'];
+                            $label = 'Pachet de produse #' . $row['package_no'];
                         ?>
                         <tr class="border-b border-slate-100">
                             <td class="px-3 py-2">

@@ -32,7 +32,7 @@ class SagaAhkGenerator
         $total = $this->formatNumber((float) ($package['total'] ?? 0), 2);
 
         if ($label === '') {
-            $label = 'Pachet #' . $packageNo;
+            $label = 'Pachet de produse #' . $packageNo;
         }
 
         $lines = [];
