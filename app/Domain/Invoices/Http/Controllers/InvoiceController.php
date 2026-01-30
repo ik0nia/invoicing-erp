@@ -157,9 +157,11 @@ class InvoiceController
         }
 
         $form = Session::pull('manual_invoice', []);
+        $partners = Partner::all();
 
         Response::view('admin/invoices/manual', [
             'form' => $form,
+            'partners' => $partners,
         ]);
     }
 
@@ -246,6 +248,19 @@ class InvoiceController
         $currency = trim($payload['currency'] ?? 'RON');
 
         $errors = [];
+
+        if ($supplierName === '' && $supplierCui !== '') {
+            $supplier = Partner::findByCui($supplierCui);
+            if ($supplier) {
+                $supplierName = $supplier->denumire;
+            }
+        }
+        if ($customerName === '' && $customerCui !== '') {
+            $customer = Partner::findByCui($customerCui);
+            if ($customer) {
+                $customerName = $customer->denumire;
+            }
+        }
 
         if ($invoiceNumber === '') {
             $errors[] = 'Completeaza numarul facturii.';

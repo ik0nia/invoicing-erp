@@ -1,7 +1,16 @@
 <?php $title = 'Adauga factura manual'; ?>
 <?php
     $form = $form ?? [];
+    $partners = $partners ?? [];
     $lines = $form['lines'] ?? [];
+    $unitOptions = [
+        'BUC', 'SET', 'PACH', 'BAX', 'CUT', 'ROLA',
+        'KG', 'G', 'L', 'ML', 'M', 'M2', 'M3',
+        'ORE', 'SERV', 'KWH', 'KM', 'MP', 'MC',
+        'DOZA', 'FLACON', 'SAC', 'BIDON',
+    ];
+    $vatOptions = ['21', '11', '0'];
+
     if (empty($lines)) {
         $lines = [
             [
@@ -9,7 +18,7 @@
                 'quantity' => '',
                 'unit_code' => 'BUC',
                 'unit_price' => '',
-                'tax_percent' => '19',
+                'tax_percent' => '21',
             ],
         ];
     }
@@ -36,52 +45,118 @@
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
                 <div class="text-sm font-semibold text-slate-700">Furnizor</div>
                 <div class="mt-3 space-y-3">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="supplier_name">Denumire</label>
-                        <input
-                            id="supplier_name"
-                            name="supplier_name"
-                            type="text"
-                            value="<?= htmlspecialchars($form['supplier_name'] ?? '') ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="supplier_cui">CUI</label>
-                        <input
-                            id="supplier_cui"
-                            name="supplier_cui"
-                            type="text"
-                            value="<?= htmlspecialchars($form['supplier_cui'] ?? '') ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        >
-                    </div>
+                    <?php if (!empty($partners)): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="supplier_select">Denumire</label>
+                            <select
+                                id="supplier_select"
+                                name="supplier_cui"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                                <option value="">Selecteaza furnizor</option>
+                                <?php foreach ($partners as $partner): ?>
+                                    <option
+                                        value="<?= htmlspecialchars($partner->cui) ?>"
+                                        data-name="<?= htmlspecialchars($partner->denumire) ?>"
+                                        <?= ($form['supplier_cui'] ?? '') === $partner->cui ? 'selected' : '' ?>
+                                    >
+                                        <?= htmlspecialchars($partner->denumire) ?> · <?= htmlspecialchars($partner->cui) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="hidden" name="supplier_name" value="<?= htmlspecialchars($form['supplier_name'] ?? '') ?>">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="supplier_cui_display">CUI</label>
+                            <input
+                                id="supplier_cui_display"
+                                type="text"
+                                value="<?= htmlspecialchars($form['supplier_cui'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
+                                readonly
+                            >
+                        </div>
+                    <?php else: ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="supplier_name">Denumire</label>
+                            <input
+                                id="supplier_name"
+                                name="supplier_name"
+                                type="text"
+                                value="<?= htmlspecialchars($form['supplier_name'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="supplier_cui">CUI</label>
+                            <input
+                                id="supplier_cui"
+                                name="supplier_cui"
+                                type="text"
+                                value="<?= htmlspecialchars($form['supplier_cui'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
                 <div class="text-sm font-semibold text-slate-700">Client</div>
                 <div class="mt-3 space-y-3">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="customer_name">Denumire</label>
-                        <input
-                            id="customer_name"
-                            name="customer_name"
-                            type="text"
-                            value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="customer_cui">CUI</label>
-                        <input
-                            id="customer_cui"
-                            name="customer_cui"
-                            type="text"
-                            value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        >
-                    </div>
+                    <?php if (!empty($partners)): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_select">Denumire</label>
+                            <select
+                                id="customer_select"
+                                name="customer_cui"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                                <option value="">Selecteaza client</option>
+                                <?php foreach ($partners as $partner): ?>
+                                    <option
+                                        value="<?= htmlspecialchars($partner->cui) ?>"
+                                        data-name="<?= htmlspecialchars($partner->denumire) ?>"
+                                        <?= ($form['customer_cui'] ?? '') === $partner->cui ? 'selected' : '' ?>
+                                    >
+                                        <?= htmlspecialchars($partner->denumire) ?> · <?= htmlspecialchars($partner->cui) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <input type="hidden" name="customer_name" value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_cui_display">CUI</label>
+                            <input
+                                id="customer_cui_display"
+                                type="text"
+                                value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
+                                readonly
+                            >
+                        </div>
+                    <?php else: ?>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_name">Denumire</label>
+                            <input
+                                id="customer_name"
+                                name="customer_name"
+                                type="text"
+                                value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700" for="customer_cui">CUI</label>
+                            <input
+                                id="customer_cui"
+                                name="customer_cui"
+                                type="text"
+                                value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
+                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            >
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -193,12 +268,16 @@
                                     >
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input
+                                    <select
                                         name="lines[<?= (int) $index ?>][unit_code]"
-                                        type="text"
-                                        value="<?= htmlspecialchars($line['unit_code'] ?? 'BUC') ?>"
-                                        class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
+                                        class="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
                                     >
+                                        <?php foreach ($unitOptions as $unit): ?>
+                                            <option value="<?= htmlspecialchars($unit) ?>" <?= ($line['unit_code'] ?? 'BUC') === $unit ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($unit) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </td>
                                 <td class="px-3 py-2">
                                     <input
@@ -209,12 +288,16 @@
                                     >
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input
+                                    <select
                                         name="lines[<?= (int) $index ?>][tax_percent]"
-                                        type="text"
-                                        value="<?= htmlspecialchars($line['tax_percent'] ?? '19') ?>"
                                         class="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
                                     >
+                                        <?php foreach ($vatOptions as $vat): ?>
+                                            <option value="<?= $vat ?>" <?= (string) ($line['tax_percent'] ?? '21') === $vat ? 'selected' : '' ?>>
+                                                <?= $vat ?>%
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </td>
                                 <td class="px-3 py-2 text-right">
                                     <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" data-remove-line>
@@ -247,6 +330,16 @@
             return;
         }
 
+        const units = <?= json_encode($unitOptions, JSON_UNESCAPED_UNICODE) ?>;
+        const vats = <?= json_encode($vatOptions, JSON_UNESCAPED_UNICODE) ?>;
+
+        const buildOptions = (items, selected) => {
+            return items.map((item) => {
+                const isSelected = String(item) === String(selected) ? 'selected' : '';
+                return `<option value="${item}" ${isSelected}>${item}${items === vats ? '%' : ''}</option>`;
+            }).join('');
+        };
+
         const buildRow = (index) => {
             return `
                 <tr class="border-b border-slate-100" data-line-row>
@@ -257,13 +350,17 @@
                         <input name="lines[${index}][quantity]" type="text" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
                     <td class="px-3 py-2">
-                        <input name="lines[${index}][unit_code]" type="text" value="BUC" class="w-20 rounded border border-slate-300 px-2 py-1 text-sm">
+                        <select name="lines[${index}][unit_code]" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
+                            ${buildOptions(units, 'BUC')}
+                        </select>
                     </td>
                     <td class="px-3 py-2">
                         <input name="lines[${index}][unit_price]" type="text" class="w-28 rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
                     <td class="px-3 py-2">
-                        <input name="lines[${index}][tax_percent]" type="text" value="19" class="w-20 rounded border border-slate-300 px-2 py-1 text-sm">
+                        <select name="lines[${index}][tax_percent]" class="w-20 rounded border border-slate-300 px-2 py-1 text-sm">
+                            ${buildOptions(vats, '21')}
+                        </select>
                     </td>
                     <td class="px-3 py-2 text-right">
                         <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" data-remove-line> Sterge </button>
@@ -290,5 +387,31 @@
         });
 
         refreshRemove();
+
+        const supplierSelect = document.getElementById('supplier_select');
+        const supplierCui = document.getElementById('supplier_cui_display');
+        const supplierName = document.querySelector('input[name="supplier_name"]');
+        if (supplierSelect && supplierCui && supplierName) {
+            const updateSupplier = () => {
+                const option = supplierSelect.selectedOptions[0];
+                supplierCui.value = supplierSelect.value || '';
+                supplierName.value = option ? (option.dataset.name || '') : '';
+            };
+            supplierSelect.addEventListener('change', updateSupplier);
+            updateSupplier();
+        }
+
+        const customerSelect = document.getElementById('customer_select');
+        const customerCui = document.getElementById('customer_cui_display');
+        const customerName = document.querySelector('input[name="customer_name"]');
+        if (customerSelect && customerCui && customerName) {
+            const updateCustomer = () => {
+                const option = customerSelect.selectedOptions[0];
+                customerCui.value = customerSelect.value || '';
+                customerName.value = option ? (option.dataset.name || '') : '';
+            };
+            customerSelect.addEventListener('change', updateCustomer);
+            updateCustomer();
+        }
     })();
 </script>
