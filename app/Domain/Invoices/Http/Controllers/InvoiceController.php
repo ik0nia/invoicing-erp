@@ -84,6 +84,27 @@ class InvoiceController
             }
 
             $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
+            $collectedTotal = 0.0;
+            $paidTotal = 0.0;
+            $clientTotal = null;
+
+            if (Database::tableExists('payment_in_allocations')) {
+                $collectedTotal = (float) Database::fetchValue(
+                    'SELECT COALESCE(SUM(amount), 0) FROM payment_in_allocations WHERE invoice_in_id = :invoice',
+                    ['invoice' => $invoiceId]
+                );
+            }
+            if (Database::tableExists('payment_out_allocations')) {
+                $paidTotal = (float) Database::fetchValue(
+                    'SELECT COALESCE(SUM(amount), 0) FROM payment_out_allocations WHERE invoice_in_id = :invoice',
+                    ['invoice' => $invoiceId]
+                );
+            }
+
+            $commissionBase = $invoice->commission_percent ?? $commissionPercent;
+            if ($commissionBase !== null) {
+                $clientTotal = $this->applyCommission($invoice->total_with_vat, (float) $commissionBase);
+            }
 
             Response::view('admin/invoices/show', [
                 'invoice' => $invoice,
@@ -102,6 +123,9 @@ class InvoiceController
                 'isAdmin' => $isAdmin,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
+                'collectedTotal' => $collectedTotal,
+                'paidTotal' => $paidTotal,
+                'clientTotal' => $clientTotal,
             ]);
         }
 
@@ -185,9 +209,13 @@ class InvoiceController
                 $clientName = $partner ? $partner->denumire : '';
             }
 
-            $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-            if ($commission) {
-                $commissionPercent = (float) $commission->commission;
+            if ($invoice->commission_percent !== null) {
+                $commissionPercent = (float) $invoice->commission_percent;
+            } else {
+                $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+                if ($commission) {
+                    $commissionPercent = (float) $commission->commission;
+                }
             }
         }
 
@@ -791,6 +819,15 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
         }
 
+        Database::execute(
+            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+            [
+                'commission' => $commission->commission,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packages = Package::forInvoice($invoiceId);
         if (empty($packages)) {
@@ -1361,6 +1398,7 @@ class InvoiceController
                     fgo_storno_link VARCHAR(255) NULL,
                     order_note_no INT NULL,
                     order_note_date DATE NULL,
+                    commission_percent DECIMAL(6,2) NULL,
                     created_at DATETIME NULL,
                     updated_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -1441,6 +1479,9 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'order_note_date')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_date DATE NULL AFTER order_note_no');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'commission_percent')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN commission_percent DECIMAL(6,2) NULL AFTER order_note_date');
         }
 
         $this->ensurePackageAutoIncrement();

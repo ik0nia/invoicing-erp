@@ -121,6 +121,48 @@
     </div>
 </div>
 
+<div class="mt-4 grid gap-4 md:grid-cols-3">
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <div class="text-slate-500">Incasat client</div>
+        <?php if ($clientTotal !== null): ?>
+            <div class="mt-1 font-semibold text-slate-900">
+                <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
+            </div>
+            <div class="text-xs text-slate-600">
+                <?= ($collectedTotal ?? 0) >= $clientTotal ? 'Incasat integral' : 'Incasat partial' ?>
+            </div>
+        <?php else: ?>
+            <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
+        <?php endif; ?>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <div class="text-slate-500">Platit furnizor</div>
+        <div class="mt-1 font-semibold text-slate-900">
+            <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
+        </div>
+        <div class="text-xs text-slate-600">
+            <?= ($paidTotal ?? 0) >= (float) $invoice->total_with_vat ? 'Platit integral' : 'Platit partial' ?>
+        </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <div class="text-slate-500">Actiuni rapide</div>
+        <div class="mt-2 flex flex-wrap gap-2">
+            <a
+                href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
+                class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                Adauga incasare
+            </a>
+            <a
+                href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
+                class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                Adauga plata
+            </a>
+        </div>
+    </div>
+</div>
+
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>
     <p class="mt-2 text-sm text-slate-600">

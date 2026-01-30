@@ -43,6 +43,16 @@ $menuSections = [
             'path' => '/admin/pachete-confirmate',
             'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
         ],
+        [
+            'label' => 'Incasari clienti',
+            'path' => '/admin/incasari',
+            'active' => str_starts_with($currentPath, '/admin/incasari'),
+        ],
+        [
+            'label' => 'Plati furnizori',
+            'path' => '/admin/plati',
+            'active' => str_starts_with($currentPath, '/admin/plati'),
+        ],
     ],
     'Companii' => [
         [

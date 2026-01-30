@@ -4,6 +4,7 @@ use App\Domain\Settings\Http\Controllers\SettingsController;
 use App\Domain\Invoices\Http\Controllers\InvoiceController;
 use App\Domain\Companies\Http\Controllers\CompanyController;
 use App\Domain\Partners\Http\Controllers\AssociationsController;
+use App\Domain\Payments\Http\Controllers\PaymentsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
@@ -34,6 +35,14 @@ $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']
 $router->post('/admin/facturi/print-storno', [InvoiceController::class, 'printStornoInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
+
+$router->get('/admin/incasari', [PaymentsController::class, 'indexIn']);
+$router->get('/admin/incasari/adauga', [PaymentsController::class, 'createIn']);
+$router->post('/admin/incasari/adauga', [PaymentsController::class, 'storeIn']);
+$router->get('/admin/plati', [PaymentsController::class, 'indexOut']);
+$router->get('/admin/plati/adauga', [PaymentsController::class, 'createOut']);
+$router->post('/admin/plati/adauga', [PaymentsController::class, 'storeOut']);
+$router->post('/admin/plati/email-azi', [PaymentsController::class, 'sendDailyEmails']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
 $router->get('/admin/companii/edit', [CompanyController::class, 'edit']);
