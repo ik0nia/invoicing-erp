@@ -809,6 +809,16 @@ class InvoiceController
         }
 
         if ($link !== '') {
+            $filename = 'factura_' . $this->safeFileName(trim($invoice->fgo_series . '_' . $invoice->fgo_number)) . '.pdf';
+            $content = $this->fetchRemoteFile($link);
+            if ($content !== null) {
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Length: ' . strlen($content));
+                echo $content;
+                exit;
+            }
+
             header('Location: ' . $link);
             exit;
         }
@@ -1486,6 +1496,29 @@ class InvoiceController
         header('Content-Length: ' . strlen($content));
         echo $content;
         exit;
+    }
+
+    private function fetchRemoteFile(string $url): ?string
+    {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return null;
+        }
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+
+        $data = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($data === false || $status >= 400) {
+            return null;
+        }
+
+        return $data;
     }
 
     private function storeSagaFiles(int $invoiceId): void
