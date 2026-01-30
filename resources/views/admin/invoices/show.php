@@ -59,78 +59,7 @@
     <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
 </div>
 
-<div class="mt-8 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-    <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <h2 class="text-lg font-semibold text-slate-900">Pachete</h2>
-                <p class="mt-1 text-sm text-slate-600">Configureaza numarul de pachete pe fiecare cota TVA.</p>
-            </div>
-            <?php if (!empty($vatRates)): ?>
-                <form
-                    method="POST"
-                    action="<?= App\Support\Url::to('admin/facturi/pachete') ?>"
-                    class="flex flex-wrap items-center gap-3"
-                    id="packages-form"
-                >
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <input type="hidden" name="action" value="generate">
-
-                    <?php foreach ($vatRates as $vatRate): ?>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-semibold text-slate-600">TVA <?= htmlspecialchars($vatRate) ?>%</span>
-                            <div class="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
-                                <button
-                                    type="button"
-                                    class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                                    data-counter-decrement
-                                    data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                                >−</button>
-                                <input
-                                    id="vat_<?= htmlspecialchars($vatRate) ?>"
-                                    name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
-                                    type="number"
-                                    min="1"
-                                    value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
-                                    class="w-12 border-none text-center text-sm"
-                                    data-counter-input
-                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                                >
-                                <button
-                                    type="button"
-                                    class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
-                                    data-counter-increment
-                                    data-target="vat_<?= htmlspecialchars($vatRate) ?>"
-                                    <?= !empty($isConfirmed) ? 'disabled' : '' ?>
-                                >+</button>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </form>
-            <?php endif; ?>
-        </div>
-
-        <?php if (empty($vatRates)): ?>
-            <div class="mt-4 text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
-        <?php else: ?>
-            <?php if (!empty($isConfirmed)): ?>
-                <div class="mt-4 text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
-            <?php else: ?>
-                <div class="mt-4 text-xs text-slate-500">
-                    Modificarea numarului de pachete aplica automat reorganizarea.
-                </div>
-            <?php endif; ?>
-        <?php endif; ?>
-
-        <?php if (empty($isConfirmed) && !empty($packages)): ?>
-            <div class="mt-3 text-sm text-slate-600">
-                Dupa ce organizezi produsele, confirma pachetele in sectiunea de mai jos.
-            </div>
-        <?php endif; ?>
-    </div>
-
+<div class="mt-8">
     <div id="client-select" class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Client de facturat</h2>
         <p class="mt-2 text-sm text-slate-600">
@@ -209,14 +138,69 @@
 </div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
-    <h2 class="text-lg font-semibold text-slate-900">Organizare produse (drag & drop)</h2>
+    <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>
     <p class="mt-2 text-sm text-slate-600">
-        Poti muta produsele intre pachete doar daca au aceeasi cota TVA.
+        Seteaza numarul de pachete pe fiecare cota TVA si muta produsele prin drag &amp; drop.
     </p>
     <?php if (!empty($isConfirmed)): ?>
         <div class="mt-3 text-sm font-semibold text-amber-700">
             Pachetele sunt confirmate si nu mai pot fi mutate.
         </div>
+    <?php endif; ?>
+
+    <?php if (empty($vatRates)): ?>
+        <div class="mt-4 text-sm text-slate-500">Nu exista produse pentru a genera pachete.</div>
+    <?php else: ?>
+        <form
+            method="POST"
+            action="<?= App\Support\Url::to('admin/facturi/pachete') ?>"
+            class="mt-4 flex flex-wrap items-center gap-3"
+            id="packages-form"
+        >
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input type="hidden" name="action" value="generate">
+
+            <?php foreach ($vatRates as $vatRate): ?>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-semibold text-slate-600">TVA <?= htmlspecialchars($vatRate) ?>%</span>
+                    <div class="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1">
+                        <button
+                            type="button"
+                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            data-counter-decrement
+                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                        >−</button>
+                        <input
+                            id="vat_<?= htmlspecialchars($vatRate) ?>"
+                            name="package_counts[<?= htmlspecialchars($vatRate) ?>]"
+                            type="number"
+                            min="1"
+                            value="<?= (int) ($packageDefaults[$vatRate] ?? 1) ?>"
+                            class="w-12 border-none text-center text-sm"
+                            data-counter-input
+                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                        >
+                        <button
+                            type="button"
+                            class="rounded border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            data-counter-increment
+                            data-target="vat_<?= htmlspecialchars($vatRate) ?>"
+                            <?= !empty($isConfirmed) ? 'disabled' : '' ?>
+                        >+</button>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </form>
+
+        <?php if (!empty($isConfirmed)): ?>
+            <div class="mt-4 text-sm text-slate-500">Pachetele sunt confirmate si nu pot fi regenerate.</div>
+        <?php else: ?>
+            <div class="mt-4 text-xs text-slate-500">
+                Modificarea numarului de pachete aplica automat reorganizarea.
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <?php
