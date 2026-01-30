@@ -16,7 +16,7 @@
         </div>
         <a
             href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice->id) ?>"
-            class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
+            class="no-print rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
         >
             Inapoi la factura
         </a>

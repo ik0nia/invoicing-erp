@@ -228,7 +228,7 @@ class InvoiceController
             'clientCui' => $clientCui,
             'clientName' => $clientName,
             'clientCompany' => $clientCompany,
-        ]);
+        ], 'layouts/print');
     }
 
     public function showManual(): void
