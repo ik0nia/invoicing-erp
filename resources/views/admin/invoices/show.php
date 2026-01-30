@@ -412,9 +412,16 @@
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                             <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                Printeaza
+                                Download PDF
                             </button>
                         </form>
+                        <a
+                            href="<?= App\Support\Url::to('admin/facturi/aviz?invoice_id=' . (int) $invoice->id) ?>"
+                            target="_blank"
+                            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Afiseaza Aviz
+                        </a>
                         <?php if (empty($invoice->fgo_storno_number)): ?>
                             <form method="POST" action="<?= App\Support\Url::to('admin/facturi/storno') ?>">
                                 <?= App\Support\Csrf::input() ?>

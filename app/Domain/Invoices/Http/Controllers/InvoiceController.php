@@ -148,6 +148,82 @@ class InvoiceController
         Response::view('admin/invoices/import');
     }
 
+    public function showAviz(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            Response::abort(404, 'Factura nu a fost gasita.');
+        }
+
+        $packages = Package::forInvoice($invoiceId);
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packageStats = $this->packageStats($lines, $packages);
+        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+
+        $totalWithout = 0.0;
+        $totalWith = 0.0;
+
+        foreach ($packageStats as $stat) {
+            $totalWithout += (float) ($stat['total'] ?? 0);
+            $totalWith += (float) ($stat['total_vat'] ?? 0);
+        }
+
+        $settings = new SettingsService();
+        $company = [
+            'denumire' => (string) $settings->get('company.denumire', ''),
+            'tip_firma' => (string) $settings->get('company.tip_firma', ''),
+            'cui' => (string) $settings->get('company.cui', ''),
+            'nr_reg_comertului' => (string) $settings->get('company.nr_reg_comertului', ''),
+            'platitor_tva' => (bool) $settings->get('company.platitor_tva', false),
+            'adresa' => (string) $settings->get('company.adresa', ''),
+            'localitate' => (string) $settings->get('company.localitate', ''),
+            'judet' => (string) $settings->get('company.judet', ''),
+            'tara' => (string) $settings->get('company.tara', 'Romania'),
+            'email' => (string) $settings->get('company.email', ''),
+            'telefon' => (string) $settings->get('company.telefon', ''),
+            'banca' => (string) $settings->get('company.banca', ''),
+            'iban' => (string) $settings->get('company.iban', ''),
+        ];
+
+        $clientCui = $invoice->selected_client_cui ?? '';
+        $clientName = '';
+        $clientCompany = null;
+
+        if ($clientCui !== '') {
+            $clientCompany = Company::findByCui($clientCui);
+            if ($clientCompany) {
+                $clientName = $clientCompany->denumire;
+            } else {
+                $partner = Partner::findByCui($clientCui);
+                $clientName = $partner ? $partner->denumire : '';
+            }
+        }
+
+        Response::view('admin/invoices/aviz', [
+            'invoice' => $invoice,
+            'packages' => $packages,
+            'packageStats' => $packageStats,
+            'linesByPackage' => $linesByPackage,
+            'totalWithout' => $totalWithout,
+            'totalWith' => $totalWith,
+            'company' => $company,
+            'clientCui' => $clientCui,
+            'clientName' => $clientName,
+            'clientCompany' => $clientCompany,
+        ]);
+    }
+
     public function showManual(): void
     {
         Auth::requireAdmin();
