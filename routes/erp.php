@@ -13,7 +13,14 @@ $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedP
 $router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);
 $router->post('/admin/facturi/adauga', [InvoiceController::class, 'storeManual']);
 $router->post('/admin/facturi/calc-totals', [InvoiceController::class, 'calcManualTotals']);
-$router->get('/admin/facturi/aviz', [InvoiceController::class, 'showAviz']);
+$router->get('/admin/facturi/anexa', [InvoiceController::class, 'showAviz']);
+$router->get('/admin/facturi/aviz', function (): void {
+    $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : 0;
+    if ($invoiceId) {
+        App\Support\Response::redirect('/admin/facturi/anexa?invoice_id=' . $invoiceId);
+    }
+    App\Support\Response::redirect('/admin/facturi/anexa');
+});
 $router->get('/admin/facturi/nota-comanda', [InvoiceController::class, 'showOrderNote']);
 $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);

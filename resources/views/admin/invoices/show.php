@@ -416,7 +416,7 @@
                             </button>
                         </form>
                         <a
-                            href="<?= App\Support\Url::to('admin/facturi/aviz?invoice_id=' . (int) $invoice->id) ?>"
+                            href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id) ?>"
                             target="_blank"
                             class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                         >
