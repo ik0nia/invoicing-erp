@@ -45,7 +45,7 @@
 
         <div class="mt-4 grid gap-4 md:grid-cols-2">
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="fgo_api_key">Cod unic (API key)</label>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_api_key">Cod unic (CUI firma)</label>
                 <input
                     id="fgo_api_key"
                     name="fgo_api_key"
@@ -55,7 +55,7 @@
                 >
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="fgo_secret_key">Secret key</label>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_secret_key">Cheie privata (API)</label>
                 <input
                     id="fgo_secret_key"
                     name="fgo_secret_key"
@@ -68,18 +68,43 @@
                 <?php else: ?>
                     <p class="mt-1 text-xs text-slate-600">Nu exista cheie salvata.</p>
                 <?php endif; ?>
-                <p class="text-xs text-slate-600">Lasa gol pentru a pastra cheia actuala.</p>
+                <p class="text-xs text-slate-600">Se genereaza in FGO: Setari → Utilizatori → utilizator API.</p>
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="fgo_series">Serie factura FGO</label>
-                <input
-                    id="fgo_series"
-                    name="fgo_series"
-                    type="text"
-                    value="<?= htmlspecialchars($fgoSeries ?? '') ?>"
+                <label class="block text-sm font-medium text-slate-700" for="fgo_series_list">Serii FGO disponibile</label>
+                <textarea
+                    id="fgo_series_list"
+                    name="fgo_series_list"
+                    rows="2"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-                <p class="text-xs text-slate-600">Serie definita in FGO (Setari → Serii documente).</p>
+                ><?= htmlspecialchars($fgoSeriesListText ?? '') ?></textarea>
+                <p class="text-xs text-slate-600">Separat prin virgula sau rand nou (ex: RO1, RO2).</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="fgo_series">Serie implicita</label>
+                <?php if (!empty($fgoSeriesList)): ?>
+                    <select
+                        id="fgo_series"
+                        name="fgo_series"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                        <option value="">Alege serie</option>
+                        <?php foreach ($fgoSeriesList as $series): ?>
+                            <option value="<?= htmlspecialchars($series) ?>" <?= ($fgoSeries ?? '') === $series ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($series) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php else: ?>
+                    <input
+                        id="fgo_series"
+                        name="fgo_series"
+                        type="text"
+                        value="<?= htmlspecialchars($fgoSeries ?? '') ?>"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                    <p class="text-xs text-slate-600">Completeaza lista de serii pentru dropdown.</p>
+                <?php endif; ?>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="fgo_base_url">API URL (optional)</label>

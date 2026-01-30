@@ -35,6 +35,11 @@ class SettingsController
         $fgoSecret = (string) $this->settings->get('fgo.secret_key', '');
         $fgoSecretMasked = $fgoSecret !== '' ? str_repeat('*', max(0, strlen($fgoSecret) - 4)) . substr($fgoSecret, -4) : '';
         $fgoSeries = (string) $this->settings->get('fgo.series', '');
+        $fgoSeriesList = $this->settings->get('fgo.series_list', []);
+        if (!is_array($fgoSeriesList)) {
+            $fgoSeriesList = [];
+        }
+        $fgoSeriesListText = implode(', ', $fgoSeriesList);
         $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
 
         Response::view('admin/settings/index', [
@@ -43,6 +48,8 @@ class SettingsController
             'fgoApiKey' => $fgoApiKey,
             'fgoSecretMasked' => $fgoSecretMasked,
             'fgoSeries' => $fgoSeries,
+            'fgoSeriesList' => $fgoSeriesList,
+            'fgoSeriesListText' => $fgoSeriesListText,
             'fgoBaseUrl' => $fgoBaseUrl,
         ]);
     }
@@ -122,6 +129,7 @@ class SettingsController
         $apiKey = trim($_POST['fgo_api_key'] ?? '');
         $secretKey = trim($_POST['fgo_secret_key'] ?? '');
         $series = trim($_POST['fgo_series'] ?? '');
+        $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
 
         $savedSomething = $logoUpdated;
@@ -133,6 +141,28 @@ class SettingsController
 
         if ($secretKey !== '') {
             $this->settings->set('fgo.secret_key', $secretKey);
+            $savedSomething = true;
+        }
+
+        $seriesList = [];
+        if ($seriesListRaw !== '') {
+            $parts = preg_split('/[,\n;]+/', $seriesListRaw);
+            foreach ($parts as $part) {
+                $value = trim((string) $part);
+                if ($value === '') {
+                    continue;
+                }
+                $seriesList[$value] = true;
+            }
+        }
+        $seriesList = array_keys($seriesList);
+
+        if ($series !== '' && !in_array($series, $seriesList, true)) {
+            $seriesList[] = $series;
+        }
+
+        if ($seriesListRaw !== '') {
+            $this->settings->set('fgo.series_list', $seriesList);
             $savedSomething = true;
         }
 

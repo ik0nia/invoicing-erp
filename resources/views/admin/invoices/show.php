@@ -342,6 +342,25 @@
                         <?php if (!empty($selectedClientCui)): ?>
                             <input type="hidden" name="client_cui" value="<?= htmlspecialchars($selectedClientCui) ?>">
                         <?php endif; ?>
+                        <?php if (!empty($fgoSeriesOptions)): ?>
+                            <div class="mb-2">
+                                <label class="mb-1 block text-xs font-semibold text-slate-600" for="fgo_series_select">Serie FGO</label>
+                                <select
+                                    id="fgo_series_select"
+                                    name="fgo_series"
+                                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                                >
+                                    <option value="">Alege serie</option>
+                                    <?php foreach ($fgoSeriesOptions as $series): ?>
+                                        <option value="<?= htmlspecialchars($series) ?>" <?= ($fgoSeriesSelected ?? '') === $series ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($series) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php elseif (!empty($fgoSeriesSelected)): ?>
+                            <input type="hidden" name="fgo_series" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
+                        <?php endif; ?>
                         <button
                             class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                             <?= empty($selectedClientCui) ? 'disabled' : '' ?>

@@ -48,6 +48,15 @@ class InvoiceController
             $user = Auth::user();
             $isAdmin = $user ? $user->isAdmin() : false;
             $storedClientCui = $invoice->selected_client_cui ?? '';
+            $settings = new SettingsService();
+            $fgoSeriesOptions = $settings->get('fgo.series_list', []);
+            if (!is_array($fgoSeriesOptions)) {
+                $fgoSeriesOptions = [];
+            }
+            $fgoSeriesSelected = (string) $settings->get('fgo.series', '');
+            if (!empty($invoice->fgo_series)) {
+                $fgoSeriesSelected = $invoice->fgo_series;
+            }
 
             if ($selectedClientCui === '' && $storedClientCui !== '') {
                 $selectedClientCui = $storedClientCui;
@@ -90,6 +99,8 @@ class InvoiceController
                 'commissionPercent' => $commissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
+                'fgoSeriesOptions' => $fgoSeriesOptions,
+                'fgoSeriesSelected' => $fgoSeriesSelected,
             ]);
         }
 
@@ -300,11 +311,23 @@ class InvoiceController
         $settings = new SettingsService();
         $codUnic = trim((string) $settings->get('fgo.api_key', ''));
         $secret = trim((string) $settings->get('fgo.secret_key', ''));
-        $series = trim((string) $settings->get('fgo.series', ''));
+        $seriesOptions = $settings->get('fgo.series_list', []);
+        if (!is_array($seriesOptions)) {
+            $seriesOptions = [];
+        }
+        $series = trim((string) ($_POST['fgo_series'] ?? ''));
+        if ($series === '') {
+            $series = trim((string) $settings->get('fgo.series', ''));
+        }
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
+        if (!empty($seriesOptions) && $series !== '' && !in_array($series, $seriesOptions, true)) {
+            Session::flash('error', 'Seria selectata nu exista in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+
         if ($codUnic === '' || $secret === '' || $series === '') {
-            Session::flash('error', 'Completeaza Cod unic, Secret key si Serie in setarile FGO.');
+            Session::flash('error', 'Completeaza Cod unic, Cheie privata si Serie in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -462,7 +485,7 @@ class InvoiceController
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cod unic si Secret key in setarile FGO.');
+            Session::flash('error', 'Completeaza Cod unic si Cheie privata in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
@@ -531,7 +554,7 @@ class InvoiceController
         $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
 
         if ($codUnic === '' || $secret === '') {
-            Session::flash('error', 'Completeaza Cod unic si Secret key in setarile FGO.');
+            Session::flash('error', 'Completeaza Cod unic si Cheie privata in setarile FGO.');
             Response::redirect('/admin/setari');
         }
 
