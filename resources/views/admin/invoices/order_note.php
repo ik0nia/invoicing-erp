@@ -8,7 +8,7 @@
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
             <h1 class="text-xl font-semibold text-slate-900">
-                Nota de comanda nr. <?= htmlspecialchars((string) $number) ?> din data de <?= htmlspecialchars($date) ?>
+                COMANDA NR. <?= htmlspecialchars((string) $number) ?> / DATA <?= htmlspecialchars($date) ?>
             </h1>
         </div>
         <a
@@ -31,13 +31,13 @@
     </div>
 
     <div class="mt-4 overflow-x-auto rounded border border-slate-200">
-        <table class="w-full table-fixed text-left text-xs">
+        <table class="w-full table-fixed border border-slate-300 text-left text-xs">
             <colgroup>
                 <col style="width: 8%">
                 <col style="width: 62%">
                 <col style="width: 30%">
             </colgroup>
-            <thead class="bg-slate-50 text-slate-600">
+            <thead class="bg-slate-50 text-slate-600 border-b border-slate-300">
                 <tr>
                     <th class="px-2 py-1">Nr</th>
                     <th class="px-2 py-1">Produs</th>
@@ -47,7 +47,7 @@
             <tbody>
                 <?php $index = 1; ?>
                 <?php foreach ($lines as $line): ?>
-                    <tr class="border-t border-slate-100">
+                    <tr class="border-t border-slate-300">
                         <td class="px-2 py-1"><?= $index ?></td>
                         <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
                         <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>

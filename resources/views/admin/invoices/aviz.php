@@ -12,7 +12,7 @@
                 $dateDisplay = $invoice->issue_date ? date('d.m.Y', strtotime($invoice->issue_date)) : '';
             ?>
             <h1 class="text-xl font-semibold text-slate-900">
-                Anexa la factura, <?= htmlspecialchars($reference) ?> din data de <?= htmlspecialchars($dateDisplay) ?>
+                ANEXA - Factura <?= htmlspecialchars($reference) ?> / DATA <?= htmlspecialchars($dateDisplay) ?>
             </h1>
             <p class="mt-1 text-xs font-semibold text-slate-600">DOCUMENT NEFISCAL</p>
             <p class="mt-2 text-xs text-slate-600">
@@ -46,7 +46,7 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full table-fixed text-left text-xs">
+                    <table class="w-full table-fixed border border-slate-300 text-left text-xs">
                         <colgroup>
                             <col style="width: 6%">
                             <col style="width: 40%">
@@ -56,7 +56,7 @@
                             <col style="width: 16%">
                             <col style="width: 8%">
                         </colgroup>
-                        <thead class="bg-white text-slate-600">
+                        <thead class="bg-white text-slate-600 border-b border-slate-300">
                             <tr>
                                 <th class="px-2 py-1">Nr</th>
                                 <th class="px-2 py-1">Produs</th>
@@ -70,7 +70,7 @@
                         <tbody>
                             <?php $index = 1; ?>
                             <?php foreach ($lines as $line): ?>
-                                <tr class="border-t border-slate-100">
+                                <tr class="border-t border-slate-300">
                                     <td class="px-2 py-1"><?= $index ?></td>
                                     <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
                                     <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
