@@ -98,11 +98,13 @@ $menuSections = [
             aria-label="Meniu principal"
         >
             <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
-                <?php if ($logoUrl): ?>
-                    <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="h-9 w-auto">
-                <?php else: ?>
-                    <span class="text-lg font-semibold text-blue-700">ERP Intern</span>
-                <?php endif; ?>
+                <a href="<?= App\Support\Url::to('admin/dashboard') ?>" class="inline-flex items-center gap-3">
+                    <?php if ($logoUrl): ?>
+                        <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="h-12 w-auto">
+                    <?php else: ?>
+                        <span class="text-lg font-semibold text-blue-700">ERP Intern</span>
+                    <?php endif; ?>
+                </a>
             </div>
             <nav class="px-4 py-6 text-sm space-y-6">
                 <?php foreach ($menuSections as $sectionLabel => $items): ?>
