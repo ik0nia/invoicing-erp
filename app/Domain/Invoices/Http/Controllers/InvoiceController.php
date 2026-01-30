@@ -804,6 +804,13 @@ class InvoiceController
                     'id' => $invoice->id,
                 ]
             );
+        } else {
+            $link = (string) ($invoice->fgo_link ?? '');
+        }
+
+        if ($link !== '') {
+            header('Location: ' . $link);
+            exit;
         }
 
         Session::flash('status', 'Factura FGO a fost printata.');

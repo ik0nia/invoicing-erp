@@ -408,7 +408,7 @@
                                 Vezi PDF
                             </a>
                         <?php endif; ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print') ?>">
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print') ?>" target="_blank">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                             <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
