@@ -151,6 +151,19 @@
                 return;
             }
 
+            const exactMatch = allocations.find((input) => {
+                const balance = parseAmount(input.dataset.balance || '0');
+                return Math.abs(balance - total) < 0.01;
+            });
+
+            if (exactMatch) {
+                allocations.forEach((input) => {
+                    input.value = '';
+                });
+                exactMatch.value = total.toFixed(2);
+                return;
+            }
+
             const sorted = allocations
                 .map((input) => ({
                     input,
