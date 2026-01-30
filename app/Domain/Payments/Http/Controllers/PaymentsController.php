@@ -232,10 +232,6 @@ class PaymentsController
         $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
         $suppliers = $this->paymentSuppliers();
 
-        $payments = array_values(array_filter($payments, function (array $payment) use ($allocations): bool {
-            return !empty($allocations[$payment['id']] ?? []);
-        }));
-
         Response::view('admin/payments/out/history', [
             'payments' => $payments,
             'allocations' => $allocations,
@@ -282,10 +278,6 @@ class PaymentsController
 
         $payments = Database::fetchAll($sql, $params);
         $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
-
-        $payments = array_values(array_filter($payments, function (array $payment) use ($allocations): bool {
-            return !empty($allocations[$payment['id']] ?? []);
-        }));
 
         $filename = 'plati_furnizori_' . date('Ymd_His') . '.csv';
         header('Content-Type: text/csv; charset=UTF-8');

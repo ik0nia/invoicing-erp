@@ -111,6 +111,10 @@
                             </tbody>
                         </table>
                     </div>
+                <?php else: ?>
+                    <div class="mt-2 text-xs font-semibold text-amber-700">
+                        Plata nealocata.
+                    </div>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>
