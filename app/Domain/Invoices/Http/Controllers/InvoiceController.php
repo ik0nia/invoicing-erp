@@ -171,12 +171,40 @@ class InvoiceController
         $packageStats = $this->packageStats($lines, $packages);
         $linesByPackage = $this->groupLinesByPackage($lines, $packages);
 
+        $clientCui = $invoice->selected_client_cui ?? '';
+        $clientName = '';
+        $clientCompany = null;
+        $commissionPercent = null;
+
+        if ($clientCui !== '') {
+            $clientCompany = Company::findByCui($clientCui);
+            if ($clientCompany) {
+                $clientName = $clientCompany->denumire;
+            } else {
+                $partner = Partner::findByCui($clientCui);
+                $clientName = $partner ? $partner->denumire : '';
+            }
+
+            $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+            if ($commission) {
+                $commissionPercent = (float) $commission->commission;
+            }
+        }
+
         $totalWithout = 0.0;
         $totalWith = 0.0;
 
         foreach ($packageStats as $stat) {
-            $totalWithout += (float) ($stat['total'] ?? 0);
-            $totalWith += (float) ($stat['total_vat'] ?? 0);
+            $without = (float) ($stat['total'] ?? 0);
+            $with = (float) ($stat['total_vat'] ?? 0);
+
+            if ($commissionPercent !== null) {
+                $without = $this->applyCommission($without, $commissionPercent);
+                $with = $this->applyCommission($with, $commissionPercent);
+            }
+
+            $totalWithout += $without;
+            $totalWith += $with;
         }
 
         $settings = new SettingsService();
@@ -203,20 +231,6 @@ class InvoiceController
             }
         }
 
-        $clientCui = $invoice->selected_client_cui ?? '';
-        $clientName = '';
-        $clientCompany = null;
-
-        if ($clientCui !== '') {
-            $clientCompany = Company::findByCui($clientCui);
-            if ($clientCompany) {
-                $clientName = $clientCompany->denumire;
-            } else {
-                $partner = Partner::findByCui($clientCui);
-                $clientName = $partner ? $partner->denumire : '';
-            }
-        }
-
         Response::view('admin/invoices/aviz', [
             'invoice' => $invoice,
             'packages' => $packages,
@@ -228,6 +242,7 @@ class InvoiceController
             'clientCui' => $clientCui,
             'clientName' => $clientName,
             'clientCompany' => $clientCompany,
+            'commissionPercent' => $commissionPercent,
         ], 'layouts/print');
     }
 

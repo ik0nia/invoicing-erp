@@ -30,11 +30,25 @@
         </a>
     </div>
 
+    <?php
+        $commissionPercent = $commissionPercent ?? null;
+        $applyCommission = function (float $amount) use ($commissionPercent): float {
+            if ($commissionPercent === null) {
+                return $amount;
+            }
+            $factor = 1 + (abs($commissionPercent) / 100);
+            return $commissionPercent >= 0
+                ? round($amount * $factor, 2)
+                : round($amount / $factor, 2);
+        };
+    ?>
+
     <div class="mt-4 space-y-4">
         <?php foreach ($packages as $package): ?>
             <?php
                 $stat = $packageStats[$package->id] ?? ['line_count' => 0, 'total' => 0];
                 $lines = $linesByPackage[$package->id] ?? [];
+                $packageTotal = $applyCommission((float) ($stat['total'] ?? 0));
             ?>
             <div class="rounded border border-slate-200">
                 <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
@@ -42,7 +56,7 @@
                         <?= htmlspecialchars($package->label ?: 'Pachet #' . $package->package_no) ?>
                     </div>
                     <div class="text-xs text-slate-600">
-                        Total pachet: <strong><?= number_format((float) ($stat['total'] ?? 0), 2, '.', ' ') ?> RON</strong>
+                        Total pachet: <strong><?= number_format($packageTotal, 2, '.', ' ') ?> RON</strong>
                     </div>
                 </div>
                 <div class="overflow-x-auto">
@@ -70,13 +84,17 @@
                         <tbody>
                             <?php $index = 1; ?>
                             <?php foreach ($lines as $line): ?>
+                                <?php
+                                    $unitPrice = $applyCommission((float) $line->unit_price);
+                                    $lineTotal = $applyCommission((float) $line->line_total);
+                                ?>
                                 <tr class="border-t border-slate-300">
                                     <td class="px-2 py-1"><?= $index ?></td>
                                     <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
                                     <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
                                     <td class="px-2 py-1"><?= htmlspecialchars($line->unit_code) ?></td>
-                                    <td class="px-2 py-1"><?= number_format($line->unit_price, 2, '.', ' ') ?></td>
-                                    <td class="px-2 py-1"><?= number_format($line->line_total, 2, '.', ' ') ?></td>
+                                    <td class="px-2 py-1"><?= number_format($unitPrice, 2, '.', ' ') ?></td>
+                                    <td class="px-2 py-1"><?= number_format($lineTotal, 2, '.', ' ') ?></td>
                                     <td class="px-2 py-1"><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
                                 </tr>
                                 <?php $index++; ?>
