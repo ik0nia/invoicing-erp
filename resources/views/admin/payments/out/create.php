@@ -55,15 +55,6 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="method">Metoda</label>
-            <input
-                id="method"
-                name="method"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-        <div>
             <label class="block text-sm font-medium text-slate-700" for="reference">Referinta</label>
             <input
                 id="reference"

@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS payments_in (
     client_name VARCHAR(255) NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     paid_at DATE NOT NULL,
-    method VARCHAR(32) NULL,
     reference VARCHAR(64) NULL,
     notes TEXT NULL,
     created_at DATETIME NULL
@@ -24,7 +23,6 @@ CREATE TABLE IF NOT EXISTS payments_out (
     supplier_name VARCHAR(255) NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     paid_at DATE NOT NULL,
-    method VARCHAR(32) NULL,
     reference VARCHAR(64) NULL,
     notes TEXT NULL,
     email_sent_at DATETIME NULL,
