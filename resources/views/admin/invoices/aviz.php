@@ -48,15 +48,17 @@
                 <div class="overflow-x-auto">
                     <table class="w-full table-fixed text-left text-xs">
                         <colgroup>
-                            <col style="width: 44%">
+                            <col style="width: 6%">
+                            <col style="width: 40%">
                             <col style="width: 10%">
                             <col style="width: 8%">
                             <col style="width: 12%">
                             <col style="width: 16%">
-                            <col style="width: 10%">
+                            <col style="width: 8%">
                         </colgroup>
                         <thead class="bg-white text-slate-600">
                             <tr>
+                                <th class="px-2 py-1">Nr</th>
                                 <th class="px-2 py-1">Produs</th>
                                 <th class="px-2 py-1">Cantitate</th>
                                 <th class="px-2 py-1">UM</th>
@@ -66,8 +68,10 @@
                             </tr>
                         </thead>
                         <tbody>
+                            <?php $index = 1; ?>
                             <?php foreach ($lines as $line): ?>
                                 <tr class="border-t border-slate-100">
+                                    <td class="px-2 py-1"><?= $index ?></td>
                                     <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
                                     <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
                                     <td class="px-2 py-1"><?= htmlspecialchars($line->unit_code) ?></td>
@@ -75,10 +79,11 @@
                                     <td class="px-2 py-1"><?= number_format($line->line_total, 2, '.', ' ') ?></td>
                                     <td class="px-2 py-1"><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
                                 </tr>
+                                <?php $index++; ?>
                             <?php endforeach; ?>
                             <?php if (empty($lines)): ?>
                                 <tr class="border-t border-slate-100">
-                                    <td colspan="6" class="px-2 py-2 text-xs text-slate-500">Nu exista produse in acest pachet.</td>
+                                    <td colspan="7" class="px-2 py-2 text-xs text-slate-500">Nu exista produse in acest pachet.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>

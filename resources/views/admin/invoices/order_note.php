@@ -33,25 +33,30 @@
     <div class="mt-4 overflow-x-auto rounded border border-slate-200">
         <table class="w-full table-fixed text-left text-xs">
             <colgroup>
-                <col style="width: 70%">
+                <col style="width: 8%">
+                <col style="width: 62%">
                 <col style="width: 30%">
             </colgroup>
             <thead class="bg-slate-50 text-slate-600">
                 <tr>
+                    <th class="px-2 py-1">Nr</th>
                     <th class="px-2 py-1">Produs</th>
                     <th class="px-2 py-1">Cantitate</th>
                 </tr>
             </thead>
             <tbody>
+                <?php $index = 1; ?>
                 <?php foreach ($lines as $line): ?>
                     <tr class="border-t border-slate-100">
+                        <td class="px-2 py-1"><?= $index ?></td>
                         <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
                         <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
                     </tr>
+                    <?php $index++; ?>
                 <?php endforeach; ?>
                 <?php if (empty($lines)): ?>
                     <tr class="border-t border-slate-100">
-                        <td colspan="2" class="px-2 py-2 text-xs text-slate-500">Nu exista produse in factura.</td>
+                        <td colspan="3" class="px-2 py-2 text-xs text-slate-500">Nu exista produse in factura.</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
