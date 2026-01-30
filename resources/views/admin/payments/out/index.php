@@ -3,7 +3,7 @@
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
         <h1 class="text-xl font-semibold text-slate-900">Plati furnizori</h1>
-        <p class="mt-1 text-sm text-slate-500">Evidenta platilor catre furnizori.</p>
+        <p class="mt-1 text-sm text-slate-500">Furnizori cu sume disponibile de plata.</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
         <form method="POST" action="<?= App\Support\Url::to('admin/plati/email-azi') ?>">
@@ -25,31 +25,34 @@
     <table class="w-full text-left text-sm">
         <thead class="bg-slate-50 text-slate-600">
             <tr>
-                <th class="px-4 py-2">Data</th>
                 <th class="px-4 py-2">Furnizor</th>
-                <th class="px-4 py-2">Suma</th>
-                <th class="px-4 py-2">Alocat</th>
-                <th class="px-4 py-2">Observatii</th>
-                <th class="px-4 py-2">Email</th>
+                <th class="px-4 py-2">Disponibil</th>
+                <th class="px-4 py-2">Platit</th>
+                <th class="px-4 py-2">De platit</th>
+                <th class="px-4 py-2"></th>
             </tr>
         </thead>
         <tbody>
-            <?php if (empty($payments)): ?>
+            <?php if (empty($suppliers)): ?>
                 <tr>
-                    <td colspan="7" class="px-4 py-6 text-center text-slate-500">Nu exista plati.</td>
+                    <td colspan="5" class="px-4 py-6 text-center text-slate-500">Nu exista furnizori cu plati disponibile.</td>
                 </tr>
             <?php else: ?>
-                <?php foreach ($payments as $payment): ?>
+                <?php foreach ($suppliers as $supplier): ?>
                     <tr class="border-t border-slate-100">
-                        <td class="px-4 py-2"><?= htmlspecialchars($payment['paid_at'] ?? '') ?></td>
                         <td class="px-4 py-2">
-                            <?= htmlspecialchars($payment['supplier_name'] ?? $payment['supplier_cui']) ?>
+                            <?= htmlspecialchars($supplier['supplier_name'] ?? $supplier['supplier_cui']) ?>
                         </td>
-                        <td class="px-4 py-2"><?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</td>
-                        <td class="px-4 py-2"><?= number_format((float) $payment['allocated'], 2, '.', ' ') ?> RON</td>
-                        <td class="px-4 py-2"><?= htmlspecialchars($payment['notes'] ?? '') ?></td>
-                        <td class="px-4 py-2 text-xs">
-                            <?= htmlspecialchars($payment['email_status'] ?? '') ?>
+                        <td class="px-4 py-2"><?= number_format((float) $supplier['collected_net'], 2, '.', ' ') ?> RON</td>
+                        <td class="px-4 py-2"><?= number_format((float) $supplier['paid'], 2, '.', ' ') ?> RON</td>
+                        <td class="px-4 py-2 font-semibold text-slate-900"><?= number_format((float) $supplier['due'], 2, '.', ' ') ?> RON</td>
+                        <td class="px-4 py-2 text-right">
+                            <a
+                                href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) $supplier['supplier_cui'])) ?>"
+                                class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                Adauga plata
+                            </a>
                         </td>
                     </tr>
                 <?php endforeach; ?>

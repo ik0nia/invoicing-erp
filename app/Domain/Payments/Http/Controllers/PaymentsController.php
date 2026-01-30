@@ -147,16 +147,10 @@ class PaymentsController
             Response::view('errors/schema', [], 'layouts/app');
         }
 
-        $rows = Database::fetchAll(
-            'SELECT p.*, COALESCE(SUM(a.amount), 0) AS allocated
-             FROM payments_out p
-             LEFT JOIN payment_out_allocations a ON a.payment_out_id = p.id
-             GROUP BY p.id
-             ORDER BY p.paid_at DESC, p.id DESC'
-        );
+        $suppliers = $this->supplierSummary();
 
         Response::view('admin/payments/out/index', [
-            'payments' => $rows,
+            'suppliers' => $suppliers,
         ]);
     }
 
@@ -484,6 +478,91 @@ class PaymentsController
         }
 
         return $invoices;
+    }
+
+    private function supplierSummary(): array
+    {
+        if (!Database::tableExists('invoices_in')) {
+            return [];
+        }
+
+        $invoices = Database::fetchAll(
+            'SELECT id, supplier_cui, supplier_name, selected_client_cui, commission_percent, total_with_vat
+             FROM invoices_in
+             WHERE supplier_cui IS NOT NULL AND supplier_cui <> ""
+             ORDER BY supplier_name ASC'
+        );
+
+        $collectedRows = Database::fetchAll(
+            'SELECT invoice_in_id, COALESCE(SUM(amount), 0) AS collected
+             FROM payment_in_allocations
+             GROUP BY invoice_in_id'
+        );
+        $paidRows = Database::fetchAll(
+            'SELECT invoice_in_id, COALESCE(SUM(amount), 0) AS paid
+             FROM payment_out_allocations
+             GROUP BY invoice_in_id'
+        );
+
+        $collectedMap = [];
+        foreach ($collectedRows as $row) {
+            $collectedMap[(int) $row['invoice_in_id']] = (float) $row['collected'];
+        }
+
+        $paidMap = [];
+        foreach ($paidRows as $row) {
+            $paidMap[(int) $row['invoice_in_id']] = (float) $row['paid'];
+        }
+
+        $summary = [];
+
+        foreach ($invoices as $row) {
+            $invoiceId = (int) $row['id'];
+            $supplierCui = (string) $row['supplier_cui'];
+            $supplierName = (string) ($row['supplier_name'] ?? $supplierCui);
+            $commission = $row['commission_percent'];
+
+            if ($commission === null && !empty($row['selected_client_cui'])) {
+                $assoc = Commission::forSupplierClient($supplierCui, (string) $row['selected_client_cui']);
+                $commission = $assoc ? $assoc->commission : 0.0;
+            }
+
+            $commission = (float) ($commission ?? 0.0);
+            $collected = (float) ($collectedMap[$invoiceId] ?? 0.0);
+            $paid = (float) ($paidMap[$invoiceId] ?? 0.0);
+
+            $collectedNet = $commission !== 0.0
+                ? $this->applyCommission($collected, -abs($commission))
+                : $collected;
+
+            if (!isset($summary[$supplierCui])) {
+                $summary[$supplierCui] = [
+                    'supplier_cui' => $supplierCui,
+                    'supplier_name' => $supplierName,
+                    'collected_net' => 0.0,
+                    'paid' => 0.0,
+                ];
+            }
+
+            $summary[$supplierCui]['collected_net'] += $collectedNet;
+            $summary[$supplierCui]['paid'] += $paid;
+        }
+
+        $result = [];
+        foreach ($summary as $row) {
+            $due = $row['collected_net'] - $row['paid'];
+            if ($due <= 0) {
+                continue;
+            }
+            $row['due'] = $due;
+            $result[] = $row;
+        }
+
+        usort($result, function (array $a, array $b): int {
+            return $b['due'] <=> $a['due'];
+        });
+
+        return $result;
     }
 
     private function applyCommission(float $amount, float $percent): float
