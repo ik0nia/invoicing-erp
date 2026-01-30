@@ -46,25 +46,17 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="amount">Suma platita</label>
-            <div class="mt-1 flex flex-wrap items-center gap-2">
-                <input
-                    id="amount"
-                    name="amount"
-                    type="text"
-                    class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-                <?php if (!empty($supplierSummary)): ?>
-                    <button
-                        type="button"
-                        class="rounded border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        id="fill-available"
-                        data-amount="<?= htmlspecialchars(number_format((float) $supplierSummary['due'], 2, '.', '')) ?>"
-                    >
-                        Plateste tot (<?= number_format((float) $supplierSummary['due'], 2, '.', ' ') ?> RON)
-                    </button>
-                <?php endif; ?>
-            </div>
+            <label class="block text-sm font-medium text-slate-700" for="amount">Suma disponibila</label>
+            <input
+                id="amount"
+                name="amount"
+                type="text"
+                readonly
+                value="<?= htmlspecialchars(number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', '')) ?>"
+                data-available="<?= htmlspecialchars(number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm"
+            >
+            <p class="mt-1 text-xs text-slate-500">Se actualizeaza dupa selectia facturilor.</p>
         </div>
         <div class="md:col-span-2">
             <label class="block text-sm font-medium text-slate-700" for="notes">Observatii</label>
@@ -85,6 +77,7 @@
             <table class="w-full text-left text-sm">
                 <thead class="bg-slate-50 text-slate-600">
                     <tr>
+                        <th class="px-4 py-2">Plata</th>
                         <th class="px-4 py-2">Factura</th>
                         <th class="px-4 py-2">Data</th>
                         <th class="px-4 py-2">Total furnizor</th>
@@ -97,11 +90,18 @@
                 <tbody>
                     <?php if (empty($invoices)): ?>
                         <tr>
-                            <td colspan="7" class="px-4 py-6 text-center text-slate-500">Selecteaza un furnizor pentru a vedea facturile.</td>
+                            <td colspan="8" class="px-4 py-6 text-center text-slate-500">Selecteaza un furnizor pentru a vedea facturile.</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($invoices as $invoice): ?>
                             <tr class="border-t border-slate-100">
+                                <td class="px-4 py-2">
+                                    <input
+                                        type="checkbox"
+                                        class="invoice-check"
+                                        data-balance="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                    >
+                                </td>
                                 <td class="px-4 py-2">
                                     <a
                                         href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice['id']) ?>"
@@ -119,7 +119,9 @@
                                     <input
                                         name="allocations[<?= (int) $invoice['id'] ?>]"
                                         type="text"
-                                        class="w-28 rounded border border-slate-300 px-2 py-1 text-sm"
+                                        class="w-28 rounded border border-slate-300 px-2 py-1 text-sm allocation-input bg-slate-100"
+                                        data-balance="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                        readonly
                                     >
                                 </td>
                             </tr>
@@ -139,15 +141,47 @@
 
 <script>
     (function () {
-        const btn = document.getElementById('fill-available');
         const amountInput = document.getElementById('amount');
-        if (!btn || !amountInput) {
+        const checks = Array.from(document.querySelectorAll('.invoice-check'));
+        const allocations = Array.from(document.querySelectorAll('.allocation-input'));
+
+        if (!amountInput || checks.length === 0 || allocations.length === 0) {
             return;
         }
-        btn.addEventListener('click', () => {
-            const amount = btn.dataset.amount || '';
-            amountInput.value = amount;
-            amountInput.dispatchEvent(new Event('input'));
+
+        const parseAmount = (value) => {
+            if (!value) {
+                return 0;
+            }
+            const normalized = String(value).replace(/\s+/g, '').replace(',', '.');
+            const number = parseFloat(normalized);
+            return Number.isFinite(number) ? number : 0;
+        };
+
+        const recompute = () => {
+            const available = parseAmount(amountInput.dataset.available || '0');
+            let remaining = available;
+
+            allocations.forEach((input) => {
+                input.value = '';
+            });
+
+            checks.forEach((check, idx) => {
+                if (!check.checked) {
+                    return;
+                }
+                const input = allocations[idx];
+                const balance = parseAmount(input.dataset.balance || '0');
+                const allocate = Math.min(balance, remaining);
+                input.value = allocate > 0 ? allocate.toFixed(2) : '';
+                remaining = Math.max(0, remaining - allocate);
+            });
+
+            amountInput.value = remaining.toFixed(2);
+        };
+
+        checks.forEach((check) => {
+            check.addEventListener('change', recompute);
         });
     })();
 </script>

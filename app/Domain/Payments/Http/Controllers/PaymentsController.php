@@ -226,9 +226,14 @@ class PaymentsController
             $allocatedTotal += $amount;
         }
 
-        $amount = $amountInput ?? $allocatedTotal;
+        if (empty($allocations)) {
+            Session::flash('error', 'Selecteaza cel putin o factura pentru plata.');
+            Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
+        }
+
+        $amount = $allocatedTotal;
         if ($amount <= 0) {
-            Session::flash('error', 'Completeaza suma platita.');
+            Session::flash('error', 'Suma alocata este invalida.');
             Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
         }
 
