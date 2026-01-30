@@ -400,6 +400,20 @@ class PaymentsController
             Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
         }
 
+        $invoiceMap = [];
+        foreach ($this->supplierInvoicesWithBalances($supplierCui) as $invoice) {
+            $allocatable = min($invoice['balance'], $invoice['available']);
+            $invoiceMap[$invoice['id']] = $allocatable;
+        }
+
+        foreach ($allocations as $allocation) {
+            $max = $invoiceMap[$allocation['invoice_id']] ?? 0.0;
+            if ($allocation['amount'] > $max + 0.01) {
+                Session::flash('error', 'Suma alocata depaseste disponibilul pentru o factura.');
+                Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
+            }
+        }
+
         $amount = $allocatedTotal;
         if ($amount <= 0) {
             Session::flash('error', 'Suma alocata este invalida.');

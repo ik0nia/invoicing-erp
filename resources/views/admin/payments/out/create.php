@@ -130,8 +130,13 @@
         </div>
     </div>
 
-    <div class="flex justify-end">
-        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+    <div class="flex items-center justify-between">
+        <div class="text-xs text-slate-500" id="payment-warning">Selecteaza cel putin o factura.</div>
+        <button
+            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            id="submit-payment"
+            disabled
+        >
             Salveaza plata
         </button>
     </div>
@@ -142,6 +147,8 @@
         const amountInput = document.getElementById('amount');
         const checks = Array.from(document.querySelectorAll('.invoice-check'));
         const allocations = Array.from(document.querySelectorAll('.allocation-input'));
+        const submitBtn = document.getElementById('submit-payment');
+        const warning = document.getElementById('payment-warning');
 
         if (!amountInput || checks.length === 0 || allocations.length === 0) {
             return;
@@ -164,10 +171,12 @@
                 input.value = '';
             });
 
+            let hasSelection = false;
             checks.forEach((check, idx) => {
                 if (!check.checked) {
                     return;
                 }
+                hasSelection = true;
                 const input = allocations[idx];
                 const allocatable = parseAmount(input.dataset.allocatable || '0');
                 const allocate = Math.min(allocatable, remaining);
@@ -176,10 +185,19 @@
             });
 
             amountInput.value = remaining.toFixed(2);
+
+            if (submitBtn) {
+                submitBtn.disabled = !hasSelection;
+            }
+            if (warning) {
+                warning.textContent = hasSelection ? 'Suma se aloca automat.' : 'Selecteaza cel putin o factura.';
+            }
         };
 
         checks.forEach((check) => {
             check.addEventListener('change', recompute);
         });
+
+        recompute();
     })();
 </script>
