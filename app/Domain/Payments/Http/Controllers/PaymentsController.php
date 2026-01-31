@@ -436,8 +436,7 @@ class PaymentsController
 
         $invoiceMap = [];
         foreach ($this->supplierInvoicesWithBalances($supplierCui) as $invoice) {
-            $allocatable = min($invoice['balance'], $invoice['available']);
-            $invoiceMap[$invoice['id']] = $allocatable;
+            $invoiceMap[$invoice['id']] = $invoice['balance'];
         }
 
         foreach ($allocations as $allocation) {
@@ -454,8 +453,15 @@ class PaymentsController
             Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
         }
 
-        if ($allocatedTotal > $amount) {
-            Session::flash('error', 'Suma alocata depaseste suma platita.');
+        $availableTotal = 0.0;
+        foreach ($this->supplierSummary() as $row) {
+            if ($row['supplier_cui'] === $supplierCui) {
+                $availableTotal = (float) $row['due'];
+                break;
+            }
+        }
+        if ($allocatedTotal > $availableTotal + 0.01) {
+            Session::flash('error', 'Suma alocata depaseste suma disponibila.');
             Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
         }
 
