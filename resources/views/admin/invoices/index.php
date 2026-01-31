@@ -1,6 +1,50 @@
 <?php
     $title = 'Facturi intrare';
     $isPlatform = $isPlatform ?? false;
+    $filters = $filters ?? [
+        'query' => '',
+        'supplier_cui' => '',
+        'client_cui' => '',
+        'client_status' => '',
+        'supplier_status' => '',
+        'per_page' => 25,
+        'page' => 1,
+    ];
+    $pagination = $pagination ?? [
+        'page' => 1,
+        'per_page' => (int) ($filters['per_page'] ?? 25),
+        'total' => 0,
+        'total_pages' => 1,
+        'start' => 0,
+        'end' => 0,
+    ];
+    $supplierOptions = $supplierOptions ?? [];
+    $clientOptions = $clientOptions ?? [];
+    $hasEmptyClients = $hasEmptyClients ?? false;
+    $clientStatusOptions = $clientStatusOptions ?? [];
+    $supplierStatusOptions = $supplierStatusOptions ?? [];
+
+    $filterParams = [
+        'q' => $filters['query'] ?? '',
+        'supplier_cui' => $filters['supplier_cui'] ?? '',
+        'client_cui' => $filters['client_cui'] ?? '',
+        'client_status' => $filters['client_status'] ?? '',
+        'supplier_status' => $filters['supplier_status'] ?? '',
+    ];
+    $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
+    $exportUrl = App\Support\Url::to('admin/facturi/export');
+    if (!empty($filterParams)) {
+        $exportUrl .= '?' . http_build_query($filterParams);
+    }
+    $paginationParams = $filterParams;
+    $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 25);
+
+    $hasFilters = ($filters['query'] ?? '') !== ''
+        || ($filters['supplier_cui'] ?? '') !== ''
+        || ($filters['client_cui'] ?? '') !== ''
+        || ($filters['client_status'] ?? '') !== ''
+        || ($filters['supplier_status'] ?? '') !== ''
+        || (int) ($filters['per_page'] ?? 25) !== 25;
 ?>
 
 <div class="flex items-center justify-between">
@@ -10,7 +54,7 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
         <a
-            href="<?= App\Support\Url::to('admin/facturi/export') ?>"
+            href="<?= htmlspecialchars($exportUrl) ?>"
             class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow hover:bg-slate-50"
         >
             Export CSV
@@ -30,16 +74,128 @@
     </div>
 </div>
 
-<div class="mt-4">
-    <label class="block text-sm font-medium text-slate-700" for="invoice-search">Cauta factura</label>
-    <input
-        id="invoice-search"
-        type="text"
-        placeholder="Cauta dupa factura, client, furnizor, CUI, serie, numar"
-        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-        data-search-url="<?= App\Support\Url::to('admin/facturi/search') ?>"
-    >
-</div>
+<form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div class="xl:col-span-2">
+            <label class="block text-sm font-medium text-slate-700" for="invoice-search">Cauta factura</label>
+            <input
+                id="invoice-search"
+                name="q"
+                type="text"
+                value="<?= htmlspecialchars((string) ($filters['query'] ?? '')) ?>"
+                placeholder="Factura, client, furnizor, CUI, serie, numar"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-supplier">Furnizor</label>
+            <select
+                id="filter-supplier"
+                name="supplier_cui"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+                <option value="">Toti furnizorii</option>
+                <?php foreach ($supplierOptions as $option): ?>
+                    <option
+                        value="<?= htmlspecialchars($option['cui']) ?>"
+                        <?= (string) ($filters['supplier_cui'] ?? '') === (string) $option['cui'] ? 'selected' : '' ?>
+                    >
+                        <?= htmlspecialchars($option['name']) ?> (<?= htmlspecialchars($option['cui']) ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-client">Client final</label>
+            <select
+                id="filter-client"
+                name="client_cui"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+                <option value="">Toti clientii</option>
+                <?php if ($hasEmptyClients): ?>
+                    <option value="none" <?= ($filters['client_cui'] ?? '') === 'none' ? 'selected' : '' ?>>
+                        Fara client
+                    </option>
+                <?php endif; ?>
+                <?php foreach ($clientOptions as $option): ?>
+                    <option
+                        value="<?= htmlspecialchars($option['cui']) ?>"
+                        <?= (string) ($filters['client_cui'] ?? '') === (string) $option['cui'] ? 'selected' : '' ?>
+                    >
+                        <?= htmlspecialchars($option['name']) ?> (<?= htmlspecialchars($option['cui']) ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-client-status">Incasare client</label>
+            <select
+                id="filter-client-status"
+                name="client_status"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+                <option value="">Toate</option>
+                <?php foreach ($clientStatusOptions as $option): ?>
+                    <option
+                        value="<?= htmlspecialchars($option) ?>"
+                        <?= (string) ($filters['client_status'] ?? '') === (string) $option ? 'selected' : '' ?>
+                    >
+                        <?= htmlspecialchars($option) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-supplier-status">Plata furnizor</label>
+            <select
+                id="filter-supplier-status"
+                name="supplier_status"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+                <option value="">Toate</option>
+                <?php foreach ($supplierStatusOptions as $option): ?>
+                    <option
+                        value="<?= htmlspecialchars($option) ?>"
+                        <?= (string) ($filters['supplier_status'] ?? '') === (string) $option ? 'selected' : '' ?>
+                    >
+                        <?= htmlspecialchars($option) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Per pagina</label>
+            <select
+                id="filter-per-page"
+                name="per_page"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+                <?php foreach ([25, 50, 250, 500] as $option): ?>
+                    <option value="<?= $option ?>" <?= (int) ($filters['per_page'] ?? 25) === $option ? 'selected' : '' ?>>
+                        <?= $option ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+        <button
+            type="submit"
+            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+        >
+            Aplica filtre
+        </button>
+        <?php if ($hasFilters): ?>
+            <a
+                href="<?= App\Support\Url::to('admin/facturi') ?>"
+                class="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+                Anuleaza filtrele
+            </a>
+        <?php endif; ?>
+    </div>
+</form>
 
 <div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
     <table class="w-full text-left text-sm md:table">
@@ -62,6 +218,71 @@
         </tbody>
     </table>
 </div>
+
+<?php if (($pagination['total'] ?? 0) > 0): ?>
+    <?php
+        $page = (int) ($pagination['page'] ?? 1);
+        $totalPages = (int) ($pagination['total_pages'] ?? 1);
+        $perPage = (int) ($pagination['per_page'] ?? 25);
+        $baseParams = $paginationParams ?? [];
+        $baseParams['per_page'] = $perPage;
+        $buildPageUrl = static function (int $targetPage) use ($baseParams): string {
+            $params = $baseParams;
+            $params['page'] = $targetPage;
+            return App\Support\Url::to('admin/facturi') . '?' . http_build_query($params);
+        };
+        $pages = [];
+        $start = max(1, $page - 2);
+        $end = min($totalPages, $page + 2);
+        if ($start > 1) {
+            $pages[] = 1;
+            if ($start > 2) {
+                $pages[] = '...';
+            }
+        }
+        for ($i = $start; $i <= $end; $i++) {
+            $pages[] = $i;
+        }
+        if ($end < $totalPages) {
+            if ($end < $totalPages - 1) {
+                $pages[] = '...';
+            }
+            $pages[] = $totalPages;
+        }
+    ?>
+    <div class="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            Afisezi <?= (int) ($pagination['start'] ?? 0) ?>-<?= (int) ($pagination['end'] ?? 0) ?>
+            din <?= (int) ($pagination['total'] ?? 0) ?> facturi
+        </div>
+        <div class="flex flex-wrap items-center gap-1">
+            <a
+                href="<?= htmlspecialchars($buildPageUrl(max(1, $page - 1))) ?>"
+                class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 <?= $page <= 1 ? 'pointer-events-none opacity-50' : '' ?>"
+            >
+                &laquo; Inapoi
+            </a>
+            <?php foreach ($pages as $item): ?>
+                <?php if ($item === '...'): ?>
+                    <span class="px-2 text-xs text-slate-400">...</span>
+                <?php else: ?>
+                    <a
+                        href="<?= htmlspecialchars($buildPageUrl((int) $item)) ?>"
+                        class="rounded border px-2 py-1 text-xs font-semibold <?= (int) $item === $page ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50' ?>"
+                    >
+                        <?= (int) $item ?>
+                    </a>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <a
+                href="<?= htmlspecialchars($buildPageUrl(min($totalPages, $page + 1))) ?>"
+                class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 <?= $page >= $totalPages ? 'pointer-events-none opacity-50' : '' ?>"
+            >
+                Inainte &raquo;
+            </a>
+        </div>
+    </div>
+<?php endif; ?>
 
 <style>
     @media (max-width: 768px) {
@@ -88,41 +309,6 @@
 
 <script>
     (function () {
-        const input = document.getElementById('invoice-search');
-        const body = document.getElementById('invoice-table-body');
-        if (!input || !body) {
-            return;
-        }
-
-        const url = input.getAttribute('data-search-url');
-        if (!url) {
-            return;
-        }
-
-        let timer = null;
-        const runSearch = () => {
-            const query = input.value || '';
-            const fetchUrl = new URL(url, window.location.origin);
-            fetchUrl.searchParams.set('q', query);
-
-            fetch(fetchUrl.toString(), { credentials: 'same-origin' })
-                .then((response) => response.text())
-                .then((html) => {
-                    body.innerHTML = html;
-                    wireRowClicks();
-                })
-                .catch(() => {
-                    // ignore
-                });
-        };
-
-        input.addEventListener('input', () => {
-            if (timer) {
-                clearTimeout(timer);
-            }
-            timer = setTimeout(runSearch, 200);
-        });
-
         const wireRowClicks = () => {
             const rows = Array.from(document.querySelectorAll('.invoice-row'));
             rows.forEach((row) => {

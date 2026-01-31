@@ -129,6 +129,8 @@ class InvoiceController
             ]);
         }
 
+        $filters = $this->invoiceFiltersFromRequest();
+
         if ($isPlatform) {
             $invoices = InvoiceIn::all();
         } else {
@@ -148,13 +150,26 @@ class InvoiceController
             );
         }
         $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
-        $clientFinals = $this->clientFinals($invoices, $clientNameMap);
+        $supplierOptions = $this->buildSupplierOptions($invoices);
+        [$clientOptions, $hasEmptyClients] = $this->buildClientOptions($invoices, $clientNameMap);
+
+        $filteredInvoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
+        $pagination = $this->paginateInvoices($filteredInvoices, $filters['page'], $filters['per_page']);
+        $pagedInvoices = $pagination['items'];
+        $clientFinals = $this->clientFinals($pagedInvoices, $clientNameMap);
 
         Response::view('admin/invoices/index', [
-            'invoices' => $invoices,
+            'invoices' => $pagedInvoices,
             'invoiceStatuses' => $invoiceStatuses,
             'clientFinals' => $clientFinals,
             'isPlatform' => $isPlatform,
+            'filters' => $filters,
+            'pagination' => $pagination,
+            'supplierOptions' => $supplierOptions,
+            'clientOptions' => $clientOptions,
+            'hasEmptyClients' => $hasEmptyClients,
+            'clientStatusOptions' => $this->clientStatusOptions(),
+            'supplierStatusOptions' => $this->supplierStatusOptions(),
         ]);
     }
 
@@ -212,6 +227,7 @@ class InvoiceController
             Response::view('errors/invoices_schema', [], 'layouts/app');
         }
 
+        $filters = $this->invoiceFiltersFromRequest();
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         if ($isPlatform) {
@@ -222,6 +238,18 @@ class InvoiceController
         $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
         $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
         $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
+
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
+        }
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $invoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
 
         $filename = 'facturi_intrare_' . date('Ymd_His') . '.csv';
         header('Content-Type: text/csv; charset=UTF-8');
@@ -244,7 +272,7 @@ class InvoiceController
         ]);
 
         foreach ($invoices as $invoice) {
-            $status = $this->buildInvoiceStatus(
+            $status = $invoiceStatuses[$invoice->id] ?? $this->buildInvoiceStatus(
                 $invoice,
                 (float) ($collectedMap[$invoice->id] ?? 0.0),
                 (float) ($paidMap[$invoice->id] ?? 0.0),
@@ -2407,6 +2435,183 @@ class InvoiceController
         }
 
         return $filtered;
+    }
+
+    private function invoiceFiltersFromRequest(): array
+    {
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+        $clientRaw = (string) ($_GET['client_cui'] ?? '');
+        if ($clientRaw === 'none') {
+            $clientCui = 'none';
+        } else {
+            $clientCui = preg_replace('/\D+/', '', $clientRaw);
+        }
+        $clientStatus = trim((string) ($_GET['client_status'] ?? ''));
+        $supplierStatus = trim((string) ($_GET['supplier_status'] ?? ''));
+        $perPage = (int) ($_GET['per_page'] ?? 25);
+        $allowedPerPage = [25, 50, 250, 500];
+        if (!in_array($perPage, $allowedPerPage, true)) {
+            $perPage = 25;
+        }
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+
+        return [
+            'query' => $query,
+            'supplier_cui' => $supplierCui,
+            'client_cui' => $clientCui,
+            'client_status' => $clientStatus,
+            'supplier_status' => $supplierStatus,
+            'per_page' => $perPage,
+            'page' => $page,
+        ];
+    }
+
+    private function applyInvoiceFilters(
+        array $invoices,
+        array $filters,
+        array $clientNameMap,
+        array $invoiceStatuses
+    ): array {
+        $filtered = $invoices;
+
+        if ($filters['query'] !== '') {
+            $filtered = $this->filterInvoices($filtered, $filters['query'], $clientNameMap);
+        }
+
+        if ($filters['supplier_cui'] !== '') {
+            $supplierCui = $filters['supplier_cui'];
+            $filtered = array_filter($filtered, static fn (InvoiceIn $invoice) => (string) $invoice->supplier_cui === $supplierCui);
+        }
+
+        if ($filters['client_cui'] !== '') {
+            $clientCui = $filters['client_cui'];
+            if ($clientCui === 'none') {
+                $filtered = array_filter(
+                    $filtered,
+                    static fn (InvoiceIn $invoice) => trim((string) ($invoice->selected_client_cui ?? '')) === ''
+                );
+            } else {
+                $filtered = array_filter(
+                    $filtered,
+                    static fn (InvoiceIn $invoice) => (string) ($invoice->selected_client_cui ?? '') === $clientCui
+                );
+            }
+        }
+
+        if ($filters['client_status'] !== '') {
+            $clientStatus = $filters['client_status'];
+            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $clientStatus): bool {
+                $status = $invoiceStatuses[$invoice->id] ?? null;
+                return $status && $status['client_label'] === $clientStatus;
+            });
+        }
+
+        if ($filters['supplier_status'] !== '') {
+            $supplierStatus = $filters['supplier_status'];
+            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $supplierStatus): bool {
+                $status = $invoiceStatuses[$invoice->id] ?? null;
+                return $status && $status['supplier_label'] === $supplierStatus;
+            });
+        }
+
+        return array_values($filtered);
+    }
+
+    private function buildSupplierOptions(array $invoices): array
+    {
+        $map = [];
+        foreach ($invoices as $invoice) {
+            $cui = (string) $invoice->supplier_cui;
+            if ($cui === '') {
+                continue;
+            }
+            $map[$cui] = (string) ($invoice->supplier_name ?: $cui);
+        }
+
+        $options = [];
+        foreach ($map as $cui => $name) {
+            $options[] = [
+                'cui' => $cui,
+                'name' => $name,
+            ];
+        }
+
+        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        return $options;
+    }
+
+    private function buildClientOptions(array $invoices, array $clientNameMap): array
+    {
+        $map = [];
+        $hasEmpty = false;
+        foreach ($invoices as $invoice) {
+            $cui = trim((string) ($invoice->selected_client_cui ?? ''));
+            if ($cui === '') {
+                $hasEmpty = true;
+                continue;
+            }
+            $map[$cui] = (string) ($clientNameMap[$cui] ?? $cui);
+        }
+
+        $options = [];
+        foreach ($map as $cui => $name) {
+            $options[] = [
+                'cui' => $cui,
+                'name' => $name,
+            ];
+        }
+
+        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        return [$options, $hasEmpty];
+    }
+
+    private function paginateInvoices(array $invoices, int $page, int $perPage): array
+    {
+        if ($perPage <= 0) {
+            $perPage = 25;
+        }
+
+        $total = count($invoices);
+        $totalPages = max(1, (int) ceil($total / $perPage));
+        if ($page > $totalPages) {
+            $page = $totalPages;
+        }
+        $offset = ($page - 1) * $perPage;
+        $items = array_slice($invoices, $offset, $perPage);
+        $start = $total === 0 ? 0 : $offset + 1;
+        $end = $total === 0 ? 0 : min($offset + $perPage, $total);
+
+        return [
+            'items' => $items,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'total_pages' => $totalPages,
+            'start' => $start,
+            'end' => $end,
+        ];
+    }
+
+    private function clientStatusOptions(): array
+    {
+        return [
+            'Client nesetat',
+            'Neincasat',
+            'Incasat partial',
+            'Incasat integral',
+        ];
+    }
+
+    private function supplierStatusOptions(): array
+    {
+        return [
+            'Neplatit',
+            'Platit partial',
+            'Platit integral',
+        ];
     }
 
     private function normalizeSearch(string $value): string
