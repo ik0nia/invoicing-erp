@@ -567,8 +567,24 @@
             });
 
             const dateInputs = form.querySelectorAll('#filter-date-from, #filter-date-to');
+            const isValidDateValue = (value) => {
+                if (value === '') {
+                    return true;
+                }
+                return /^\d{4}-\d{2}-\d{2}$/.test(value);
+            };
             dateInputs.forEach((input) => {
-                input.addEventListener('change', () => submitForm());
+                input.addEventListener('input', () => {
+                    const value = input.value;
+                    if (isValidDateValue(value)) {
+                        submitWithDebounce(300);
+                    }
+                });
+                input.addEventListener('blur', () => {
+                    if (isValidDateValue(input.value)) {
+                        submitWithDebounce(0);
+                    }
+                });
             });
         }
 
