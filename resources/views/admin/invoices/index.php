@@ -110,6 +110,7 @@
                 .then((response) => response.text())
                 .then((html) => {
                     body.innerHTML = html;
+                    wireRowClicks();
                 })
                 .catch(() => {
                     // ignore
@@ -122,5 +123,22 @@
             }
             timer = setTimeout(runSearch, 200);
         });
+
+        const wireRowClicks = () => {
+            const rows = Array.from(document.querySelectorAll('.invoice-row'));
+            rows.forEach((row) => {
+                row.addEventListener('click', (event) => {
+                    if (event.target.closest('a, button, input, label')) {
+                        return;
+                    }
+                    const url = row.getAttribute('data-url');
+                    if (url) {
+                        window.location.href = url;
+                    }
+                });
+            });
+        };
+
+        wireRowClicks();
     })();
 </script>

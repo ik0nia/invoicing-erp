@@ -35,8 +35,9 @@
             if ($clientDate === '' && !empty($invoice->fgo_number) && !empty($invoice->packages_confirmed_at)) {
                 $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
             }
+            $rowUrl = App\Support\Url::to('admin/facturi') . '?invoice_id=' . (int) $invoice->id;
         ?>
-        <tr class="<?= $rowClass ?>">
+        <tr class="<?= $rowClass ?> invoice-row cursor-pointer hover:brightness-95" data-url="<?= htmlspecialchars($rowUrl) ?>">
             <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
                 <?= htmlspecialchars($invoice->supplier_name) ?>
             </td>
@@ -50,7 +51,7 @@
                 <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Client final">
-                <?= htmlspecialchars($clientLabel) ?>
+                <span class="font-semibold text-slate-900"><?= htmlspecialchars($clientLabel) ?></span>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Factura client">
                 <?php if ($fgoNumber !== '' && $fgoLink !== ''): ?>
@@ -92,25 +93,7 @@
                 <?php endif; ?>
             </td>
             <td class="px-4 py-3 text-right block md:table-cell" data-label="Actiuni">
-                <a
-                    href="<?= App\Support\Url::to('admin/facturi') ?>?invoice_id=<?= (int) $invoice->id ?>"
-                    class="text-blue-700 hover:text-blue-800"
-                >
-                    Detalii →
-                </a>
-                <?php if (!empty($isPlatform)): ?>
-                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>" class="inline">
-                        <?= App\Support\Csrf::input() ?>
-                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                        <button
-                            type="submit"
-                            class="ml-2 text-red-600 hover:text-red-700"
-                            onclick="return confirm('Sigur vrei sa stergi factura?')"
-                        >
-                            Sterge
-                        </button>
-                    </form>
-                <?php endif; ?>
+                —
             </td>
         </tr>
     <?php endforeach; ?>
