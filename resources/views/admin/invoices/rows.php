@@ -9,15 +9,20 @@
         <?php
             $status = $invoiceStatuses[$invoice->id] ?? null;
             $rowClass = 'border-b border-slate-100 block md:table-row';
-            if ($status) {
-                if ($status['supplier_label'] === 'Platit integral') {
-                    $rowClass = 'border-b border-slate-100 bg-emerald-50 block md:table-row';
-                } elseif ($status['supplier_label'] === 'Platit partial') {
-                    $rowClass = 'border-b border-slate-100 bg-amber-50 block md:table-row';
-                } elseif ($status['supplier_label'] === 'Neplatit' && $status['client_label'] === 'Incasat integral') {
-                    $rowClass = 'border-b border-slate-100 bg-rose-50 block md:table-row';
-                }
+            $collected = $status['collected'] ?? 0.0;
+            $paid = $status['paid'] ?? 0.0;
+            $clientTotal = $status['client_total'] ?? null;
+            $supplierTotal = (float) $invoice->total_with_vat;
+            $clientCollected = $clientTotal !== null ? ($collected + 0.01 >= $clientTotal) : ($collected > 0.01);
+
+            if ($paid <= 0.009 && $clientCollected) {
+                $rowClass = 'border-b border-slate-100 bg-rose-50 block md:table-row';
+            } elseif ($paid > 0.009 && $paid + 0.01 < $supplierTotal) {
+                $rowClass = 'border-b border-slate-100 bg-amber-50 block md:table-row';
+            } elseif ($paid + 0.01 >= $supplierTotal) {
+                $rowClass = 'border-b border-slate-100 bg-emerald-50 block md:table-row';
             }
+
             $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
             $clientLabel = $clientFinal['name'] !== '' ? $clientFinal['name'] : '—';
             $supplierInvoice = trim((string) ($invoice->invoice_series ?? '') . ' ' . (string) ($invoice->invoice_no ?? ''));
@@ -25,7 +30,10 @@
                 $supplierInvoice = (string) ($invoice->invoice_number ?? '');
             }
             $fgoNumber = trim((string) ($invoice->fgo_series ?? '') . ' ' . (string) ($invoice->fgo_number ?? ''));
-            $clientTotal = $status['client_total'] ?? null;
+            $clientDate = (string) ($invoice->fgo_date ?? '');
+            if ($clientDate === '' && !empty($invoice->fgo_number) && !empty($invoice->packages_confirmed_at)) {
+                $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
+            }
         ?>
         <tr class="<?= $rowClass ?>">
             <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
@@ -47,7 +55,7 @@
                 <?= htmlspecialchars($fgoNumber !== '' ? $fgoNumber : '—') ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data factura client">
-                <?= htmlspecialchars($invoice->fgo_date ?? '—') ?>
+                <?= htmlspecialchars($clientDate !== '' ? $clientDate : '—') ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total factura client">
                 <?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?>
