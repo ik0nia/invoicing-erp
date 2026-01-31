@@ -52,7 +52,11 @@
                 <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Client final">
-                <span class="font-semibold text-slate-900"><?= htmlspecialchars($clientLabel) ?></span>
+                <?php if ($hasStorno): ?>
+                    <span class="font-semibold text-slate-400 line-through"><?= htmlspecialchars($clientLabel) ?></span>
+                <?php else: ?>
+                    <span class="font-semibold text-slate-900"><?= htmlspecialchars($clientLabel) ?></span>
+                <?php endif; ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Factura client">
                 <?php if ($fgoNumber !== '' && $fgoLink !== ''): ?>
