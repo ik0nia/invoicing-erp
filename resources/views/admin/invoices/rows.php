@@ -13,14 +13,13 @@
             $paid = $status['paid'] ?? 0.0;
             $clientTotal = $status['client_total'] ?? null;
             $supplierTotal = (float) $invoice->total_with_vat;
-            $clientCollected = $clientTotal !== null ? ($collected + 0.01 >= $clientTotal) : ($collected > 0.01);
-
-            if ($paid <= 0.009 && $clientCollected) {
-                $rowClass = 'border-b border-slate-100 bg-rose-50 block md:table-row';
+            $hasCollected = $collected > 0.009;
+            if ($paid + 0.01 >= $supplierTotal) {
+                $rowClass = 'border-b border-slate-100 bg-emerald-50 block md:table-row';
             } elseif ($paid > 0.009 && $paid + 0.01 < $supplierTotal) {
                 $rowClass = 'border-b border-slate-100 bg-amber-50 block md:table-row';
-            } elseif ($paid + 0.01 >= $supplierTotal) {
-                $rowClass = 'border-b border-slate-100 bg-emerald-50 block md:table-row';
+            } elseif ($hasCollected) {
+                $rowClass = 'border-b border-slate-100 bg-rose-50 block md:table-row';
             }
 
             $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
