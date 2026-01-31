@@ -352,18 +352,34 @@
         }
         table tbody tr {
             display: block;
-            padding: 0.75rem 0.75rem;
+            padding: 0.85rem 0.85rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            margin-bottom: 0.75rem;
         }
         table tbody td {
             display: flex;
-            justify-content: space-between;
-            gap: 0.5rem;
-            padding: 0.4rem 0;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.2rem;
+            padding: 0.45rem 0;
         }
         table tbody td::before {
             content: attr(data-label);
-            font-weight: 600;
-            color: #334155;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #64748b;
+            text-transform: uppercase;
+        }
+        table tbody td[data-label="Furnizor"] {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #0f172a;
+        }
+        table tbody td[data-label="Furnizor"]::before {
+            font-size: 0.65rem;
+            color: #94a3b8;
         }
     }
 </style>
