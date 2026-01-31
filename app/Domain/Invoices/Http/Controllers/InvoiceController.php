@@ -193,11 +193,6 @@ class InvoiceController
             $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
         }
 
-        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
-        if ($query !== '') {
-            $invoices = $this->filterInvoices($invoices, $query, $clientNameMap);
-        }
-
         $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
         $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
         $commissionMap = $this->commissionMap();
@@ -210,6 +205,10 @@ class InvoiceController
                 (float) ($paidMap[$invoice->id] ?? 0.0),
                 $commissionMap
             );
+        }
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        if ($query !== '') {
+            $invoices = $this->filterInvoices($invoices, $query, $clientNameMap, $invoiceStatuses);
         }
 
         $clientFinals = $this->clientFinals($invoices, $clientNameMap);
@@ -2542,7 +2541,7 @@ class InvoiceController
         return $finals;
     }
 
-    private function filterInvoices(array $invoices, string $query, array $clientNameMap): array
+    private function filterInvoices(array $invoices, string $query, array $clientNameMap, array $invoiceStatuses = []): array
     {
         $needle = $this->normalizeSearch($query);
         if ($needle === '') {
@@ -2554,6 +2553,8 @@ class InvoiceController
         foreach ($invoices as $invoice) {
             $clientCui = (string) ($invoice->selected_client_cui ?? '');
             $clientName = $clientCui !== '' ? (string) ($clientNameMap[$clientCui] ?? '') : '';
+            $status = $invoiceStatuses[$invoice->id] ?? null;
+            $clientTotal = $status['client_total'] ?? null;
             $fields = [
                 $invoice->invoice_number ?? '',
                 $invoice->invoice_series ?? '',
@@ -2568,6 +2569,11 @@ class InvoiceController
                 (string) ($invoice->fgo_series ?? ''),
                 (string) ($invoice->fgo_number ?? ''),
             ];
+            $fields = array_merge(
+                $fields,
+                $this->searchableNumberVariants((float) $invoice->total_with_vat),
+                $this->searchableNumberVariants($clientTotal)
+            );
 
             foreach ($fields as $field) {
                 if ($this->containsSearch((string) $field, $needle)) {
@@ -2619,7 +2625,7 @@ class InvoiceController
         $filtered = $invoices;
 
         if ($filters['query'] !== '') {
-            $filtered = $this->filterInvoices($filtered, $filters['query'], $clientNameMap);
+            $filtered = $this->filterInvoices($filtered, $filters['query'], $clientNameMap, $invoiceStatuses);
         }
 
         if ($filters['supplier_cui'] !== '') {
@@ -2723,6 +2729,22 @@ class InvoiceController
             'total_pages' => $totalPages,
             'start' => $start,
             'end' => $end,
+        ];
+    }
+
+    private function searchableNumberVariants(?float $value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+
+        $number = (float) $value;
+
+        return [
+            number_format($number, 2, '.', ''),
+            number_format($number, 2, ',', ''),
+            number_format($number, 2, '.', ' '),
+            number_format($number, 2, ',', ' '),
         ];
     }
 

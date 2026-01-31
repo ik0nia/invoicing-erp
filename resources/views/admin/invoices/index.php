@@ -43,8 +43,7 @@
         || ($filters['supplier_cui'] ?? '') !== ''
         || ($filters['client_cui'] ?? '') !== ''
         || ($filters['client_status'] ?? '') !== ''
-        || ($filters['supplier_status'] ?? '') !== ''
-        || (int) ($filters['per_page'] ?? 25) !== 25;
+        || ($filters['supplier_status'] ?? '') !== '';
 ?>
 
 <div class="flex items-center justify-between">
@@ -161,20 +160,6 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="min-w-[140px]">
-            <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Per pagina</label>
-            <select
-                id="filter-per-page"
-                name="per_page"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-                <?php foreach ([25, 50, 250, 500] as $option): ?>
-                    <option value="<?= $option ?>" <?= (int) ($filters['per_page'] ?? 25) === $option ? 'selected' : '' ?>>
-                        <?= $option ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
         <div class="ml-auto flex flex-wrap items-center gap-2">
             <button
                 type="submit"
@@ -190,6 +175,20 @@
                     Anuleaza filtrele
                 </a>
             <?php endif; ?>
+            <div class="flex flex-col items-start">
+                <label class="text-xs font-semibold text-slate-500" for="filter-per-page">Per pagina</label>
+                <select
+                    id="filter-per-page"
+                    name="per_page"
+                    class="mt-1 block w-28 rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                    <?php foreach ([25, 50, 250, 500] as $option): ?>
+                        <option value="<?= $option ?>" <?= (int) ($filters['per_page'] ?? 25) === $option ? 'selected' : '' ?>>
+                            <?= $option ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
     </div>
 </form>
