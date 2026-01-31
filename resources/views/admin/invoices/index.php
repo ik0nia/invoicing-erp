@@ -574,10 +574,9 @@
                 return /^\d{4}-\d{2}-\d{2}$/.test(value);
             };
             dateInputs.forEach((input) => {
-                input.addEventListener('input', () => {
-                    const value = input.value;
-                    if (isValidDateValue(value)) {
-                        submitWithDebounce(300);
+                input.addEventListener('change', () => {
+                    if (isValidDateValue(input.value)) {
+                        submitWithDebounce(0);
                     }
                 });
                 input.addEventListener('blur', () => {
