@@ -12,6 +12,7 @@ $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
+$router->get('/admin/facturi/search', [InvoiceController::class, 'search']);
 $router->get('/admin/facturi/export', [InvoiceController::class, 'export']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);

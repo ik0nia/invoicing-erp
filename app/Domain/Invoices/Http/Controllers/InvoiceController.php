@@ -147,12 +147,61 @@ class InvoiceController
                 $commissionMap
             );
         }
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $clientFinals = $this->clientFinals($invoices, $clientNameMap);
 
         Response::view('admin/invoices/index', [
             'invoices' => $invoices,
             'invoiceStatuses' => $invoiceStatuses,
+            'clientFinals' => $clientFinals,
             'isPlatform' => $isPlatform,
         ]);
+    }
+
+    public function search(): void
+    {
+        $this->requireInvoiceRole();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
+        }
+
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        if ($query !== '') {
+            $invoices = $this->filterInvoices($invoices, $query, $clientNameMap);
+        }
+
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
+
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
+        }
+
+        $clientFinals = $this->clientFinals($invoices, $clientNameMap);
+
+        Response::view('admin/invoices/rows', [
+            'invoices' => $invoices,
+            'invoiceStatuses' => $invoiceStatuses,
+            'clientFinals' => $clientFinals,
+            'isPlatform' => $isPlatform,
+        ], null);
     }
 
     public function export(): void
@@ -2242,6 +2291,142 @@ class InvoiceController
             'label' => 'Platit integral',
             'class' => 'bg-emerald-50 text-emerald-700',
         ];
+    }
+
+    private function collectSelectedClientCuis(array $invoices): array
+    {
+        $cuis = [];
+        foreach ($invoices as $invoice) {
+            $cui = (string) ($invoice->selected_client_cui ?? '');
+            if ($cui !== '') {
+                $cuis[$cui] = true;
+            }
+        }
+
+        return array_keys($cuis);
+    }
+
+    private function clientNameMap(array $clientCuis): array
+    {
+        if (empty($clientCuis)) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($clientCuis) as $index => $cui) {
+            $key = 'c' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+
+        $map = [];
+
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM companies WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $map[(string) $row['cui']] = (string) $row['denumire'];
+            }
+        }
+
+        if (Database::tableExists('partners')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $cui = (string) $row['cui'];
+                if (!isset($map[$cui]) || $map[$cui] === '') {
+                    $map[$cui] = (string) $row['denumire'];
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    private function clientFinals(array $invoices, array $clientNameMap): array
+    {
+        $finals = [];
+        foreach ($invoices as $invoice) {
+            $cui = (string) ($invoice->selected_client_cui ?? '');
+            if ($cui === '') {
+                $finals[$invoice->id] = ['cui' => '', 'name' => ''];
+                continue;
+            }
+            $finals[$invoice->id] = [
+                'cui' => $cui,
+                'name' => (string) ($clientNameMap[$cui] ?? $cui),
+            ];
+        }
+
+        return $finals;
+    }
+
+    private function filterInvoices(array $invoices, string $query, array $clientNameMap): array
+    {
+        $needle = $this->normalizeSearch($query);
+        if ($needle === '') {
+            return $invoices;
+        }
+
+        $filtered = [];
+
+        foreach ($invoices as $invoice) {
+            $clientCui = (string) ($invoice->selected_client_cui ?? '');
+            $clientName = $clientCui !== '' ? (string) ($clientNameMap[$clientCui] ?? '') : '';
+            $fields = [
+                $invoice->invoice_number ?? '',
+                $invoice->invoice_series ?? '',
+                $invoice->invoice_no ?? '',
+                $invoice->supplier_name ?? '',
+                $invoice->supplier_cui ?? '',
+                $invoice->customer_name ?? '',
+                $invoice->customer_cui ?? '',
+                $clientCui,
+                $clientName,
+                trim((string) ($invoice->fgo_series ?? '') . ' ' . (string) ($invoice->fgo_number ?? '')),
+                (string) ($invoice->fgo_series ?? ''),
+                (string) ($invoice->fgo_number ?? ''),
+            ];
+
+            foreach ($fields as $field) {
+                if ($this->containsSearch((string) $field, $needle)) {
+                    $filtered[] = $invoice;
+                    break;
+                }
+            }
+        }
+
+        return $filtered;
+    }
+
+    private function normalizeSearch(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            return mb_strtolower($value, 'UTF-8');
+        }
+
+        return strtolower($value);
+    }
+
+    private function containsSearch(string $haystack, string $needle): bool
+    {
+        if ($needle === '') {
+            return true;
+        }
+
+        $hay = $this->normalizeSearch($haystack);
+
+        return $hay !== '' && str_contains($hay, $needle);
     }
 
     private function requireInvoiceRole(): void

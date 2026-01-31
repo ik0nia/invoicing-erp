@@ -41,7 +41,7 @@ if ($isPlatformUser) {
 
 $menuSections['Facturare'] = [
     [
-        'label' => 'Facturi intrare',
+            'label' => 'Facturare',
         'path' => '/admin/facturi',
         'active' => str_starts_with($currentPath, '/admin/facturi'),
     ],

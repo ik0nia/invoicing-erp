@@ -30,6 +30,17 @@
     </div>
 </div>
 
+<div class="mt-4">
+    <label class="block text-sm font-medium text-slate-700" for="invoice-search">Cauta factura</label>
+    <input
+        id="invoice-search"
+        type="text"
+        placeholder="Cauta dupa factura, client, furnizor, CUI, serie, numar"
+        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        data-search-url="<?= App\Support\Url::to('admin/facturi/search') ?>"
+    >
+</div>
+
 <div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
     <table class="w-full text-left text-sm md:table">
         <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
@@ -38,6 +49,8 @@
                 <th class="px-4 py-3">Serie</th>
                 <th class="px-4 py-3">Numar</th>
                 <th class="px-4 py-3">Furnizor</th>
+                <th class="px-4 py-3">Client final</th>
+                <th class="px-4 py-3">Factura client</th>
                 <th class="px-4 py-3">Data</th>
                 <th class="px-4 py-3">Total (RON)</th>
                 <th class="px-4 py-3">Incasare client</th>
@@ -45,83 +58,8 @@
                 <th class="px-4 py-3"></th>
             </tr>
         </thead>
-        <tbody>
-            <?php if (empty($invoices)): ?>
-                <tr>
-                    <td colspan="9" class="px-4 py-6 text-center text-slate-500">
-                        Nu exista facturi importate.
-                    </td>
-                </tr>
-            <?php else: ?>
-                <?php foreach ($invoices as $invoice): ?>
-                    <?php $status = $invoiceStatuses[$invoice->id] ?? null; ?>
-                    <tr class="border-b border-slate-100 block md:table-row">
-                        <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Factura">
-                            <?= htmlspecialchars($invoice->invoice_number) ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Serie">
-                            <?= htmlspecialchars($invoice->invoice_series ?: '-') ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Numar">
-                            <?= htmlspecialchars($invoice->invoice_no ?: '-') ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Furnizor">
-                            <?= htmlspecialchars($invoice->supplier_name) ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data">
-                            <?= htmlspecialchars($invoice->issue_date) ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total (RON)">
-                            <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Incasare client">
-                            <?php if ($status && $status['client_total'] !== null): ?>
-                                <div class="font-medium text-slate-900">
-                                    <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
-                                </div>
-                                <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['client_class'] ?>">
-                                    <?= htmlspecialchars($status['client_label']) ?>
-                                </div>
-                            <?php else: ?>
-                                <div class="text-xs text-slate-500">Client nesetat</div>
-                            <?php endif; ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Plata furnizor">
-                            <?php if ($status): ?>
-                                <div class="font-medium text-slate-900">
-                                    <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
-                                </div>
-                                <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['supplier_class'] ?>">
-                                    <?= htmlspecialchars($status['supplier_label']) ?>
-                                </div>
-                            <?php else: ?>
-                                <div class="text-xs text-slate-500">—</div>
-                            <?php endif; ?>
-                        </td>
-                        <td class="px-4 py-3 text-right block md:table-cell" data-label="Actiuni">
-                            <a
-                                href="<?= App\Support\Url::to('admin/facturi') ?>?invoice_id=<?= (int) $invoice->id ?>"
-                                class="text-blue-700 hover:text-blue-800"
-                            >
-                                Detalii →
-                            </a>
-                            <?php if (!empty($isPlatform)): ?>
-                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>" class="inline">
-                                    <?= App\Support\Csrf::input() ?>
-                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                    <button
-                                        type="submit"
-                                        class="ml-2 text-red-600 hover:text-red-700"
-                                        onclick="return confirm('Sigur vrei sa stergi factura?')"
-                                    >
-                                        Sterge
-                                    </button>
-                                </form>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
+        <tbody id="invoice-table-body">
+            <?php include BASE_PATH . '/resources/views/admin/invoices/rows.php'; ?>
         </tbody>
     </table>
 </div>
@@ -148,3 +86,41 @@
         }
     }
 </style>
+
+<script>
+    (function () {
+        const input = document.getElementById('invoice-search');
+        const body = document.getElementById('invoice-table-body');
+        if (!input || !body) {
+            return;
+        }
+
+        const url = input.getAttribute('data-search-url');
+        if (!url) {
+            return;
+        }
+
+        let timer = null;
+        const runSearch = () => {
+            const query = input.value || '';
+            const fetchUrl = new URL(url, window.location.origin);
+            fetchUrl.searchParams.set('q', query);
+
+            fetch(fetchUrl.toString(), { credentials: 'same-origin' })
+                .then((response) => response.text())
+                .then((html) => {
+                    body.innerHTML = html;
+                })
+                .catch(() => {
+                    // ignore
+                });
+        };
+
+        input.addEventListener('input', () => {
+            if (timer) {
+                clearTimeout(timer);
+            }
+            timer = setTimeout(runSearch, 200);
+        });
+    })();
+</script>
