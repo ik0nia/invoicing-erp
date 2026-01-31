@@ -100,6 +100,7 @@ CREATE TABLE invoices_in (
     packages_confirmed_at DATETIME NULL,
     fgo_series VARCHAR(32) NULL,
     fgo_number VARCHAR(32) NULL,
+    fgo_date DATE NULL,
     fgo_link VARCHAR(255) NULL,
     fgo_storno_series VARCHAR(32) NULL,
     fgo_storno_number VARCHAR(32) NULL,

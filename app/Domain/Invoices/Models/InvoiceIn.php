@@ -26,6 +26,7 @@ class InvoiceIn
     public ?string $packages_confirmed_at;
     public ?string $fgo_series = null;
     public ?string $fgo_number = null;
+    public ?string $fgo_date = null;
     public ?string $fgo_link = null;
     public ?string $fgo_storno_series = null;
     public ?string $fgo_storno_number = null;
@@ -167,6 +168,7 @@ class InvoiceIn
         $invoice->packages_confirmed_at = $row['packages_confirmed_at'] ?? null;
         $invoice->fgo_series = $row['fgo_series'] ?? null;
         $invoice->fgo_number = $row['fgo_number'] ?? null;
+        $invoice->fgo_date = $row['fgo_date'] ?? null;
         $invoice->fgo_link = $row['fgo_link'] ?? null;
         $invoice->fgo_storno_series = $row['fgo_storno_series'] ?? null;
         $invoice->fgo_storno_number = $row['fgo_storno_number'] ?? null;

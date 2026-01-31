@@ -1036,13 +1036,14 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
+        $issueDate = date('Y-m-d');
         $payload = [
             'CodUnic' => $codUnic,
             'Hash' => FgoClient::hashForEmitere($codUnic, $secret, $clientCompany->denumire),
             'Valuta' => $invoice->currency ?: 'RON',
             'TipFactura' => 'Factura',
             'Serie' => $series,
-            'DataEmitere' => date('Y-m-d'),
+            'DataEmitere' => $issueDate,
             'VerificareDuplicat' => 'true',
             'IdExtern' => 'INV-IN-' . $invoice->id,
             'Client' => [
@@ -1086,10 +1087,11 @@ class InvoiceController
         }
 
         Database::execute(
-            'UPDATE invoices_in SET fgo_series = :serie, fgo_number = :numar, fgo_link = :link, updated_at = :now WHERE id = :id',
+            'UPDATE invoices_in SET fgo_series = :serie, fgo_number = :numar, fgo_date = :fgo_date, fgo_link = :link, updated_at = :now WHERE id = :id',
             [
                 'serie' => $fgoSeries,
                 'numar' => $fgoNumber,
+                'fgo_date' => $issueDate,
                 'link' => $fgoLink,
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoice->id,
@@ -1645,8 +1647,11 @@ class InvoiceController
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_number')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_number VARCHAR(32) NULL AFTER fgo_series');
         }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_date')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_date DATE NULL AFTER fgo_number');
+        }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_link')) {
-            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_number');
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_date');
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_series')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_series VARCHAR(32) NULL AFTER fgo_link');

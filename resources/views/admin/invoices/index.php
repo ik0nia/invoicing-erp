@@ -45,14 +45,14 @@
     <table class="w-full text-left text-sm md:table">
         <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
             <tr>
-                <th class="px-4 py-3">Factura</th>
-                <th class="px-4 py-3">Serie</th>
-                <th class="px-4 py-3">Numar</th>
                 <th class="px-4 py-3">Furnizor</th>
+                <th class="px-4 py-3">Factura furnizor</th>
+                <th class="px-4 py-3">Data factura furnizor</th>
+                <th class="px-4 py-3">Total factura furnizor</th>
                 <th class="px-4 py-3">Client final</th>
                 <th class="px-4 py-3">Factura client</th>
-                <th class="px-4 py-3">Data</th>
-                <th class="px-4 py-3">Total (RON)</th>
+                <th class="px-4 py-3">Data factura client</th>
+                <th class="px-4 py-3">Total factura client</th>
                 <th class="px-4 py-3">Incasare client</th>
                 <th class="px-4 py-3">Plata furnizor</th>
                 <th class="px-4 py-3"></th>

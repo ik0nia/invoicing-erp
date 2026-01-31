@@ -20,20 +20,25 @@
             }
             $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
             $clientLabel = $clientFinal['name'] !== '' ? $clientFinal['name'] : '—';
+            $supplierInvoice = trim((string) ($invoice->invoice_series ?? '') . ' ' . (string) ($invoice->invoice_no ?? ''));
+            if ($supplierInvoice === '') {
+                $supplierInvoice = (string) ($invoice->invoice_number ?? '');
+            }
             $fgoNumber = trim((string) ($invoice->fgo_series ?? '') . ' ' . (string) ($invoice->fgo_number ?? ''));
+            $clientTotal = $status['client_total'] ?? null;
         ?>
         <tr class="<?= $rowClass ?>">
-            <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Factura">
-                <?= htmlspecialchars($invoice->invoice_number) ?>
-            </td>
-            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Serie">
-                <?= htmlspecialchars($invoice->invoice_series ?: '-') ?>
-            </td>
-            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Numar">
-                <?= htmlspecialchars($invoice->invoice_no ?: '-') ?>
-            </td>
-            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Furnizor">
+            <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
                 <?= htmlspecialchars($invoice->supplier_name) ?>
+            </td>
+            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
+                <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
+            </td>
+            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data factura furnizor">
+                <?= htmlspecialchars($invoice->issue_date) ?>
+            </td>
+            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total factura furnizor">
+                <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Client final">
                 <?= htmlspecialchars($clientLabel) ?>
@@ -41,11 +46,11 @@
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Factura client">
                 <?= htmlspecialchars($fgoNumber !== '' ? $fgoNumber : '—') ?>
             </td>
-            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data">
-                <?= htmlspecialchars($invoice->issue_date) ?>
+            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Data factura client">
+                <?= htmlspecialchars($invoice->fgo_date ?? '—') ?>
             </td>
-            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total (RON)">
-                <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
+            <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Total factura client">
+                <?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?>
             </td>
             <td class="px-4 py-3 text-slate-600 block md:table-cell" data-label="Incasare client">
                 <?php if ($status && $status['client_total'] !== null): ?>
