@@ -113,14 +113,16 @@
                         <td><?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?></td>
                         <td>
                             <?php if ($status && $status['client_total'] !== null): ?>
-                                <?= htmlspecialchars($status['client_label']) ?>
+                                <?= number_format($status['collected'], 2, '.', ' ') ?>
+                                <div class="muted"><?= htmlspecialchars($status['client_label']) ?></div>
                             <?php else: ?>
                                 <span class="muted">Client nesetat</span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <?php if ($status): ?>
-                                <?= htmlspecialchars($status['supplier_label']) ?>
+                                <?= number_format($status['paid'], 2, '.', ' ') ?>
+                                <div class="muted"><?= htmlspecialchars($status['supplier_label']) ?></div>
                             <?php else: ?>
                                 <span class="muted">—</span>
                             <?php endif; ?>
