@@ -22,6 +22,7 @@
                     $rowClass = 'border-b border-slate-100 bg-rose-50 block md:table-row';
                 }
             }
+            $hoverClass = str_contains($rowClass, 'bg-') ? 'hover:brightness-95' : 'hover:bg-slate-50';
 
             $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
             $clientLabel = $clientFinal['name'] !== '' ? $clientFinal['name'] : '—';
@@ -37,7 +38,7 @@
             }
             $rowUrl = App\Support\Url::to('admin/facturi') . '?invoice_id=' . (int) $invoice->id;
         ?>
-        <tr class="<?= $rowClass ?> invoice-row cursor-pointer hover:brightness-95" data-url="<?= htmlspecialchars($rowUrl) ?>">
+        <tr class="<?= $rowClass ?> invoice-row cursor-pointer <?= $hoverClass ?>" data-url="<?= htmlspecialchars($rowUrl) ?>">
             <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
                 <?= htmlspecialchars($invoice->supplier_name) ?>
             </td>
