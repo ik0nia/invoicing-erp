@@ -16,6 +16,7 @@ $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/search', [InvoiceController::class, 'search']);
 $router->get('/admin/facturi/export', [InvoiceController::class, 'export']);
+$router->get('/admin/facturi/print-situatie', [InvoiceController::class, 'printSituation']);
 $router->get('/admin/facturi/lookup-suppliers', [InvoiceController::class, 'lookupSuppliers']);
 $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookupClients']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);

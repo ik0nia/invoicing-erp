@@ -392,6 +392,7 @@ class InvoiceController
         }
         $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
         $invoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
+        $clientFinals = $this->clientFinals($invoices, $clientNameMap);
 
         $filename = 'facturi_intrare_' . date('Ymd_His') . '.csv';
         header('Content-Type: text/csv; charset=UTF-8');
@@ -399,18 +400,16 @@ class InvoiceController
 
         $out = fopen('php://output', 'w');
         fputcsv($out, [
-            'Factura',
-            'Serie',
-            'Numar',
             'Furnizor',
-            'Data',
-            'Total factura',
-            'Client selectat',
-            'Total client',
-            'Incasat',
-            'Status incasare',
-            'Platit',
-            'Status plata',
+            'Factura furnizor',
+            'Data factura furnizor',
+            'Total factura furnizor',
+            'Client final',
+            'Factura client',
+            'Data factura client',
+            'Total factura client',
+            'Incasare client',
+            'Plata furnizor',
         ]);
 
         foreach ($invoices as $invoice) {
@@ -420,24 +419,106 @@ class InvoiceController
                 (float) ($paidMap[$invoice->id] ?? 0.0),
                 $commissionMap
             );
+            $supplierInvoice = trim((string) ($invoice->invoice_series ?? '') . ' ' . (string) ($invoice->invoice_no ?? ''));
+            if ($supplierInvoice === '') {
+                $supplierInvoice = (string) ($invoice->invoice_number ?? '');
+            }
+            $fgoNumber = trim((string) ($invoice->fgo_series ?? '') . ' ' . (string) ($invoice->fgo_number ?? ''));
+            $clientDate = (string) ($invoice->fgo_date ?? '');
+            if ($clientDate === '' && !empty($invoice->fgo_number) && !empty($invoice->packages_confirmed_at)) {
+                $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
+            }
+            $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
+            $clientLabel = $clientFinal['name'] !== '' ? $clientFinal['name'] : '—';
+            $clientTotal = $status['client_total'] ?? null;
+            $clientTotalText = $clientTotal !== null ? number_format($clientTotal, 2, '.', '') : '';
+            $collectedText = $clientTotal !== null
+                ? number_format($status['collected'], 2, '.', '') . ' / ' . $clientTotalText . ' (' . $status['client_label'] . ')'
+                : $status['client_label'];
+            $paidText = number_format($status['paid'], 2, '.', '') . ' / ' . number_format((float) $invoice->total_with_vat, 2, '.', '') .
+                ' (' . $status['supplier_label'] . ')';
+
             fputcsv($out, [
-                $invoice->invoice_number,
-                $invoice->invoice_series ?: '',
-                $invoice->invoice_no ?: '',
                 $invoice->supplier_name,
+                $supplierInvoice !== '' ? $supplierInvoice : '—',
                 $invoice->issue_date,
                 number_format((float) $invoice->total_with_vat, 2, '.', ''),
-                (string) ($invoice->selected_client_cui ?? ''),
-                $status['client_total'] !== null ? number_format($status['client_total'], 2, '.', '') : '',
-                number_format($status['collected'], 2, '.', ''),
-                $status['client_label'],
-                number_format($status['paid'], 2, '.', ''),
-                $status['supplier_label'],
+                $clientLabel,
+                $fgoNumber !== '' ? $fgoNumber : '—',
+                $clientDate !== '' ? $clientDate : '—',
+                $clientTotal !== null ? number_format($clientTotal, 2, '.', '') : '—',
+                $collectedText,
+                $paidText,
             ]);
         }
 
         fclose($out);
         exit;
+    }
+
+    public function printSituation(): void
+    {
+        $this->requireInvoiceRole();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
+        }
+
+        $filters = $this->invoiceFiltersFromRequest();
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
+        }
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
+
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
+        }
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $invoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
+        $clientFinals = $this->clientFinals($invoices, $clientNameMap);
+
+        $settings = new SettingsService();
+        $logoPath = $settings->get('branding.logo_path');
+        $logoUrl = null;
+        if ($logoPath) {
+            $absolutePath = BASE_PATH . '/' . ltrim($logoPath, '/');
+            if (file_exists($absolutePath)) {
+                $logoUrl = \App\Support\Url::asset($logoPath);
+            }
+        }
+        $company = [
+            'denumire' => (string) $settings->get('company.denumire', ''),
+            'cui' => (string) $settings->get('company.cui', ''),
+            'nr_reg_comertului' => (string) $settings->get('company.nr_reg_comertului', ''),
+            'adresa' => (string) $settings->get('company.adresa', ''),
+            'localitate' => (string) $settings->get('company.localitate', ''),
+            'judet' => (string) $settings->get('company.judet', ''),
+            'tara' => (string) $settings->get('company.tara', ''),
+            'email' => (string) $settings->get('company.email', ''),
+            'telefon' => (string) $settings->get('company.telefon', ''),
+        ];
+
+        Response::view('admin/invoices/print_situation', [
+            'invoices' => $invoices,
+            'invoiceStatuses' => $invoiceStatuses,
+            'clientFinals' => $clientFinals,
+            'logoUrl' => $logoUrl,
+            'company' => $company,
+            'printedAt' => date('d.m.Y H:i'),
+        ], null);
     }
 
     public function confirmedPackages(): void

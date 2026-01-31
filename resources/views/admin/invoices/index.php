@@ -35,8 +35,11 @@
     ];
     $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
     $exportUrl = App\Support\Url::to('admin/facturi/export');
+    $printUrl = App\Support\Url::to('admin/facturi/print-situatie');
     if (!empty($filterParams)) {
-        $exportUrl .= '?' . http_build_query($filterParams);
+        $query = http_build_query($filterParams);
+        $exportUrl .= '?' . $query;
+        $printUrl .= '?' . $query;
     }
     $paginationParams = $filterParams;
     $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 25);
@@ -49,12 +52,6 @@
         <p class="mt-1 text-sm text-slate-500">Facturi importate din XML sau adaugate manual.</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-        <a
-            href="<?= htmlspecialchars($exportUrl) ?>"
-            class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow hover:bg-slate-50"
-        >
-            Export CSV
-        </a>
         <a
             href="<?= App\Support\Url::to('admin/facturi/adauga') ?>"
             class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
@@ -233,6 +230,22 @@
                 </select>
             </div>
         </div>
+    </div>
+    <div class="mt-3 flex justify-end gap-2">
+        <a
+            href="<?= htmlspecialchars($printUrl) ?>"
+            target="_blank"
+            rel="noopener"
+            class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+        >
+            Print situatie
+        </a>
+        <a
+            href="<?= htmlspecialchars($exportUrl) ?>"
+            class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+        >
+            Export CSV
+        </a>
     </div>
 </form>
 
