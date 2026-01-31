@@ -10,6 +10,8 @@ use App\Domain\Users\Http\Controllers\UsersController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
+$router->post('/admin/setari/demo-generate', [SettingsController::class, 'generateDemo']);
+$router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/search', [InvoiceController::class, 'search']);
