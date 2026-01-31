@@ -66,6 +66,7 @@ $router->post('/admin/utilizatori/sterge', [UsersController::class, 'delete']);
 $router->get('/admin/companii', [CompanyController::class, 'index']);
 $router->get('/admin/companii/edit', [CompanyController::class, 'edit']);
 $router->post('/admin/companii/save', [CompanyController::class, 'save']);
+$router->post('/admin/companii/openapi', [CompanyController::class, 'lookupOpenApi']);
 
 $router->get('/admin/asocieri', [AssociationsController::class, 'index']);
 $router->post('/admin/asocieri/salveaza', [AssociationsController::class, 'save']);

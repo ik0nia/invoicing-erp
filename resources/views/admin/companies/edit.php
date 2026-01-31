@@ -31,14 +31,27 @@
 
         <div>
             <label class="block text-sm font-medium text-slate-700" for="cui">CUI</label>
-            <input
-                id="cui"
-                name="cui"
-                type="text"
-                value="<?= htmlspecialchars($form['cui'] ?? '') ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
-            >
+            <div class="mt-1 flex flex-wrap gap-2">
+                <input
+                    id="cui"
+                    name="cui"
+                    type="text"
+                    value="<?= htmlspecialchars($form['cui'] ?? '') ?>"
+                    class="block w-full flex-1 rounded border border-slate-300 px-3 py-2 text-sm"
+                    required
+                >
+                <button
+                    type="button"
+                    id="openapi-fetch"
+                    class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    <?= empty($openApiEnabled) ? 'disabled' : '' ?>
+                >
+                    Preia OpenAPI
+                </button>
+            </div>
+            <p id="openapi-status" class="mt-1 text-xs text-slate-500">
+                <?= empty($openApiEnabled) ? 'Completeaza cheia OpenAPI in Setari.' : 'Completeaza CUI si apasa Preia OpenAPI.' ?>
+            </p>
         </div>
 
         <div>
@@ -167,3 +180,96 @@
         </button>
     </div>
 </form>
+
+<script>
+    (function () {
+        const button = document.getElementById('openapi-fetch');
+        const status = document.getElementById('openapi-status');
+        const cuiInput = document.getElementById('cui');
+        const token = '<?= App\Support\Csrf::token() ?>';
+        const enabled = <?= empty($openApiEnabled) ? 'false' : 'true' ?>;
+
+        if (!button || !status || !cuiInput || !enabled) {
+            return;
+        }
+
+        const setValue = (id, value) => {
+            const input = document.getElementById(id);
+            if (!input || value === null || value === undefined || value === '') {
+                return;
+            }
+            input.value = value;
+        };
+
+        const setCheckbox = (name, value) => {
+            const input = document.querySelector('input[name="' + name + '"]');
+            if (!input || value === null || value === undefined) {
+                return;
+            }
+            input.checked = !!value;
+        };
+
+        const setSelect = (id, value) => {
+            const select = document.getElementById(id);
+            if (!select || !value) {
+                return;
+            }
+            select.value = value;
+        };
+
+        button.addEventListener('click', () => {
+            const cui = (cuiInput.value || '').replace(/\D+/g, '');
+            if (!cui) {
+                status.textContent = 'Completeaza CUI-ul inainte de cautare.';
+                status.className = 'mt-1 text-xs text-rose-600';
+                return;
+            }
+
+            button.disabled = true;
+            status.textContent = 'Se preiau datele din OpenAPI...';
+            status.className = 'mt-1 text-xs text-slate-500';
+
+            const body = new URLSearchParams();
+            body.set('_token', token);
+            body.set('cui', cui);
+
+            fetch('<?= App\Support\Url::to('admin/companii/openapi') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: body.toString(),
+            })
+                .then((response) => response.json())
+                .then((payload) => {
+                    if (!payload || !payload.success) {
+                        status.textContent = payload?.message || 'Nu am putut prelua datele.';
+                        status.className = 'mt-1 text-xs text-rose-600';
+                        return;
+                    }
+
+                    const data = payload.data || {};
+                    setValue('denumire', data.denumire);
+                    setValue('cui', data.cui);
+                    setValue('nr_reg_comertului', data.nr_reg_comertului);
+                    setValue('adresa', data.adresa);
+                    setValue('localitate', data.localitate);
+                    setValue('judet', data.judet);
+                    setValue('telefon', data.telefon);
+                    setSelect('tip_firma', data.tip_firma);
+                    setCheckbox('platitor_tva', data.platitor_tva);
+                    if (data.activ !== null && data.activ !== undefined) {
+                        setCheckbox('activ', data.activ);
+                    }
+
+                    status.textContent = 'Datele au fost completate. Verifica si salveaza.';
+                    status.className = 'mt-1 text-xs text-emerald-600';
+                })
+                .catch(() => {
+                    status.textContent = 'Eroare la conectarea cu OpenAPI.';
+                    status.className = 'mt-1 text-xs text-rose-600';
+                })
+                .finally(() => {
+                    button.disabled = false;
+                });
+        });
+    })();
+</script>

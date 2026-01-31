@@ -4,6 +4,7 @@ namespace App\Domain\Companies\Http\Controllers;
 
 use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Partner;
+use App\Domain\Settings\Services\SettingsService;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -57,10 +58,13 @@ class CompanyController
         $partner = $cui !== '' ? Partner::findByCui($cui) : null;
 
         $form = $this->buildFormData($company, $partner);
+        $settings = new SettingsService();
+        $openApiKey = (string) $settings->get('openapi.api_key', '');
 
         Response::view('admin/companies/edit', [
             'form' => $form,
             'isNew' => $company === null,
+            'openApiEnabled' => trim($openApiKey) !== '',
         ]);
     }
 
@@ -99,6 +103,56 @@ class CompanyController
 
         Session::flash('status', 'Compania a fost salvata.');
         Response::redirect('/admin/companii/edit?cui=' . urlencode($data['cui']));
+    }
+
+    public function lookupOpenApi(): void
+    {
+        Auth::requireAdmin();
+
+        $cui = preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? ''));
+        if ($cui === '') {
+            $this->json(['success' => false, 'message' => 'Completeaza CUI-ul.']);
+        }
+
+        $settings = new SettingsService();
+        $apiKey = trim((string) $settings->get('openapi.api_key', ''));
+        if ($apiKey === '') {
+            $this->json(['success' => false, 'message' => 'Completeaza cheia OpenAPI in setari.']);
+        }
+
+        $response = $this->fetchOpenApiCompany($cui, $apiKey);
+        if ($response['error'] !== null) {
+            $this->json(['success' => false, 'message' => $response['error']]);
+        }
+
+        $data = $response['data'];
+        $denumire = trim((string) ($data['denumire'] ?? ''));
+        $adresa = trim((string) ($data['adresa'] ?? ''));
+        $localitate = trim((string) ($data['localitate'] ?? ''));
+        if ($localitate === '' && $adresa !== '') {
+            $parts = array_map('trim', explode(',', $adresa));
+            $localitate = end($parts) ?: '';
+        }
+
+        $tipFirma = $this->guessTipFirma($denumire);
+        $tva = $data['tva'] ?? null;
+        $platitorTva = !empty($tva) && strtolower((string) $tva) !== 'null';
+        $radiata = $data['radiata'] ?? null;
+
+        $payload = [
+            'cui' => (string) ($data['cif'] ?? $cui),
+            'denumire' => $denumire,
+            'nr_reg_comertului' => (string) ($data['numar_reg_com'] ?? ''),
+            'adresa' => $adresa,
+            'localitate' => $localitate,
+            'judet' => (string) ($data['judet'] ?? ''),
+            'telefon' => (string) ($data['telefon'] ?? ''),
+            'tip_firma' => $tipFirma,
+            'platitor_tva' => $platitorTva,
+            'activ' => $radiata === null ? null : !$radiata,
+        ];
+
+        $this->json(['success' => true, 'data' => $payload]);
     }
 
     private function validate(array $data): array
@@ -187,5 +241,69 @@ class CompanyController
         }
 
         return true;
+    }
+
+    private function fetchOpenApiCompany(string $cui, string $apiKey): array
+    {
+        $url = 'https://api.openapi.ro/api/companies/' . urlencode($cui);
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['error' => 'Nu pot initia conexiunea OpenAPI.', 'data' => null];
+        }
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['x-api-key: ' . $apiKey]);
+
+        $body = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($body === false || $status >= 500) {
+            return ['error' => 'Eroare OpenAPI: ' . ($error ?: 'server indisponibil'), 'data' => null];
+        }
+
+        $decoded = json_decode((string) $body, true);
+        if (!is_array($decoded)) {
+            return ['error' => 'Raspuns OpenAPI invalid.', 'data' => null];
+        }
+
+        if ($status >= 400) {
+            $message = $decoded['error']['Attributes']['description'] ?? $decoded['error']['Attributes']['title'] ?? 'Eroare OpenAPI.';
+            return ['error' => (string) $message, 'data' => null];
+        }
+
+        return ['error' => null, 'data' => $decoded];
+    }
+
+    private function guessTipFirma(string $denumire): string
+    {
+        $value = strtoupper($denumire);
+        if (str_contains($value, ' S.R.L') || str_contains($value, ' SRL')) {
+            return 'SRL';
+        }
+        if (str_contains($value, ' S.A') || str_contains($value, ' SA')) {
+            return 'SA';
+        }
+        if (str_contains($value, ' PFA')) {
+            return 'PFA';
+        }
+        if (str_contains($value, ' II')) {
+            return 'II';
+        }
+        if (str_contains($value, ' IF')) {
+            return 'IF';
+        }
+
+        return '';
+    }
+
+    private function json(array $payload): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
     }
 }

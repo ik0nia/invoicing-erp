@@ -39,6 +39,7 @@ class SettingsController
         }
         $fgoSeriesListText = implode(', ', $fgoSeriesList);
         $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
+        $openApiKey = (string) $this->settings->get('openapi.api_key', '');
         $company = [
             'denumire' => (string) $this->settings->get('company.denumire', ''),
             'tip_firma' => (string) $this->settings->get('company.tip_firma', ''),
@@ -63,6 +64,7 @@ class SettingsController
             'fgoSeriesList' => $fgoSeriesList,
             'fgoSeriesListText' => $fgoSeriesListText,
             'fgoBaseUrl' => $fgoBaseUrl,
+            'openApiKey' => $openApiKey,
             'company' => $company,
         ]);
     }
@@ -143,6 +145,7 @@ class SettingsController
         $series = trim($_POST['fgo_series'] ?? '');
         $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
+        $openApiKey = trim($_POST['openapi_api_key'] ?? '');
         $companyData = [
             'denumire' => trim($_POST['company_denumire'] ?? ''),
             'tip_firma' => trim($_POST['company_tip_firma'] ?? ''),
@@ -195,6 +198,11 @@ class SettingsController
 
         if ($baseUrl !== '') {
             $this->settings->set('fgo.base_url', $baseUrl);
+            $savedSomething = true;
+        }
+
+        if ($openApiKey !== '') {
+            $this->settings->set('openapi.api_key', $openApiKey);
             $savedSomething = true;
         }
 

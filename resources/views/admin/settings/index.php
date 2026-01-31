@@ -250,6 +250,23 @@
         </div>
     </div>
 
+    <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold text-slate-900">OpenAPI companii</h2>
+        <p class="mt-1 text-sm text-slate-600">Cheie pentru preluarea datelor firmelor din OpenAPI.</p>
+
+        <div class="mt-4">
+            <label class="block text-sm font-medium text-slate-700" for="openapi_api_key">Cheie API OpenAPI</label>
+            <input
+                id="openapi_api_key"
+                name="openapi_api_key"
+                type="text"
+                value="<?= htmlspecialchars($openApiKey ?? '') ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+            <p class="mt-1 text-xs text-slate-600">Se trimite ca header <code>x-api-key</code> catre api.openapi.ro.</p>
+        </div>
+    </div>
+
     <div>
         <button
             type="submit"
