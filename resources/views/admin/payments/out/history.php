@@ -63,27 +63,10 @@
 </form>
 
 <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-    <form method="POST" action="<?= App\Support\Url::to('admin/plati/ordine-plata') ?>" id="payment-order-form" class="flex flex-wrap items-center gap-3">
+    <form method="POST" action="<?= App\Support\Url::to('admin/plati/ordine-plata') ?>" id="payment-order-form">
         <?= App\Support\Csrf::input() ?>
         <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom ?? '') ?>">
         <input type="hidden" name="date_to" value="<?= htmlspecialchars($dateTo ?? '') ?>">
-        <div class="text-sm text-slate-700">Ordine de plata:</div>
-        <div class="flex flex-wrap items-center gap-2">
-            <?php foreach ($suppliers as $supplier): ?>
-                <?php
-                    $cui = (string) $supplier['supplier_cui'];
-                    $name = (string) ($supplier['supplier_name'] ?? $cui);
-                    $mark = $orderMarks[$cui] ?? '';
-                ?>
-                <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
-                    <input type="checkbox" name="supplier_cuis[]" value="<?= htmlspecialchars($cui) ?>" data-has-order="<?= $mark !== '' ? '1' : '0' ?>">
-                    <span><?= htmlspecialchars($name) ?></span>
-                    <?php if ($mark !== ''): ?>
-                        <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
-                    <?php endif; ?>
-                </label>
-            <?php endforeach; ?>
-        </div>
         <button
             type="submit"
             class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
@@ -111,7 +94,18 @@
                     <div class="font-semibold text-slate-900">
                         <?= htmlspecialchars($payment['supplier_name'] ?? $payment['supplier_cui']) ?>
                     </div>
-                    <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <?php
+                        $cui = (string) ($payment['supplier_cui'] ?? '');
+                        $mark = $orderMarks[$cui] ?? '';
+                    ?>
+                    <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
+                        <input type="checkbox" name="supplier_cuis[]" value="<?= htmlspecialchars($cui) ?>" form="payment-order-form" data-has-order="<?= $mark !== '' ? '1' : '0' ?>">
+                        <span>OP</span>
+                        <?php if ($mark !== ''): ?>
+                            <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
+                        <?php endif; ?>
+                    </label>
                         <span><?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</span>
                         <form method="POST" action="<?= App\Support\Url::to('admin/plati/sterge') ?>">
                             <?= App\Support\Csrf::input() ?>
@@ -166,7 +160,7 @@
             return;
         }
         form.addEventListener('submit', (event) => {
-            const checks = Array.from(form.querySelectorAll('input[name="supplier_cuis[]"]:checked'));
+            const checks = Array.from(document.querySelectorAll('input[name="supplier_cuis[]"]:checked'));
             if (checks.length === 0) {
                 event.preventDefault();
                 alert('Selecteaza cel putin un furnizor.');

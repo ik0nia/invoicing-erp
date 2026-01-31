@@ -390,6 +390,7 @@ class PaymentsController
 
         $settings = new SettingsService();
         $platformIban = trim((string) $settings->get('company.iban', ''));
+        $platformIban = preg_replace('/\s+/', '', $platformIban);
         if ($platformIban === '') {
             Session::flash('error', 'Completeaza IBAN-ul platformei in setari.');
             Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
@@ -441,11 +442,12 @@ class PaymentsController
             if (!$supplier) {
                 continue;
             }
+            $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
             $line = [
                 $platformIban,
                 $this->csvQuote($supplier['name']),
                 $this->csvQuote($supplierCui),
-                $this->csvQuote($supplier['iban']),
+                $this->csvQuote($iban),
                 number_format($row['total'], 2, '.', ''),
                 $this->csvQuote($row['invoices']),
             ];
