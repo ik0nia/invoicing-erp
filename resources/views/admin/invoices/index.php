@@ -39,11 +39,6 @@
     $paginationParams = $filterParams;
     $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 25);
 
-    $hasFilters = ($filters['query'] ?? '') !== ''
-        || ($filters['supplier_cui'] ?? '') !== ''
-        || ($filters['client_cui'] ?? '') !== ''
-        || ($filters['client_status'] ?? '') !== ''
-        || ($filters['supplier_status'] ?? '') !== '';
 ?>
 
 <div class="flex items-center justify-between">
@@ -97,11 +92,19 @@
                 type="text"
                 value="<?= htmlspecialchars((string) $supplierFilterLabel) ?>"
                 placeholder="Toti furnizorii"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
                 autocomplete="off"
                 data-ajax-input
             >
             <input type="hidden" name="supplier_cui" value="<?= htmlspecialchars((string) ($filters['supplier_cui'] ?? '')) ?>" data-ajax-value>
+            <button
+                type="button"
+                class="absolute right-2 top-9 hidden rounded p-1 text-slate-400 hover:text-slate-600"
+                aria-label="Sterge furnizor"
+                data-ajax-clear
+            >
+                &#10005;
+            </button>
             <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
         </div>
         <div
@@ -117,11 +120,19 @@
                 type="text"
                 value="<?= htmlspecialchars((string) $clientFilterLabel) ?>"
                 placeholder="Toti clientii"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
                 autocomplete="off"
                 data-ajax-input
             >
             <input type="hidden" name="client_cui" value="<?= htmlspecialchars((string) ($filters['client_cui'] ?? '')) ?>" data-ajax-value>
+            <button
+                type="button"
+                class="absolute right-2 top-9 hidden rounded p-1 text-slate-400 hover:text-slate-600"
+                aria-label="Sterge client"
+                data-ajax-clear
+            >
+                &#10005;
+            </button>
             <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
         </div>
         <div class="min-w-[180px]">
@@ -161,20 +172,6 @@
             </select>
         </div>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-            <button
-                type="submit"
-                class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-            >
-                Aplica filtre
-            </button>
-            <?php if ($hasFilters): ?>
-                <a
-                    href="<?= App\Support\Url::to('admin/facturi') ?>"
-                    class="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                    Anuleaza filtrele
-                </a>
-            <?php endif; ?>
             <div class="flex flex-col items-start">
                 <label class="text-xs font-semibold text-slate-500" for="filter-per-page">Per pagina</label>
                 <select
@@ -324,6 +321,7 @@
                 const input = root.querySelector('[data-ajax-input]');
                 const hidden = root.querySelector('[data-ajax-value]');
                 const list = root.querySelector('[data-ajax-list]');
+                const clearButton = root.querySelector('[data-ajax-clear]');
                 const url = root.getAttribute('data-lookup-url');
                 const allowEmpty = root.getAttribute('data-allow-empty') === '1';
                 const emptyLabel = root.getAttribute('data-empty-label') || 'Fara client';
@@ -333,6 +331,17 @@
                 if (!input || !hidden || !list || !url) {
                     return;
                 }
+
+                const updateClear = () => {
+                    if (!clearButton) {
+                        return;
+                    }
+                    if (input.value.trim() !== '' || hidden.value.trim() !== '') {
+                        clearButton.classList.remove('hidden');
+                    } else {
+                        clearButton.classList.add('hidden');
+                    }
+                };
 
                 const clearList = () => {
                     list.innerHTML = '';
@@ -418,6 +427,7 @@
                 input.addEventListener('input', () => {
                     hidden.value = '';
                     scheduleFetch();
+                    updateClear();
                 });
 
                 input.addEventListener('focus', () => {
@@ -439,6 +449,7 @@
                                 hidden.value = digits;
                             }
                         }
+                        updateClear();
                     }, 150);
                 });
 
@@ -450,6 +461,8 @@
                     hidden.value = item.getAttribute('data-value') || '';
                     input.value = item.getAttribute('data-label') || '';
                     clearList();
+                    updateClear();
+                    submitWithDebounce(0);
                 });
 
                 document.addEventListener('click', (event) => {
@@ -457,6 +470,18 @@
                         clearList();
                     }
                 });
+
+                if (clearButton) {
+                    clearButton.addEventListener('click', () => {
+                        input.value = '';
+                        hidden.value = '';
+                        updateClear();
+                        clearList();
+                        submitWithDebounce(0);
+                    });
+                }
+
+                updateClear();
             });
         };
 
@@ -474,6 +499,47 @@
                 });
             });
         };
+
+        const form = document.querySelector('form[action$="/admin/facturi"]');
+        let submitTimer = null;
+
+        const submitForm = () => {
+            if (!form) {
+                return;
+            }
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        };
+
+        const submitWithDebounce = (delay = 350) => {
+            if (submitTimer) {
+                clearTimeout(submitTimer);
+            }
+            submitTimer = setTimeout(submitForm, delay);
+        };
+
+        if (form) {
+            const searchInput = form.querySelector('#invoice-search');
+            if (searchInput) {
+                let lastValue = searchInput.value;
+                searchInput.addEventListener('input', () => {
+                    const value = searchInput.value;
+                    if (value === lastValue) {
+                        return;
+                    }
+                    lastValue = value;
+                    submitWithDebounce(400);
+                });
+            }
+
+            const selectInputs = form.querySelectorAll('#filter-client-status, #filter-supplier-status, #filter-per-page');
+            selectInputs.forEach((select) => {
+                select.addEventListener('change', () => submitForm());
+            });
+        }
 
         wireRowClicks();
         initAjaxSelects();
