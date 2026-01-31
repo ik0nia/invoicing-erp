@@ -2,12 +2,10 @@
 
 namespace App\Domain\Settings\Http\Controllers;
 
-use App\Domain\Companies\Models\Company;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Partners\Models\Commission;
-use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
 use App\Support\CompanyName;
 use App\Support\Auth;
@@ -250,29 +248,13 @@ class SettingsController
             $platformCui = '99999999';
         }
 
-        $suppliers = $this->demoSuppliers();
-        $clients = $this->demoClients();
-        $demoCuis = [];
+        $pairs = array_values(array_filter(Commission::allWithPartners(), static function (array $row): bool {
+            return !empty($row['supplier_cui']) && !empty($row['client_cui']);
+        }));
 
-        foreach ($suppliers as $supplier) {
-            $demoCuis[] = $supplier['cui'];
-            $this->upsertCompany($supplier, 'furnizor');
-        }
-        foreach ($clients as $client) {
-            $demoCuis[] = $client['cui'];
-            $this->upsertCompany($client, 'client');
-        }
-        $settings->set('demo.cuis', array_values(array_unique($demoCuis)));
-
-        $supplierClients = [];
-        foreach ($suppliers as $supplier) {
-            $clientPool = $clients;
-            shuffle($clientPool);
-            $count = 2 + (int) (count($clientPool) > 3);
-            $supplierClients[$supplier['cui']] = array_slice($clientPool, 0, $count);
-            foreach ($supplierClients[$supplier['cui']] as $client) {
-                Commission::createOrUpdate($supplier['cui'], $client['cui'], $client['commission']);
-            }
+        if (empty($pairs)) {
+            Session::flash('error', 'Nu exista asocieri furnizor-client. Creeaza comisioane inainte de demo.');
+            Response::redirect('/admin/setari');
         }
 
         $packageNo = 10001;
@@ -280,13 +262,17 @@ class SettingsController
         $invoicesCreated = 0;
 
         for ($i = 0; $i < 30; $i++) {
-            $supplier = $suppliers[$i % count($suppliers)];
-            $clientPool = $supplierClients[$supplier['cui']] ?? $clients;
-            $client = $clientPool[array_rand($clientPool)];
+            $pair = $pairs[$i % count($pairs)];
+            $supplierCui = (string) $pair['supplier_cui'];
+            $clientCui = (string) $pair['client_cui'];
+            $supplierName = CompanyName::normalize((string) ($pair['supplier_name'] ?? $supplierCui));
+            $clientName = CompanyName::normalize((string) ($pair['client_name'] ?? $clientCui));
+            $commission = (float) ($pair['commission'] ?? 0);
+
             $issueTs = strtotime('-' . rand(1, 60) . ' days');
             $issueDate = date('Y-m-d', $issueTs);
             $dueDate = date('Y-m-d', strtotime('+15 days', $issueTs));
-            $invoiceSeries = $supplier['series'];
+            $invoiceSeries = $this->buildSeries($supplierName, $i);
             $invoiceNo = (string) ($i + 1000);
             $invoiceNumber = trim($invoiceSeries . ' ' . $invoiceNo);
 
@@ -297,8 +283,8 @@ class SettingsController
                 'invoice_number' => $invoiceNumber,
                 'invoice_series' => $invoiceSeries,
                 'invoice_no' => $invoiceNo,
-                'supplier_cui' => $supplier['cui'],
-                'supplier_name' => $supplier['name'],
+                'supplier_cui' => $supplierCui,
+                'supplier_name' => $supplierName,
                 'customer_cui' => $platformCui,
                 'customer_name' => $platformName,
                 'issue_date' => $issueDate,
@@ -313,8 +299,8 @@ class SettingsController
             Database::execute(
                 'UPDATE invoices_in SET selected_client_cui = :client, commission_percent = :commission WHERE id = :id',
                 [
-                    'client' => $client['cui'],
-                    'commission' => $client['commission'],
+                    'client' => $clientCui,
+                    'commission' => $commission,
                     'id' => $invoice->id,
                 ]
             );
@@ -369,7 +355,7 @@ class SettingsController
             }
 
             if (!$hasStorno) {
-                $this->createDemoPayments($invoice->id, $client['cui'], $client['name'], $client['commission']);
+                $this->createDemoPayments($invoice->id, $clientCui, $clientName, $commission);
             }
 
             $invoicesCreated++;
@@ -407,33 +393,8 @@ class SettingsController
         }
 
         $settings = new SettingsService();
-        $demoCuis = (array) $settings->get('demo.cuis', []);
-        $settings->set('demo.cuis', []);
         $settings->set('packages.last_confirmed_no', 10000);
         $settings->set('order_note.last_no', 999);
-
-        if (!empty($demoCuis)) {
-            $placeholders = [];
-            $params = [];
-            foreach (array_values($demoCuis) as $index => $cui) {
-                $key = 'c' . $index;
-                $placeholders[] = ':' . $key;
-                $params[$key] = $cui;
-            }
-            Database::execute(
-                'DELETE FROM commissions WHERE supplier_cui IN (' . implode(',', $placeholders) . ')
-                 OR client_cui IN (' . implode(',', $placeholders) . ')',
-                $params
-            );
-            Database::execute(
-                'DELETE FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
-                $params
-            );
-            Database::execute(
-                'DELETE FROM companies WHERE cui IN (' . implode(',', $placeholders) . ')',
-                $params
-            );
-        }
 
         $this->purgeDirectory(BASE_PATH . '/storage/invoices_in');
         $this->purgeDirectory(BASE_PATH . '/storage/saga');
@@ -442,54 +403,26 @@ class SettingsController
         Response::redirect('/admin/setari');
     }
 
-    private function demoSuppliers(): array
+    private function buildSeries(string $supplierName, int $index): string
     {
-        return [
-            ['cui' => '33288881', 'name' => 'EURO PRINT SHOP SRL', 'iban' => 'RO49AAAA1B31007593840001', 'banca' => 'Banca Transilvania', 'city' => 'Bucuresti', 'judet' => 'Bucuresti', 'series' => 'EPS'],
-            ['cui' => '47473680', 'name' => 'DEMO LOGISTIC SRL', 'iban' => 'RO49AAAA1B31007593840002', 'banca' => 'BCR', 'city' => 'Cluj-Napoca', 'judet' => 'Cluj', 'series' => 'DL'],
-            ['cui' => '41928357', 'name' => 'PRO SOLUTION SRL', 'iban' => 'RO49AAAA1B31007593840003', 'banca' => 'ING', 'city' => 'Timisoara', 'judet' => 'Timis', 'series' => 'PS'],
-            ['cui' => '18273645', 'name' => 'ALFA SUPPLY SRL', 'iban' => 'RO49AAAA1B31007593840004', 'banca' => 'BRD', 'city' => 'Iasi', 'judet' => 'Iasi', 'series' => 'AS'],
-            ['cui' => '29584736', 'name' => 'BETA PRINT SRL', 'iban' => 'RO49AAAA1B31007593840005', 'banca' => 'CEC', 'city' => 'Constanta', 'judet' => 'Constanta', 'series' => 'BP'],
-            ['cui' => '30658912', 'name' => 'OMEGA OFFICE SRL', 'iban' => 'RO49AAAA1B31007593840006', 'banca' => 'UniCredit', 'city' => 'Brasov', 'judet' => 'Brasov', 'series' => 'OO'],
-        ];
-    }
+        $parts = preg_split('/\s+/', trim($supplierName));
+        $letters = '';
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+            $letters .= substr($part, 0, 1);
+            if (strlen($letters) >= 3) {
+                break;
+            }
+        }
+        $letters = strtoupper($letters);
+        if ($letters === '') {
+            $letters = 'F' . (($index % 9) + 1);
+        }
 
-    private function demoClients(): array
-    {
-        return [
-            ['cui' => '47310601', 'name' => 'IKONIA AGENCY SRL', 'iban' => 'RO49AAAA1B31007593840101', 'banca' => 'Banca Transilvania', 'city' => 'Bucuresti', 'judet' => 'Bucuresti', 'commission' => 10.0],
-            ['cui' => '36958137', 'name' => 'MIVINIA SRL', 'iban' => 'RO49AAAA1B31007593840102', 'banca' => 'BCR', 'city' => 'Cluj-Napoca', 'judet' => 'Cluj', 'commission' => 8.0],
-            ['cui' => '51239847', 'name' => 'ALPHA MEDIA SRL', 'iban' => 'RO49AAAA1B31007593840103', 'banca' => 'ING', 'city' => 'Timisoara', 'judet' => 'Timis', 'commission' => 12.5],
-            ['cui' => '41873922', 'name' => 'BETA AGENCY SRL', 'iban' => 'RO49AAAA1B31007593840104', 'banca' => 'BRD', 'city' => 'Iasi', 'judet' => 'Iasi', 'commission' => 7.5],
-            ['cui' => '51290347', 'name' => 'OMEGA COM SRL', 'iban' => 'RO49AAAA1B31007593840105', 'banca' => 'CEC', 'city' => 'Constanta', 'judet' => 'Constanta', 'commission' => 9.0],
-            ['cui' => '42399877', 'name' => 'DELTA CLIENT SRL', 'iban' => 'RO49AAAA1B31007593840106', 'banca' => 'UniCredit', 'city' => 'Brasov', 'judet' => 'Brasov', 'commission' => 11.0],
-            ['cui' => '39827461', 'name' => 'ZETA PARTNER SRL', 'iban' => 'RO49AAAA1B31007593840107', 'banca' => 'Raiffeisen', 'city' => 'Oradea', 'judet' => 'Bihor', 'commission' => 6.5],
-            ['cui' => '50761239', 'name' => 'GAMMA GROUP SRL', 'iban' => 'RO49AAAA1B31007593840108', 'banca' => 'Alpha Bank', 'city' => 'Ploiesti', 'judet' => 'Prahova', 'commission' => 10.5],
-        ];
+        return $letters;
     }
-
-    private function upsertCompany(array $data, string $tipCompanie): void
-    {
-        Company::save([
-            'denumire' => $data['name'],
-            'tip_firma' => 'SRL',
-            'cui' => $data['cui'],
-            'nr_reg_comertului' => 'J' . rand(1, 40) . '/' . rand(100, 999) . '/2019',
-            'platitor_tva' => 1,
-            'adresa' => 'Str. Demo nr. ' . rand(1, 50),
-            'localitate' => $data['city'],
-            'judet' => $data['judet'],
-            'tara' => 'Romania',
-            'email' => 'contact@' . strtolower(str_replace(' ', '', $data['name'])) . '.ro',
-            'telefon' => '07' . rand(10000000, 99999999),
-            'banca' => $data['banca'],
-            'iban' => $data['iban'],
-            'tip_companie' => $tipCompanie,
-            'activ' => 1,
-        ]);
-        Partner::upsert($data['cui'], CompanyName::normalize($data['name']));
-    }
-
     private function buildDemoLines(): array
     {
         $products = [
