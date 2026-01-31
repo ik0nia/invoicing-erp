@@ -2598,6 +2598,8 @@ class InvoiceController
         }
         $clientStatus = trim((string) ($_GET['client_status'] ?? ''));
         $supplierStatus = trim((string) ($_GET['supplier_status'] ?? ''));
+        $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
+        $dateTo = trim((string) ($_GET['date_to'] ?? ''));
         $perPage = (int) ($_GET['per_page'] ?? 25);
         $allowedPerPage = [25, 50, 250, 500];
         if (!in_array($perPage, $allowedPerPage, true)) {
@@ -2611,6 +2613,8 @@ class InvoiceController
             'client_cui' => $clientCui,
             'client_status' => $clientStatus,
             'supplier_status' => $supplierStatus,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
             'per_page' => $perPage,
             'page' => $page,
         ];
@@ -2648,6 +2652,24 @@ class InvoiceController
             }
         }
 
+        $fromTs = $this->parseDateFilter($filters['date_from'] ?? '');
+        $toTs = $this->parseDateFilter($filters['date_to'] ?? '', true);
+        if ($fromTs !== null || $toTs !== null) {
+            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($fromTs, $toTs): bool {
+                $issueTs = strtotime((string) $invoice->issue_date);
+                if ($issueTs === false) {
+                    return false;
+                }
+                if ($fromTs !== null && $issueTs < $fromTs) {
+                    return false;
+                }
+                if ($toTs !== null && $issueTs > $toTs) {
+                    return false;
+                }
+                return true;
+            });
+        }
+
         if ($filters['client_status'] !== '') {
             $clientStatus = $filters['client_status'];
             $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $clientStatus): bool {
@@ -2665,6 +2687,20 @@ class InvoiceController
         }
 
         return array_values($filtered);
+    }
+
+    private function parseDateFilter(?string $value, bool $endOfDay = false): ?int
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+        $candidate = $endOfDay ? ($raw . ' 23:59:59') : $raw;
+        $timestamp = strtotime($candidate);
+        if ($timestamp === false) {
+            return null;
+        }
+        return $timestamp;
     }
 
     private function resolveSupplierLabel(string $supplierCui, array $invoices): string

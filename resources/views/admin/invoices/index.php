@@ -30,6 +30,8 @@
         'client_cui' => $filters['client_cui'] ?? '',
         'client_status' => $filters['client_status'] ?? '',
         'supplier_status' => $filters['supplier_status'] ?? '',
+        'date_from' => $filters['date_from'] ?? '',
+        'date_to' => $filters['date_to'] ?? '',
     ];
     $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
     $exportUrl = App\Support\Url::to('admin/facturi/export');
@@ -82,58 +84,82 @@
     </div>
     <div class="mt-4 flex flex-wrap items-end gap-4">
         <div
-            class="relative min-w-[220px] flex-1"
+            class="relative min-w-[200px] w-60"
             data-ajax-select
             data-lookup-url="<?= App\Support\Url::to('admin/facturi/lookup-suppliers') ?>"
         >
             <label class="block text-sm font-medium text-slate-700" for="filter-supplier-input">Furnizor</label>
-            <input
-                id="filter-supplier-input"
-                type="text"
-                value="<?= htmlspecialchars((string) $supplierFilterLabel) ?>"
-                placeholder="Toti furnizorii"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
-                autocomplete="off"
-                data-ajax-input
-            >
+            <div class="relative mt-1">
+                <input
+                    id="filter-supplier-input"
+                    type="text"
+                    value="<?= htmlspecialchars((string) $supplierFilterLabel) ?>"
+                    placeholder="Toti furnizorii"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
+                    autocomplete="off"
+                    data-ajax-input
+                >
+                <button
+                    type="button"
+                    class="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
+                    aria-label="Sterge furnizor"
+                    data-ajax-clear
+                >
+                    &#10005;
+                </button>
+            </div>
             <input type="hidden" name="supplier_cui" value="<?= htmlspecialchars((string) ($filters['supplier_cui'] ?? '')) ?>" data-ajax-value>
-            <button
-                type="button"
-                class="absolute right-2 top-9 hidden rounded p-1 text-slate-400 hover:text-slate-600"
-                aria-label="Sterge furnizor"
-                data-ajax-clear
-            >
-                &#10005;
-            </button>
-            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
+            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-ajax-list></div>
         </div>
         <div
-            class="relative min-w-[220px] flex-1"
+            class="relative min-w-[200px] w-60"
             data-ajax-select
             data-lookup-url="<?= App\Support\Url::to('admin/facturi/lookup-clients') ?>"
             data-allow-empty="<?= $hasEmptyClients ? '1' : '0' ?>"
             data-empty-label="Fara client"
         >
             <label class="block text-sm font-medium text-slate-700" for="filter-client-input">Client final</label>
-            <input
-                id="filter-client-input"
-                type="text"
-                value="<?= htmlspecialchars((string) $clientFilterLabel) ?>"
-                placeholder="Toti clientii"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
-                autocomplete="off"
-                data-ajax-input
-            >
+            <div class="relative mt-1">
+                <input
+                    id="filter-client-input"
+                    type="text"
+                    value="<?= htmlspecialchars((string) $clientFilterLabel) ?>"
+                    placeholder="Toti clientii"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
+                    autocomplete="off"
+                    data-ajax-input
+                >
+                <button
+                    type="button"
+                    class="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
+                    aria-label="Sterge client"
+                    data-ajax-clear
+                >
+                    &#10005;
+                </button>
+            </div>
             <input type="hidden" name="client_cui" value="<?= htmlspecialchars((string) ($filters['client_cui'] ?? '')) ?>" data-ajax-value>
-            <button
-                type="button"
-                class="absolute right-2 top-9 hidden rounded p-1 text-slate-400 hover:text-slate-600"
-                aria-label="Sterge client"
-                data-ajax-clear
+            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-ajax-list></div>
+        </div>
+        <div class="min-w-[160px]">
+            <label class="block text-sm font-medium text-slate-700" for="filter-date-from">Data inceput</label>
+            <input
+                id="filter-date-from"
+                name="date_from"
+                type="date"
+                value="<?= htmlspecialchars((string) ($filters['date_from'] ?? '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
-                &#10005;
-            </button>
-            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
+        </div>
+        <div class="min-w-[160px]">
+            <label class="block text-sm font-medium text-slate-700" for="filter-date-to">Data final</label>
+            <input
+                id="filter-date-to"
+                name="date_to"
+                type="date"
+                value="<?= htmlspecialchars((string) ($filters['date_to'] ?? '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
         </div>
         <div class="min-w-[180px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-client-status">Incasare client</label>
@@ -375,7 +401,7 @@
                             return `
                                 <button
                                     type="button"
-                                    class="block w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                    class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
                                     data-ajax-item
                                     data-value="${cui}"
                                     data-label="${escapeHtml(label)}"
@@ -538,6 +564,11 @@
             const selectInputs = form.querySelectorAll('#filter-client-status, #filter-supplier-status, #filter-per-page');
             selectInputs.forEach((select) => {
                 select.addEventListener('change', () => submitForm());
+            });
+
+            const dateInputs = form.querySelectorAll('#filter-date-from, #filter-date-to');
+            dateInputs.forEach((input) => {
+                input.addEventListener('change', () => submitForm());
             });
         }
 
