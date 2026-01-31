@@ -445,6 +445,18 @@ class PaymentsController
                 Session::flash('error', 'Suma alocata depaseste disponibilul pentru o factura.');
                 Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
             }
+
+            $stornoRow = Database::fetchOne(
+                'SELECT id FROM invoices_in WHERE id = :id
+                 AND (fgo_storno_number IS NOT NULL AND fgo_storno_number <> ""
+                      OR fgo_storno_series IS NOT NULL AND fgo_storno_series <> ""
+                      OR fgo_storno_link IS NOT NULL AND fgo_storno_link <> "")',
+                ['id' => $allocation['invoice_id']]
+            );
+            if ($stornoRow) {
+                Session::flash('error', 'Nu poti aloca plata pentru o factura stornata.');
+                Response::redirect('/admin/plati/adauga?supplier_cui=' . $supplierCui);
+            }
         }
 
         $amount = $allocatedTotal;
@@ -684,6 +696,9 @@ class PaymentsController
              LEFT JOIN payment_out_allocations o ON o.invoice_in_id = i.id
              LEFT JOIN payment_in_allocations a ON a.invoice_in_id = i.id
              WHERE i.supplier_cui = :supplier
+               AND (i.fgo_storno_number IS NULL OR i.fgo_storno_number = "")
+               AND (i.fgo_storno_series IS NULL OR i.fgo_storno_series = "")
+               AND (i.fgo_storno_link IS NULL OR i.fgo_storno_link = "")
              GROUP BY i.id
              ORDER BY i.issue_date DESC, i.id DESC',
             ['supplier' => $supplierCui]
@@ -775,6 +790,9 @@ class PaymentsController
             'SELECT id, supplier_cui, supplier_name, selected_client_cui, commission_percent, total_with_vat
              FROM invoices_in
              WHERE supplier_cui IS NOT NULL AND supplier_cui <> ""
+               AND (fgo_storno_number IS NULL OR fgo_storno_number = "")
+               AND (fgo_storno_series IS NULL OR fgo_storno_series = "")
+               AND (fgo_storno_link IS NULL OR fgo_storno_link = "")
              ORDER BY supplier_name ASC'
         );
 

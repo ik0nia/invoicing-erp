@@ -10,7 +10,10 @@
             $status = $invoiceStatuses[$invoice->id] ?? null;
             $rowClass = 'border-b border-slate-100 block md:table-row';
             $clientTotal = $status['client_total'] ?? null;
-            if ($status) {
+            $hasStorno = !empty($invoice->fgo_storno_number) || !empty($invoice->fgo_storno_series) || !empty($invoice->fgo_storno_link);
+            if ($hasStorno) {
+                $rowClass = 'border-b border-slate-100 bg-slate-100 block md:table-row';
+            } elseif ($status) {
                 if ($status['supplier_label'] === 'Platit integral') {
                     $rowClass = 'border-b border-slate-100 bg-emerald-50 block md:table-row';
                 } elseif ($status['supplier_label'] === 'Platit partial') {
