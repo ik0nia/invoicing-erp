@@ -487,8 +487,22 @@ class InvoiceController
             );
         }
         $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $allInvoices = $invoices;
         $invoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
         $clientFinals = $this->clientFinals($invoices, $clientNameMap);
+
+        $titleParts = ['Situatie Facturi'];
+        if (($filters['supplier_cui'] ?? '') !== '') {
+            $titleParts[] = 'Furnizor: ' . $this->resolveSupplierName((string) $filters['supplier_cui'], $allInvoices);
+        }
+        if (($filters['client_cui'] ?? '') !== '') {
+            $titleParts[] = 'Client: ' . $this->resolveClientName((string) $filters['client_cui'], $clientNameMap);
+        }
+        $periodLabel = $this->formatPeriodLabel((string) ($filters['date_from'] ?? ''), (string) ($filters['date_to'] ?? ''));
+        if ($periodLabel !== '') {
+            $titleParts[] = $periodLabel;
+        }
+        $titleText = implode(' - ', array_filter($titleParts, static fn ($part) => trim((string) $part) !== ''));
 
         $settings = new SettingsService();
         $logoPath = $settings->get('branding.logo_path');
@@ -518,6 +532,7 @@ class InvoiceController
             'logoUrl' => $logoUrl,
             'company' => $company,
             'printedAt' => date('d.m.Y H:i'),
+            'titleText' => $titleText,
         ], null);
     }
 
@@ -2820,6 +2835,59 @@ class InvoiceController
         }
 
         return false;
+    }
+
+    private function resolveSupplierName(string $supplierCui, array $invoices): string
+    {
+        if ($supplierCui === '') {
+            return '';
+        }
+        foreach ($invoices as $invoice) {
+            if ((string) $invoice->supplier_cui === $supplierCui) {
+                return (string) ($invoice->supplier_name ?: $supplierCui);
+            }
+        }
+        return $supplierCui;
+    }
+
+    private function resolveClientName(string $clientCui, array $clientNameMap): string
+    {
+        if ($clientCui === '') {
+            return '';
+        }
+        if ($clientCui === 'none') {
+            return 'Fara client';
+        }
+        return (string) ($clientNameMap[$clientCui] ?? $clientCui);
+    }
+
+    private function formatPeriodLabel(string $dateFrom, string $dateTo): string
+    {
+        $from = $this->formatDateForTitle($dateFrom);
+        $to = $this->formatDateForTitle($dateTo);
+        if ($from === '' && $to === '') {
+            return '';
+        }
+        if ($from !== '' && $to !== '') {
+            return 'Perioada: ' . $from . '-' . $to;
+        }
+        if ($from !== '') {
+            return 'Perioada: ' . $from . '-';
+        }
+        return 'Perioada: -' . $to;
+    }
+
+    private function formatDateForTitle(string $value): string
+    {
+        $raw = trim($value);
+        if ($raw === '') {
+            return '';
+        }
+        $timestamp = strtotime($raw);
+        if ($timestamp === false) {
+            return '';
+        }
+        return date('d.m.Y', $timestamp);
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array

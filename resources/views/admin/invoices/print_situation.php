@@ -62,7 +62,7 @@
         </div>
     </div>
 
-    <div class="title">Situatie facturi</div>
+    <div class="title"><?= htmlspecialchars($titleText ?? 'Situatie facturi') ?></div>
     <div class="subtitle">Situatie la data <?= htmlspecialchars($printedAt ?? '') ?></div>
 
     <div class="actions no-print">
@@ -78,8 +78,6 @@
                 <th>Data factura furnizor</th>
                 <th>Total factura furnizor</th>
                 <th>Client final</th>
-                <th>Factura client</th>
-                <th>Data factura client</th>
                 <th>Total factura client</th>
                 <th>Incasare client</th>
                 <th>Plata furnizor</th>
@@ -88,7 +86,7 @@
         <tbody>
             <?php if (empty($invoices)): ?>
                 <tr>
-                    <td colspan="10" class="muted">Nu exista facturi pentru criteriile selectate.</td>
+                    <td colspan="8" class="muted">Nu exista facturi pentru criteriile selectate.</td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($invoices as $invoice): ?>
@@ -101,11 +99,6 @@
                         }
                         $clientFinal = $clientFinals[$invoice->id] ?? ['name' => '', 'cui' => ''];
                         $clientLabel = $clientFinal['name'] !== '' ? $clientFinal['name'] : '—';
-                        $fgoNumber = trim((string) ($invoice->fgo_series ?? '') . ' ' . (string) ($invoice->fgo_number ?? ''));
-                        $clientDate = (string) ($invoice->fgo_date ?? '');
-                        if ($clientDate === '' && !empty($invoice->fgo_number) && !empty($invoice->packages_confirmed_at)) {
-                            $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
-                        }
                     ?>
                     <tr>
                         <td><?= htmlspecialchars($invoice->supplier_name) ?></td>
@@ -113,8 +106,6 @@
                         <td><?= htmlspecialchars($invoice->issue_date) ?></td>
                         <td><?= number_format((float) $invoice->total_with_vat, 2, '.', ' ') ?></td>
                         <td><?= htmlspecialchars($clientLabel) ?></td>
-                        <td><?= htmlspecialchars($fgoNumber !== '' ? $fgoNumber : '—') ?></td>
-                        <td><?= htmlspecialchars($clientDate !== '' ? $clientDate : '—') ?></td>
                         <td><?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?></td>
                         <td>
                             <?php if ($status && $status['client_total'] !== null): ?>
