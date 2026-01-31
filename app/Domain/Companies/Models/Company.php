@@ -2,6 +2,7 @@
 
 namespace App\Domain\Companies\Models;
 
+use App\Support\CompanyName;
 use App\Support\Database;
 
 class Company
@@ -25,7 +26,7 @@ class Company
     {
         $company = new self();
         $company->id = (int) $row['id'];
-        $company->denumire = $row['denumire'];
+        $company->denumire = CompanyName::normalize((string) $row['denumire']);
         $company->tip_firma = $row['tip_firma'];
         $company->cui = $row['cui'];
         $company->nr_reg_comertului = $row['nr_reg_comertului'];
@@ -63,6 +64,7 @@ class Company
     public static function save(array $data): self
     {
         $now = date('Y-m-d H:i:s');
+        $data['denumire'] = CompanyName::normalize((string) ($data['denumire'] ?? ''));
 
         Database::execute(
             'INSERT INTO companies (

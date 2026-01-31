@@ -26,21 +26,6 @@
                 >
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="company_tip_firma">Tip firma</label>
-                <select
-                    id="company_tip_firma"
-                    name="company_tip_firma"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-                    <option value="">Selecteaza</option>
-                    <?php foreach (['SRL', 'SA', 'PFA', 'II', 'IF'] as $tip): ?>
-                        <option value="<?= $tip ?>" <?= ($company['tip_firma'] ?? '') === $tip ? 'selected' : '' ?>>
-                            <?= $tip ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
                 <label class="block text-sm font-medium text-slate-700" for="company_cui">CUI</label>
                 <input
                     id="company_cui"

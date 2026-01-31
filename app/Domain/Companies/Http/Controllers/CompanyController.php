@@ -6,6 +6,7 @@ use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
 use App\Support\Auth;
+use App\Support\CompanyName;
 use App\Support\Database;
 use App\Support\Response;
 use App\Support\Session;
@@ -42,6 +43,11 @@ class CompanyController
             );
         }
 
+        foreach ($companies as &$company) {
+            $company['denumire'] = CompanyName::normalize((string) ($company['denumire'] ?? ''));
+        }
+        unset($company);
+
         Response::view('admin/companies/index', [
             'companies' => $companies,
             'hasPartners' => $hasPartners,
@@ -74,8 +80,7 @@ class CompanyController
         $this->ensureCompaniesTable();
 
         $data = [
-            'denumire' => trim($_POST['denumire'] ?? ''),
-            'tip_firma' => trim($_POST['tip_firma'] ?? ''),
+            'denumire' => CompanyName::normalize((string) ($_POST['denumire'] ?? '')),
             'cui' => preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? '')),
             'nr_reg_comertului' => trim($_POST['nr_reg_comertului'] ?? ''),
             'platitor_tva' => !empty($_POST['platitor_tva']) ? 1 : 0,
@@ -85,9 +90,11 @@ class CompanyController
             'tara' => trim($_POST['tara'] ?? 'România'),
             'email' => trim($_POST['email'] ?? ''),
             'telefon' => trim($_POST['telefon'] ?? ''),
-            'tip_companie' => trim($_POST['tip_companie'] ?? ''),
             'activ' => !empty($_POST['activ']) ? 1 : 0,
         ];
+        $existing = $data['cui'] !== '' ? Company::findByCui($data['cui']) : null;
+        $data['tip_firma'] = $existing?->tip_firma ?? 'SRL';
+        $data['tip_companie'] = $existing?->tip_companie ?? 'client';
 
         $errors = $this->validate($data);
         if (!empty($errors)) {
@@ -127,6 +134,7 @@ class CompanyController
 
         $data = $response['data'];
         $denumire = trim((string) ($data['denumire'] ?? ''));
+        $denumire = CompanyName::normalize($denumire);
         $adresa = trim((string) ($data['adresa'] ?? ''));
         $localitate = trim((string) ($data['localitate'] ?? ''));
         if ($localitate === '' && $adresa !== '') {
@@ -134,7 +142,6 @@ class CompanyController
             $localitate = end($parts) ?: '';
         }
 
-        $tipFirma = $this->guessTipFirma($denumire);
         $tva = $data['tva'] ?? null;
         $platitorTva = !empty($tva) && strtolower((string) $tva) !== 'null';
         $radiata = $data['radiata'] ?? null;
@@ -147,7 +154,6 @@ class CompanyController
             'localitate' => $localitate,
             'judet' => (string) ($data['judet'] ?? ''),
             'telefon' => (string) ($data['telefon'] ?? ''),
-            'tip_firma' => $tipFirma,
             'platitor_tva' => $platitorTva,
             'activ' => $radiata === null ? null : !$radiata,
         ];
@@ -159,7 +165,6 @@ class CompanyController
     {
         $required = [
             'denumire' => 'Denumire',
-            'tip_firma' => 'Tip firma',
             'cui' => 'CUI',
             'nr_reg_comertului' => 'Nr. Reg. Comertului',
             'adresa' => 'Adresa',
@@ -168,7 +173,6 @@ class CompanyController
             'tara' => 'Tara',
             'email' => 'Email',
             'telefon' => 'Telefon',
-            'tip_companie' => 'Tip companie',
         ];
 
         foreach ($required as $field => $label) {
@@ -181,24 +185,13 @@ class CompanyController
             return ['Email invalid.'];
         }
 
-        $tipFirmaAllowed = ['SRL', 'SA', 'PFA', 'II', 'IF'];
-        if (!in_array($data['tip_firma'], $tipFirmaAllowed, true)) {
-            return ['Tip firma invalid.'];
-        }
-
-        $tipCompanieAllowed = ['client', 'furnizor', 'intermediar'];
-        if (!in_array($data['tip_companie'], $tipCompanieAllowed, true)) {
-            return ['Tip companie invalid.'];
-        }
-
         return [];
     }
 
     private function buildFormData(?Company $company, ?Partner $partner): array
     {
         return [
-            'denumire' => $company?->denumire ?? $partner?->denumire ?? '',
-            'tip_firma' => $company?->tip_firma ?? '',
+            'denumire' => CompanyName::normalize((string) ($company?->denumire ?? $partner?->denumire ?? '')),
             'cui' => $company?->cui ?? $partner?->cui ?? '',
             'nr_reg_comertului' => $company?->nr_reg_comertului ?? '',
             'platitor_tva' => $company?->platitor_tva ?? false,
@@ -208,7 +201,6 @@ class CompanyController
             'tara' => $company?->tara ?? 'România',
             'email' => $company?->email ?? '',
             'telefon' => $company?->telefon ?? '',
-            'tip_companie' => $company?->tip_companie ?? '',
             'activ' => $company?->activ ?? true,
         ];
     }
@@ -276,28 +268,6 @@ class CompanyController
         }
 
         return ['error' => null, 'data' => $decoded];
-    }
-
-    private function guessTipFirma(string $denumire): string
-    {
-        $value = strtoupper($denumire);
-        if (str_contains($value, ' S.R.L') || str_contains($value, ' SRL')) {
-            return 'SRL';
-        }
-        if (str_contains($value, ' S.A') || str_contains($value, ' SA')) {
-            return 'SA';
-        }
-        if (str_contains($value, ' PFA')) {
-            return 'PFA';
-        }
-        if (str_contains($value, ' II')) {
-            return 'II';
-        }
-        if (str_contains($value, ' IF')) {
-            return 'IF';
-        }
-
-        return '';
     }
 
     private function json(array $payload): void

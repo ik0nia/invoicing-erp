@@ -24,8 +24,6 @@
                 <tr>
                     <th class="px-4 py-3">Denumire</th>
                     <th class="px-4 py-3">CUI</th>
-                    <th class="px-4 py-3">Tip firma</th>
-                    <th class="px-4 py-3">Tip companie</th>
                     <th class="px-4 py-3">Status</th>
                     <th class="px-4 py-3"></th>
                 </tr>
@@ -38,12 +36,6 @@
                         </td>
                         <td class="px-4 py-3 text-slate-700">
                             <?= htmlspecialchars($company['cui'] ?? '') ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-700">
-                            <?= htmlspecialchars($company['tip_firma'] ?? '-') ?>
-                        </td>
-                        <td class="px-4 py-3 text-slate-700">
-                            <?= htmlspecialchars($company['tip_companie'] ?? '-') ?>
                         </td>
                         <td class="px-4 py-3 text-slate-700">
                             <?php if (!empty($company['company_id'])): ?>

@@ -14,6 +14,7 @@ use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
+use App\Support\CompanyName;
 use App\Support\Database;
 use App\Support\Response;
 use App\Support\Session;
@@ -480,6 +481,9 @@ class InvoiceController
             Response::redirect('/admin/facturi/import');
         }
 
+        $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
+        $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
+
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
 
         if ($this->invoiceExists($data['supplier_cui'], $data['invoice_series'], $data['invoice_no'], $data['invoice_number'])) {
@@ -553,6 +557,9 @@ class InvoiceController
                 $customerName = $customer->denumire;
             }
         }
+
+        $supplierName = CompanyName::normalize($supplierName);
+        $customerName = CompanyName::normalize($customerName);
 
         if ($invoiceSeries === '' || $invoiceNo === '') {
             $errors[] = 'Completeaza seria si numarul facturii.';

@@ -42,7 +42,6 @@ class SettingsController
         $openApiKey = (string) $this->settings->get('openapi.api_key', '');
         $company = [
             'denumire' => (string) $this->settings->get('company.denumire', ''),
-            'tip_firma' => (string) $this->settings->get('company.tip_firma', ''),
             'cui' => (string) $this->settings->get('company.cui', ''),
             'nr_reg_comertului' => (string) $this->settings->get('company.nr_reg_comertului', ''),
             'platitor_tva' => (bool) $this->settings->get('company.platitor_tva', false),
@@ -147,8 +146,7 @@ class SettingsController
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
         $openApiKey = trim($_POST['openapi_api_key'] ?? '');
         $companyData = [
-            'denumire' => trim($_POST['company_denumire'] ?? ''),
-            'tip_firma' => trim($_POST['company_tip_firma'] ?? ''),
+            'denumire' => \App\Support\CompanyName::normalize((string) ($_POST['company_denumire'] ?? '')),
             'cui' => trim($_POST['company_cui'] ?? ''),
             'nr_reg_comertului' => trim($_POST['company_nr_reg_comertului'] ?? ''),
             'platitor_tva' => ($_POST['company_platitor_tva'] ?? '') === '1',

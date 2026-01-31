@@ -2,6 +2,7 @@
 
 namespace App\Domain\Partners\Models;
 
+use App\Support\CompanyName;
 use App\Support\Database;
 
 class Partner
@@ -15,7 +16,7 @@ class Partner
         $partner = new self();
         $partner->id = (int) $row['id'];
         $partner->cui = (string) $row['cui'];
-        $partner->denumire = $row['denumire'];
+        $partner->denumire = CompanyName::normalize((string) $row['denumire']);
 
         return $partner;
     }
@@ -49,6 +50,7 @@ class Partner
         }
 
         $now = date('Y-m-d H:i:s');
+        $denumire = CompanyName::normalize($denumire);
 
         Database::execute(
             'INSERT INTO partners (cui, denumire, created_at, updated_at)
@@ -67,6 +69,7 @@ class Partner
     public static function upsert(string $cui, string $denumire): self
     {
         $now = date('Y-m-d H:i:s');
+        $denumire = CompanyName::normalize($denumire);
 
         Database::execute(
             'INSERT INTO partners (cui, denumire, created_at, updated_at)

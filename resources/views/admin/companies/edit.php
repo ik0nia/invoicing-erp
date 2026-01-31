@@ -55,18 +55,6 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="tip_firma">Tip firma</label>
-            <select id="tip_firma" name="tip_firma" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" required>
-                <option value="">Alege</option>
-                <?php foreach (['SRL', 'SA', 'PFA', 'II', 'IF'] as $tip): ?>
-                    <option value="<?= $tip ?>" <?= ($form['tip_firma'] ?? '') === $tip ? 'selected' : '' ?>>
-                        <?= $tip ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div>
             <label class="block text-sm font-medium text-slate-700" for="nr_reg_comertului">Nr. Reg. Comertului</label>
             <input
                 id="nr_reg_comertului"
@@ -150,17 +138,6 @@
             >
         </div>
 
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="tip_companie">Tip companie</label>
-            <select id="tip_companie" name="tip_companie" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" required>
-                <option value="">Alege</option>
-                <?php foreach (['client' => 'Client', 'furnizor' => 'Furnizor', 'intermediar' => 'Intermediar'] as $value => $label): ?>
-                    <option value="<?= $value ?>" <?= ($form['tip_companie'] ?? '') === $value ? 'selected' : '' ?>>
-                        <?= $label ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
     </div>
 
     <div class="mt-4 flex flex-wrap items-center gap-6 text-sm text-slate-700">
@@ -254,7 +231,6 @@
                     setValue('localitate', data.localitate);
                     setValue('judet', data.judet);
                     setValue('telefon', data.telefon);
-                    setSelect('tip_firma', data.tip_firma);
                     setCheckbox('platitor_tva', data.platitor_tva);
                     if (data.activ !== null && data.activ !== undefined) {
                         setCheckbox('activ', data.activ);
