@@ -54,14 +54,22 @@
     <div class="flex flex-wrap items-center gap-2">
         <a
             href="<?= App\Support\Url::to('admin/facturi/adauga') ?>"
-            class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+            class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow hover:bg-slate-50"
         >
+            <svg class="h-4 w-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 5h10l5 5v9a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/>
+                <path d="M7 16l6-6"/>
+                <path d="M7 16h3v3"/>
+            </svg>
             Adauga factura
         </a>
         <a
             href="<?= App\Support\Url::to('admin/facturi/import') ?>"
-            class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow hover:bg-slate-50"
+            class="inline-flex items-center gap-2 rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
         >
+            <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M13 2L3 14h7l-1 8 12-16h-8l1-4z"/>
+            </svg>
             Importa XML
         </a>
     </div>
@@ -253,6 +261,7 @@
     <table class="w-full text-left text-sm md:table">
         <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
             <tr>
+                <th class="px-4 py-3">Creat</th>
                 <th class="px-4 py-3">Furnizor</th>
                 <th class="px-4 py-3">Factura furnizor</th>
                 <th class="px-4 py-3">Data factura furnizor</th>

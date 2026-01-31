@@ -1,6 +1,6 @@
 <?php if (empty($invoices)): ?>
     <tr>
-        <td colspan="10" class="px-4 py-6 text-center text-slate-500">
+        <td colspan="11" class="px-4 py-6 text-center text-slate-500">
             Nu exista facturi importate.
         </td>
     </tr>
@@ -37,8 +37,19 @@
                 $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
             }
             $rowUrl = App\Support\Url::to('admin/facturi') . '?invoice_id=' . (int) $invoice->id;
+            $createdAt = (string) ($invoice->created_at ?? '');
+            $createdLabel = '—';
+            if ($createdAt !== '') {
+                $createdTs = strtotime($createdAt);
+                if ($createdTs !== false) {
+                    $createdLabel = date('d.m.y H:i', $createdTs);
+                }
+            }
         ?>
         <tr class="<?= $rowClass ?> invoice-row cursor-pointer <?= $hoverClass ?>" data-url="<?= htmlspecialchars($rowUrl) ?>">
+            <td class="px-4 py-3 text-xs text-slate-500 block md:table-cell" data-label="Creat">
+                <?= htmlspecialchars($createdLabel) ?>
+            </td>
             <td class="px-4 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
                 <?= htmlspecialchars($invoice->supplier_name) ?>
             </td>

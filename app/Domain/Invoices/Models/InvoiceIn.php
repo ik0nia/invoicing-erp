@@ -34,6 +34,7 @@ class InvoiceIn
     public ?int $order_note_no = null;
     public ?string $order_note_date = null;
     public ?float $commission_percent = null;
+    public ?string $created_at = null;
 
     public static function create(array $data): self
     {
@@ -176,6 +177,7 @@ class InvoiceIn
         $invoice->order_note_no = isset($row['order_note_no']) ? (int) $row['order_note_no'] : null;
         $invoice->order_note_date = $row['order_note_date'] ?? null;
         $invoice->commission_percent = isset($row['commission_percent']) ? (float) $row['commission_percent'] : null;
+        $invoice->created_at = $row['created_at'] ?? null;
 
         return $invoice;
     }
