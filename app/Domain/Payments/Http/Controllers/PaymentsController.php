@@ -150,6 +150,17 @@ class PaymentsController
             if ($amount === null || $amount <= 0) {
                 continue;
             }
+            $stornoRow = Database::fetchOne(
+                'SELECT id FROM invoices_in WHERE id = :id
+                 AND (fgo_storno_number IS NOT NULL AND fgo_storno_number <> ""
+                      OR fgo_storno_series IS NOT NULL AND fgo_storno_series <> ""
+                      OR fgo_storno_link IS NOT NULL AND fgo_storno_link <> "")',
+                ['id' => (int) $invoiceId]
+            );
+            if ($stornoRow) {
+                Session::flash('error', 'Nu poti incasa o factura stornata.');
+                Response::redirect('/admin/incasari/adauga?client_cui=' . $clientCui);
+            }
             $allocations[] = [
                 'invoice_id' => (int) $invoiceId,
                 'amount' => $amount,
@@ -658,6 +669,9 @@ class PaymentsController
              FROM invoices_in i
              LEFT JOIN payment_in_allocations a ON a.invoice_in_id = i.id
              WHERE i.selected_client_cui = :client
+               AND (i.fgo_storno_number IS NULL OR i.fgo_storno_number = "")
+               AND (i.fgo_storno_series IS NULL OR i.fgo_storno_series = "")
+               AND (i.fgo_storno_link IS NULL OR i.fgo_storno_link = "")
              GROUP BY i.id
              ORDER BY i.issue_date DESC, i.id DESC',
             ['client' => $clientCui]
