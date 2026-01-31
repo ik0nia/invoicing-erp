@@ -186,6 +186,7 @@ class UsersController
             'suppliers' => $this->supplierOptions(),
             'selectedRole' => $selectedRole,
             'selectedSuppliers' => $supplierCuis,
+            'currentUserId' => Auth::user()?->id ?? 0,
         ]);
     }
 

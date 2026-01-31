@@ -3,6 +3,7 @@
     $selectedRole = $form['role'] ?? ($selectedRole ?? '');
     $selectedSuppliers = $form['supplier_cuis'] ?? ($selectedSuppliers ?? []);
     $selectedSuppliers = array_map('strval', (array) $selectedSuppliers);
+    $currentUserId = $currentUserId ?? 0;
 ?>
 
 <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -145,6 +146,19 @@
             >
                 Renunta
             </a>
+            <?php if (!empty($user?->id) && (int) $currentUserId !== (int) $user->id): ?>
+                <form method="POST" action="<?= App\Support\Url::to('admin/utilizatori/sterge') ?>">
+                    <?= App\Support\Csrf::input() ?>
+                    <input type="hidden" name="user_id" value="<?= (int) $user->id ?>">
+                    <button
+                        type="submit"
+                        class="rounded border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+                        onclick="return confirm('Sigur vrei sa stergi utilizatorul?')"
+                    >
+                        Sterge
+                    </button>
+                </form>
+            <?php endif; ?>
         </div>
     </form>
 </div>
