@@ -6,27 +6,31 @@
     <title>Situatie facturi</title>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; font-family: "Inter", "Segoe UI", Arial, sans-serif; color: #0f172a; }
-        .page { padding: 32px; }
-        .header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+        body { margin: 0; font-family: "Inter", "Segoe UI", Arial, sans-serif; color: #0f172a; font-size: 12px; line-height: 1.3; }
+        .page { padding: 24px; }
+        .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .header-left { display: flex; align-items: center; gap: 16px; }
-        .logo { max-height: 56px; }
-        .company { font-size: 14px; color: #334155; line-height: 1.4; }
-        .title { margin-top: 24px; font-size: 22px; font-weight: 700; }
-        .subtitle { margin-top: 6px; font-size: 14px; color: #475569; }
-        .actions { margin-top: 16px; display: flex; gap: 8px; }
+        .logo { max-height: 48px; }
+        .company { font-size: 12px; color: #334155; line-height: 1.3; }
+        .title { margin-top: 16px; font-size: 18px; font-weight: 700; }
+        .subtitle { margin-top: 4px; font-size: 12px; color: #475569; }
+        .actions { margin-top: 12px; display: flex; gap: 8px; }
         .btn { border: 1px solid #cbd5f5; background: #2563eb; color: #fff; padding: 8px 12px; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; }
         .btn.secondary { background: #fff; color: #2563eb; border-color: #cbd5f5; }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
-        thead th { text-align: left; padding: 8px 10px; background: #f1f5f9; border: 1px solid #e2e8f0; }
-        tbody td { padding: 8px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
+        thead th { text-align: left; padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+        tbody td { padding: 6px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
         tbody tr:nth-child(even) { background: #f8fafc; }
         .muted { color: #64748b; }
         .no-print { display: block; }
         @media print {
             .no-print { display: none !important; }
-            .page { padding: 16px; }
-            body { color: #000; }
+            .page { padding: 12px; }
+            body { color: #000; font-size: 11px; }
+            table { font-size: 10px; margin-top: 8px; }
+            thead th, tbody td { padding: 4px 6px; }
+            .title { margin-top: 12px; font-size: 16px; }
+            .subtitle { font-size: 11px; }
         }
     </style>
 </head>
