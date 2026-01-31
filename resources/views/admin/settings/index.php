@@ -252,27 +252,6 @@
         </div>
     </div>
 
-    <div class="rounded-lg border border-rose-200 bg-rose-50/40 p-6 shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Date test</h2>
-        <p class="mt-1 text-sm text-slate-600">
-            Genereaza un set de ~30 facturi demo cu plati partiale/integrale sau goleste datele operationale.
-        </p>
-        <div class="mt-4 flex flex-wrap gap-3">
-            <form method="POST" action="<?= App\Support\Url::to('admin/setari/demo-generate') ?>">
-                <?= App\Support\Csrf::input() ?>
-                <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-                    Genereaza continut demo
-                </button>
-            </form>
-            <form method="POST" action="<?= App\Support\Url::to('admin/setari/demo-reset') ?>" onsubmit="return confirm('Sigur vrei sa stergi toate facturile si platile?')">
-                <?= App\Support\Csrf::input() ?>
-                <button class="rounded border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
-                    Golire date demo
-                </button>
-            </form>
-        </div>
-    </div>
-
     <div>
         <button
             type="submit"
@@ -282,3 +261,24 @@
         </button>
     </div>
 </form>
+
+<div class="mt-6 rounded-lg border border-rose-200 bg-rose-50/40 p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">Date test</h2>
+    <p class="mt-1 text-sm text-slate-600">
+        Genereaza un set de ~30 facturi demo cu plati partiale/integrale sau goleste datele operationale.
+    </p>
+    <div class="mt-4 flex flex-wrap gap-3">
+        <form method="POST" action="<?= App\Support\Url::to('admin/setari/demo-generate') ?>">
+            <?= App\Support\Csrf::input() ?>
+            <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+                Genereaza continut demo
+            </button>
+        </form>
+        <form method="POST" action="<?= App\Support\Url::to('admin/setari/demo-reset') ?>" onsubmit="return confirm('Sigur vrei sa stergi toate facturile si platile?')">
+            <?= App\Support\Csrf::input() ?>
+            <button class="rounded border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
+                Golire date demo
+            </button>
+        </form>
+    </div>
+</div>
