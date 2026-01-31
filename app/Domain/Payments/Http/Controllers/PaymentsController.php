@@ -284,6 +284,7 @@ class PaymentsController
         $payments = Database::fetchAll($sql, $params);
         $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
         $suppliers = $this->paymentSuppliers();
+        $orderMarks = $this->paymentOrderMarks();
 
         Response::view('admin/payments/out/history', [
             'payments' => $payments,
@@ -292,6 +293,7 @@ class PaymentsController
             'supplierCui' => $supplierCui,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'orderMarks' => $orderMarks,
         ]);
     }
 
@@ -364,6 +366,91 @@ class PaymentsController
             }
         }
 
+        fclose($out);
+        exit;
+    }
+
+    public function exportPaymentOrder(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru plati.');
+            Response::redirect('/admin/plati/istoric');
+        }
+
+        $supplierCuis = array_values(array_filter(array_map('strval', (array) ($_POST['supplier_cuis'] ?? []))));
+        $dateFrom = trim((string) ($_POST['date_from'] ?? ''));
+        $dateTo = trim((string) ($_POST['date_to'] ?? ''));
+
+        if (empty($supplierCuis)) {
+            Session::flash('error', 'Selecteaza cel putin un furnizor.');
+            Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+        }
+
+        $settings = new SettingsService();
+        $platformIban = trim((string) $settings->get('company.iban', ''));
+        if ($platformIban === '') {
+            Session::flash('error', 'Completeaza IBAN-ul platformei in setari.');
+            Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+        }
+
+        $suppliers = $this->fetchSuppliersForOrders($supplierCuis);
+        $missingIban = [];
+        foreach ($suppliers as $supplier) {
+            if (trim((string) $supplier['iban']) === '') {
+                $missingIban[] = $supplier['name'] ?: $supplier['cui'];
+            }
+        }
+        if (!empty($missingIban)) {
+            Session::flash('error', 'Lipseste IBAN pentru: ' . implode(', ', $missingIban));
+            Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+        }
+
+        $orderData = $this->buildPaymentOrders($supplierCuis, $dateFrom, $dateTo);
+        if (empty($orderData)) {
+            Session::flash('error', 'Nu exista plati alocate pentru furnizorii selectati.');
+            Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+        }
+
+        $now = date('Y-m-d H:i:s');
+        foreach ($orderData as $supplierCui => $row) {
+            Database::execute(
+                'INSERT INTO payment_orders (supplier_cui, supplier_name, date_from, date_to, total_amount, invoice_numbers, generated_at, created_at)
+                 VALUES (:supplier_cui, :supplier_name, :date_from, :date_to, :total_amount, :invoice_numbers, :generated_at, :created_at)',
+                [
+                    'supplier_cui' => $supplierCui,
+                    'supplier_name' => $row['supplier_name'],
+                    'date_from' => $dateFrom !== '' ? $dateFrom : null,
+                    'date_to' => $dateTo !== '' ? $dateTo : null,
+                    'total_amount' => $row['total'],
+                    'invoice_numbers' => $row['invoices'],
+                    'generated_at' => $now,
+                    'created_at' => $now,
+                ]
+            );
+        }
+
+        $filename = 'ordine_plata_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        foreach ($orderData as $supplierCui => $row) {
+            $supplier = $suppliers[$supplierCui] ?? null;
+            if (!$supplier) {
+                continue;
+            }
+            $line = [
+                $platformIban,
+                $this->csvQuote($supplier['name']),
+                $this->csvQuote($supplierCui),
+                $this->csvQuote($supplier['iban']),
+                number_format($row['total'], 2, '.', ''),
+                $this->csvQuote($row['invoices']),
+            ];
+            fwrite($out, implode(',', $line) . "\n");
+        }
         fclose($out);
         exit;
     }
@@ -807,6 +894,155 @@ class PaymentsController
         return $grouped;
     }
 
+    private function paymentOrderMarks(): array
+    {
+        if (!Database::tableExists('payment_orders')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT supplier_cui, MAX(generated_at) AS last_generated_at
+             FROM payment_orders
+             GROUP BY supplier_cui'
+        );
+        $marks = [];
+        foreach ($rows as $row) {
+            $marks[(string) $row['supplier_cui']] = (string) $row['last_generated_at'];
+        }
+
+        return $marks;
+    }
+
+    private function fetchSuppliersForOrders(array $supplierCuis): array
+    {
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($supplierCuis) as $index => $cui) {
+            $key = 's' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+
+        $suppliers = [];
+
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire, iban
+                 FROM companies
+                 WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $suppliers[(string) $row['cui']] = [
+                    'cui' => (string) $row['cui'],
+                    'name' => (string) ($row['denumire'] ?? $row['cui']),
+                    'iban' => (string) ($row['iban'] ?? ''),
+                ];
+            }
+        }
+
+        if (Database::tableExists('partners')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $cui = (string) $row['cui'];
+                if (!isset($suppliers[$cui])) {
+                    $suppliers[$cui] = [
+                        'cui' => $cui,
+                        'name' => (string) ($row['denumire'] ?? $cui),
+                        'iban' => '',
+                    ];
+                }
+            }
+        }
+
+        return $suppliers;
+    }
+
+    private function buildPaymentOrders(array $supplierCuis, string $dateFrom, string $dateTo): array
+    {
+        if (!Database::tableExists('payment_out_allocations')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($supplierCuis) as $index => $cui) {
+            $key = 's' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+
+        $where = ['o.supplier_cui IN (' . implode(',', $placeholders) . ')'];
+        if ($dateFrom !== '') {
+            $where[] = 'o.paid_at >= :from';
+            $params['from'] = $dateFrom;
+        }
+        if ($dateTo !== '') {
+            $where[] = 'o.paid_at <= :to';
+            $params['to'] = $dateTo;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT o.supplier_cui, o.supplier_name, a.amount, i.invoice_number,
+                    i.fgo_storno_number, i.fgo_storno_series, i.fgo_storno_link
+             FROM payment_out_allocations a
+             JOIN payments_out o ON o.id = a.payment_out_id
+             JOIN invoices_in i ON i.id = a.invoice_in_id
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY o.supplier_cui ASC, o.id ASC',
+            $params
+        );
+
+        $data = [];
+        foreach ($rows as $row) {
+            if ($this->hasStorno($row)) {
+                continue;
+            }
+            $cui = (string) $row['supplier_cui'];
+            if (!isset($data[$cui])) {
+                $data[$cui] = [
+                    'supplier_name' => (string) ($row['supplier_name'] ?? $cui),
+                    'total' => 0.0,
+                    'invoices' => [],
+                ];
+            }
+            $data[$cui]['total'] += (float) $row['amount'];
+            if (!empty($row['invoice_number'])) {
+                $data[$cui]['invoices'][$row['invoice_number']] = true;
+            }
+        }
+
+        foreach ($data as $cui => $row) {
+            $data[$cui]['total'] = round((float) $row['total'], 2);
+            $data[$cui]['invoices'] = implode(', ', array_keys($row['invoices']));
+        }
+
+        return $data;
+    }
+
+    private function csvQuote(string $value): string
+    {
+        $escaped = str_replace('"', '""', $value);
+
+        return '"' . $escaped . '"';
+    }
+
+    private function historyQuery(string $dateFrom, string $dateTo): string
+    {
+        $query = [];
+        if ($dateFrom !== '') {
+            $query['date_from'] = $dateFrom;
+        }
+        if ($dateTo !== '') {
+            $query['date_to'] = $dateTo;
+        }
+
+        return $query ? ('?' . http_build_query($query)) : '';
+    }
+
     private function supplierSummary(): array
     {
         if (!Database::tableExists('invoices_in')) {
@@ -963,6 +1199,19 @@ class PaymentsController
                     payment_out_id BIGINT UNSIGNED NOT NULL,
                     invoice_in_id BIGINT UNSIGNED NOT NULL,
                     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    created_at DATETIME NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
+            Database::execute(
+                'CREATE TABLE IF NOT EXISTS payment_orders (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    supplier_cui VARCHAR(32) NOT NULL,
+                    supplier_name VARCHAR(255) NOT NULL,
+                    date_from DATE NULL,
+                    date_to DATE NULL,
+                    total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    invoice_numbers TEXT NULL,
+                    generated_at DATETIME NULL,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
             );

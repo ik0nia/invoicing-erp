@@ -62,7 +62,35 @@
     </div>
 </form>
 
-<div class="mt-4 flex justify-end">
+<div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <form method="POST" action="<?= App\Support\Url::to('admin/plati/ordine-plata') ?>" id="payment-order-form" class="flex flex-wrap items-center gap-3">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom ?? '') ?>">
+        <input type="hidden" name="date_to" value="<?= htmlspecialchars($dateTo ?? '') ?>">
+        <div class="text-sm text-slate-700">Ordine de plata:</div>
+        <div class="flex flex-wrap items-center gap-2">
+            <?php foreach ($suppliers as $supplier): ?>
+                <?php
+                    $cui = (string) $supplier['supplier_cui'];
+                    $name = (string) ($supplier['supplier_name'] ?? $cui);
+                    $mark = $orderMarks[$cui] ?? '';
+                ?>
+                <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+                    <input type="checkbox" name="supplier_cuis[]" value="<?= htmlspecialchars($cui) ?>" data-has-order="<?= $mark !== '' ? '1' : '0' ?>">
+                    <span><?= htmlspecialchars($name) ?></span>
+                    <?php if ($mark !== ''): ?>
+                        <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
+                    <?php endif; ?>
+                </label>
+            <?php endforeach; ?>
+        </div>
+        <button
+            type="submit"
+            class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+        >
+            Genereaza OP CSV
+        </button>
+    </form>
     <a
         href="<?= App\Support\Url::to('admin/plati/export?' . http_build_query(['supplier_cui' => $supplierCui, 'date_from' => $dateFrom, 'date_to' => $dateTo])) ?>"
         class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -130,3 +158,27 @@
         <?php endforeach; ?>
     <?php endif; ?>
 </div>
+
+<script>
+    (function () {
+        const form = document.getElementById('payment-order-form');
+        if (!form) {
+            return;
+        }
+        form.addEventListener('submit', (event) => {
+            const checks = Array.from(form.querySelectorAll('input[name="supplier_cuis[]"]:checked'));
+            if (checks.length === 0) {
+                event.preventDefault();
+                alert('Selecteaza cel putin un furnizor.');
+                return;
+            }
+            const hasGenerated = checks.some((item) => item.getAttribute('data-has-order') === '1');
+            if (hasGenerated) {
+                const ok = confirm('Exista deja ordin de plata generat pentru unul dintre furnizori. Vrei sa continui?');
+                if (!ok) {
+                    event.preventDefault();
+                }
+            }
+        });
+    })();
+</script>

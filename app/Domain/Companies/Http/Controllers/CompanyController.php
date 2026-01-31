@@ -30,14 +30,14 @@ class CompanyController
 
         if ($hasPartners) {
             $companies = Database::fetchAll(
-                'SELECT p.cui, p.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ
+                'SELECT p.cui, p.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban
                  FROM partners p
                  LEFT JOIN companies c ON c.cui = p.cui
                  ORDER BY p.denumire ASC'
             );
         } elseif (Database::tableExists('companies')) {
             $companies = Database::fetchAll(
-                'SELECT c.cui, c.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ
+                'SELECT c.cui, c.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban
                  FROM companies c
                  ORDER BY c.denumire ASC'
             );
@@ -90,6 +90,8 @@ class CompanyController
             'tara' => trim($_POST['tara'] ?? 'România'),
             'email' => trim($_POST['email'] ?? ''),
             'telefon' => trim($_POST['telefon'] ?? ''),
+            'banca' => trim($_POST['banca'] ?? ''),
+            'iban' => trim($_POST['iban'] ?? ''),
             'activ' => !empty($_POST['activ']) ? 1 : 0,
         ];
         $existing = $data['cui'] !== '' ? Company::findByCui($data['cui']) : null;
@@ -201,6 +203,8 @@ class CompanyController
             'tara' => $company?->tara ?? 'România',
             'email' => $company?->email ?? '',
             'telefon' => $company?->telefon ?? '',
+            'banca' => $company?->banca ?? '',
+            'iban' => $company?->iban ?? '',
             'activ' => $company?->activ ?? true,
         ];
     }
@@ -222,6 +226,8 @@ class CompanyController
                     tara VARCHAR(255) NOT NULL DEFAULT "România",
                     email VARCHAR(255) NOT NULL,
                     telefon VARCHAR(64) NOT NULL,
+                    banca VARCHAR(255) NULL,
+                    iban VARCHAR(64) NULL,
                     tip_companie ENUM("client", "furnizor", "intermediar") NOT NULL,
                     activ TINYINT(1) NOT NULL DEFAULT 1,
                     created_at DATETIME NULL,
@@ -230,6 +236,13 @@ class CompanyController
             );
         } catch (\Throwable $exception) {
             return false;
+        }
+
+        if (Database::tableExists('companies') && !Database::columnExists('companies', 'banca')) {
+            Database::execute('ALTER TABLE companies ADD COLUMN banca VARCHAR(255) NULL AFTER telefon');
+        }
+        if (Database::tableExists('companies') && !Database::columnExists('companies', 'iban')) {
+            Database::execute('ALTER TABLE companies ADD COLUMN iban VARCHAR(64) NULL AFTER banca');
         }
 
         return true;

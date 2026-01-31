@@ -19,6 +19,8 @@ class Company
     public string $tara;
     public string $email;
     public string $telefon;
+    public ?string $banca = null;
+    public ?string $iban = null;
     public string $tip_companie;
     public bool $activ;
 
@@ -37,6 +39,8 @@ class Company
         $company->tara = $row['tara'];
         $company->email = $row['email'];
         $company->telefon = $row['telefon'];
+        $company->banca = $row['banca'] ?? null;
+        $company->iban = $row['iban'] ?? null;
         $company->tip_companie = $row['tip_companie'];
         $company->activ = (bool) $row['activ'];
 
@@ -79,6 +83,8 @@ class Company
                 tara,
                 email,
                 telefon,
+                banca,
+                iban,
                 tip_companie,
                 activ,
                 created_at,
@@ -95,6 +101,8 @@ class Company
                 :tara,
                 :email,
                 :telefon,
+                :banca,
+                :iban,
                 :tip_companie,
                 :activ,
                 :created_at,
@@ -111,6 +119,8 @@ class Company
                 tara = VALUES(tara),
                 email = VALUES(email),
                 telefon = VALUES(telefon),
+                banca = VALUES(banca),
+                iban = VALUES(iban),
                 tip_companie = VALUES(tip_companie),
                 activ = VALUES(activ),
                 updated_at = VALUES(updated_at)',
@@ -126,6 +136,8 @@ class Company
                 'tara' => $data['tara'],
                 'email' => $data['email'],
                 'telefon' => $data['telefon'],
+                'banca' => $data['banca'] ?? null,
+                'iban' => $data['iban'] ?? null,
                 'tip_companie' => $data['tip_companie'],
                 'activ' => $data['activ'],
                 'created_at' => $now,

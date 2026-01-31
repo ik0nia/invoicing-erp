@@ -36,3 +36,15 @@ CREATE TABLE IF NOT EXISTS payment_out_allocations (
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payment_orders (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    supplier_cui VARCHAR(32) NOT NULL,
+    supplier_name VARCHAR(255) NOT NULL,
+    date_from DATE NULL,
+    date_to DATE NULL,
+    total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    invoice_numbers TEXT NULL,
+    generated_at DATETIME NULL,
+    created_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -13,6 +13,8 @@ CREATE TABLE companies (
     tara VARCHAR(255) NOT NULL DEFAULT 'România',
     email VARCHAR(255) NOT NULL,
     telefon VARCHAR(64) NOT NULL,
+    banca VARCHAR(255) NULL,
+    iban VARCHAR(64) NULL,
     tip_companie ENUM('client', 'furnizor', 'intermediar') NOT NULL,
     activ TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NULL,
@@ -172,5 +174,17 @@ CREATE TABLE payment_out_allocations (
     payment_out_id BIGINT UNSIGNED NOT NULL,
     invoice_in_id BIGINT UNSIGNED NOT NULL,
     amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    created_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE payment_orders (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    supplier_cui VARCHAR(32) NOT NULL,
+    supplier_name VARCHAR(255) NOT NULL,
+    date_from DATE NULL,
+    date_to DATE NULL,
+    total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    invoice_numbers TEXT NULL,
+    generated_at DATETIME NULL,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

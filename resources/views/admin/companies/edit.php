@@ -138,6 +138,28 @@
             >
         </div>
 
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="banca">Banca</label>
+            <input
+                id="banca"
+                name="banca"
+                type="text"
+                value="<?= htmlspecialchars($form['banca'] ?? '') ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="iban">IBAN</label>
+            <input
+                id="iban"
+                name="iban"
+                type="text"
+                value="<?= htmlspecialchars($form['iban'] ?? '') ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+
     </div>
 
     <div class="mt-4 flex flex-wrap items-center gap-6 text-sm text-slate-700">
