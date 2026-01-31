@@ -15,6 +15,9 @@ if ($brandingLogo) {
     }
 }
 $user = Auth::user();
+$isSuperAdmin = $user?->isSuperAdmin() ?? false;
+$isPlatformUser = $user?->isPlatformUser() ?? false;
+$isSupplierUser = $user?->isSupplierUser() ?? false;
 ?>
 <?php
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -24,37 +27,44 @@ if ($base !== '' && str_starts_with($currentPath, $base)) {
     $currentPath = $currentPath === '' ? '/' : $currentPath;
 }
 
-$menuSections = [
-    'General' => [
+$menuSections = [];
+
+if ($isPlatformUser) {
+    $menuSections['General'] = [
         [
             'label' => 'Dashboard',
             'path' => '/admin/dashboard',
             'active' => str_starts_with($currentPath, '/admin/dashboard'),
         ],
+    ];
+}
+
+$menuSections['Facturare'] = [
+    [
+        'label' => 'Facturi intrare',
+        'path' => '/admin/facturi',
+        'active' => str_starts_with($currentPath, '/admin/facturi'),
     ],
-    'Facturare' => [
-        [
-            'label' => 'Facturi intrare',
-            'path' => '/admin/facturi',
-            'active' => str_starts_with($currentPath, '/admin/facturi'),
-        ],
-        [
-            'label' => 'Pachete confirmate',
-            'path' => '/admin/pachete-confirmate',
-            'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
-        ],
-        [
-            'label' => 'Incasari clienti',
-            'path' => '/admin/incasari',
-            'active' => str_starts_with($currentPath, '/admin/incasari'),
-        ],
-        [
-            'label' => 'Plati furnizori',
-            'path' => '/admin/plati',
-            'active' => str_starts_with($currentPath, '/admin/plati'),
-        ],
+    [
+        'label' => 'Pachete confirmate',
+        'path' => '/admin/pachete-confirmate',
+        'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
     ],
-    'Companii' => [
+];
+
+if ($isPlatformUser) {
+    $menuSections['Facturare'][] = [
+        'label' => 'Incasari clienti',
+        'path' => '/admin/incasari',
+        'active' => str_starts_with($currentPath, '/admin/incasari'),
+    ];
+    $menuSections['Facturare'][] = [
+        'label' => 'Plati furnizori',
+        'path' => '/admin/plati',
+        'active' => str_starts_with($currentPath, '/admin/plati'),
+    ];
+
+    $menuSections['Companii'] = [
         [
             'label' => 'Companii',
             'path' => '/admin/companii',
@@ -65,22 +75,34 @@ $menuSections = [
             'path' => '/admin/asocieri',
             'active' => str_starts_with($currentPath, '/admin/asocieri'),
         ],
-    ],
-    'Rapoarte' => [
+    ];
+
+    $menuSections['Rapoarte'] = [
         [
             'label' => 'Cashflow lunar',
             'path' => '/admin/rapoarte/cashflow',
             'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
         ],
-    ],
-    'Setari' => [
+    ];
+
+    $menuSections['Setari'] = [
         [
             'label' => 'Setari',
             'path' => '/admin/setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ],
-    ],
-];
+    ];
+}
+
+if ($isSuperAdmin) {
+    $menuSections['Administrare'] = [
+        [
+            'label' => 'Utilizatori',
+            'path' => '/admin/utilizatori',
+            'active' => str_starts_with($currentPath, '/admin/utilizatori'),
+        ],
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="ro">

@@ -1,4 +1,7 @@
-<?php $title = 'Factura ' . htmlspecialchars($invoice->invoice_number); ?>
+<?php
+    $title = 'Factura ' . htmlspecialchars($invoice->invoice_number);
+    $isPlatform = $isPlatform ?? false;
+?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
     <div>
@@ -163,23 +166,25 @@
             ?>
         </div>
     </div>
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <div class="text-slate-500">Actiuni rapide</div>
-        <div class="mt-2 flex flex-wrap gap-2">
-            <a
-                href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
-                class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-                Adauga incasare
-            </a>
-            <a
-                href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
-                class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-                Adauga plata
-            </a>
+    <?php if (!empty($isPlatform)): ?>
+        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+            <div class="text-slate-500">Actiuni rapide</div>
+            <div class="mt-2 flex flex-wrap gap-2">
+                <a
+                    href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
+                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                    Adauga incasare
+                </a>
+                <a
+                    href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
+                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                    Adauga plata
+                </a>
+            </div>
         </div>
-    </div>
+    <?php endif; ?>
 </div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
@@ -539,20 +544,22 @@
     </form>
 </div>
 
-<div class="mt-8 flex flex-wrap items-center gap-3">
-    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
-        <?= App\Support\Csrf::input() ?>
-        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-        <button
-            type="submit"
-            class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-            onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
-        >
-            Sterge factura
-        </button>
-    </form>
-    <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
-</div>
+<?php if (!empty($isPlatform)): ?>
+    <div class="mt-8 flex flex-wrap items-center gap-3">
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <button
+                type="submit"
+                class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+                onclick="return confirm('Sigur vrei sa stergi factura de intrare?')"
+            >
+                Sterge factura
+            </button>
+        </form>
+        <div class="text-sm text-slate-500">Stergerea elimina si pachetele si produsele importate.</div>
+    </div>
+<?php endif; ?>
 
 <script>
     (function () {

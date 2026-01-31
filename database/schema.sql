@@ -45,6 +45,14 @@ CREATE TABLE role_user (
     CONSTRAINT fk_role_user_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE user_suppliers (
+    user_id BIGINT UNSIGNED NOT NULL,
+    supplier_cui VARCHAR(32) NOT NULL,
+    created_at DATETIME NULL,
+    PRIMARY KEY (user_id, supplier_cui),
+    CONSTRAINT fk_user_suppliers_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE settings (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `key` VARCHAR(191) NOT NULL UNIQUE,

@@ -121,6 +121,29 @@ class InvoiceIn
         return array_map([self::class, 'fromArray'], $rows);
     }
 
+    public static function forSuppliers(array $supplierCuis): array
+    {
+        if (!Database::tableExists('invoices_in') || empty($supplierCuis)) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($supplierCuis) as $index => $cui) {
+            $key = 's' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT * FROM invoices_in WHERE supplier_cui IN (' . implode(',', $placeholders) . ')
+             ORDER BY issue_date DESC, id DESC',
+            $params
+        );
+
+        return array_map([self::class, 'fromArray'], $rows);
+    }
+
     public static function fromArray(array $row): self
     {
         $invoice = new self();

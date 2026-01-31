@@ -104,7 +104,22 @@ class User
 
     public function isAdmin(): bool
     {
-        return $this->hasRole('admin');
+        return $this->isPlatformUser();
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole('super_admin');
+    }
+
+    public function isPlatformUser(): bool
+    {
+        return $this->hasRole(['super_admin', 'admin', 'contabil']);
+    }
+
+    public function isSupplierUser(): bool
+    {
+        return $this->hasRole('supplier_user');
     }
 
     public function assignRole(string $roleKey): void

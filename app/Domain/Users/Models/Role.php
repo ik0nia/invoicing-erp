@@ -60,9 +60,11 @@ class Role
         }
 
         $defaults = [
+            ['key' => 'super_admin', 'label' => 'Super admin'],
             ['key' => 'admin', 'label' => 'Administrator'],
-            ['key' => 'staff', 'label' => 'Angajat firma'],
+            ['key' => 'contabil', 'label' => 'Contabil'],
             ['key' => 'supplier_user', 'label' => 'Utilizator furnizor'],
+            ['key' => 'staff', 'label' => 'Angajat firma'],
             ['key' => 'client_user', 'label' => 'Utilizator client'],
             ['key' => 'intermediary_user', 'label' => 'Utilizator intermediar'],
         ];
@@ -74,5 +76,52 @@ class Role
                 $role
             );
         }
+
+        if (!Database::tableExists('role_user')) {
+            return;
+        }
+
+        $superAdmin = self::findByKey('super_admin');
+        $admin = self::findByKey('admin');
+
+        if (!$superAdmin || !$admin) {
+            return;
+        }
+
+        $count = (int) Database::fetchValue(
+            'SELECT COUNT(*) FROM role_user WHERE role_id = :role',
+            ['role' => $superAdmin->id]
+        );
+
+        if ($count === 0) {
+            Database::execute(
+                'INSERT IGNORE INTO role_user (user_id, role_id)
+                 SELECT user_id, :super_role FROM role_user WHERE role_id = :admin_role',
+                [
+                    'super_role' => $superAdmin->id,
+                    'admin_role' => $admin->id,
+                ]
+            );
+        }
+    }
+
+    public static function all(): array
+    {
+        if (!Database::tableExists('roles')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll('SELECT * FROM roles ORDER BY id ASC');
+
+        return array_map([self::class, 'fromArray'], $rows);
+    }
+
+    public static function clearForUser(int $userId): void
+    {
+        if (!Database::tableExists('role_user')) {
+            return;
+        }
+
+        Database::execute('DELETE FROM role_user WHERE user_id = :user_id', ['user_id' => $userId]);
     }
 }

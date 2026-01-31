@@ -12,6 +12,7 @@ use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
+use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -21,21 +22,19 @@ class InvoiceController
 {
     public function index(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
         }
 
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
         $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
 
         if ($invoiceId) {
-            $invoice = InvoiceIn::find($invoiceId);
-
-            if (!$invoice) {
-                Response::abort(404, 'Factura nu a fost gasita.');
-            }
+            $invoice = $this->guardInvoice($invoiceId);
 
             $lines = InvoiceInLine::forInvoice($invoiceId);
             $packages = Package::forInvoice($invoiceId);
@@ -46,7 +45,6 @@ class InvoiceController
             $clients = Commission::forSupplierWithPartners($invoice->supplier_cui);
             $commissionPercent = null;
             $selectedClientName = '';
-            $user = Auth::user();
             $isAdmin = $user ? $user->isAdmin() : false;
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
@@ -121,6 +119,7 @@ class InvoiceController
                 'commissionPercent' => $commissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
+                'isPlatform' => $isPlatform,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
                 'collectedTotal' => $collectedTotal,
@@ -129,7 +128,11 @@ class InvoiceController
             ]);
         }
 
-        $invoices = InvoiceIn::all();
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
+        }
         $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
         $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
         $commissionMap = $this->commissionMap();
@@ -147,18 +150,25 @@ class InvoiceController
         Response::view('admin/invoices/index', [
             'invoices' => $invoices,
             'invoiceStatuses' => $invoiceStatuses,
+            'isPlatform' => $isPlatform,
         ]);
     }
 
     public function export(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
         }
 
-        $invoices = InvoiceIn::all();
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
+        }
         $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
         $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
         $commissionMap = $this->commissionMap();
@@ -212,19 +222,42 @@ class InvoiceController
 
     public function confirmedPackages(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
         }
 
-        $rows = Database::fetchAll(
-            'SELECT p.*, i.invoice_number, i.supplier_name, i.issue_date, i.packages_confirmed_at
-             FROM packages p
-             JOIN invoices_in i ON i.id = p.invoice_in_id
-             WHERE i.packages_confirmed = 1
-             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC'
-        );
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+        $params = [];
+        $whereSupplier = '';
+
+        if (!$isPlatform) {
+            $suppliers = $this->allowedSuppliers($user);
+            if (empty($suppliers)) {
+                $rows = [];
+            } else {
+                $placeholders = [];
+                foreach ($suppliers as $index => $supplier) {
+                    $key = 's' . $index;
+                    $placeholders[] = ':' . $key;
+                    $params[$key] = $supplier;
+                }
+                $whereSupplier = ' AND i.supplier_cui IN (' . implode(',', $placeholders) . ')';
+            }
+        }
+
+        if (!isset($rows)) {
+            $rows = Database::fetchAll(
+                'SELECT p.*, i.invoice_number, i.supplier_name, i.issue_date, i.packages_confirmed_at
+                 FROM packages p
+                 JOIN invoices_in i ON i.id = p.invoice_in_id
+                 WHERE i.packages_confirmed = 1' . $whereSupplier . '
+                 ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC',
+                $params
+            );
+        }
 
         $packageIds = array_map(static fn ($row) => (int) $row['id'], $rows);
         $totals = $this->packageTotalsForIds($packageIds);
@@ -237,7 +270,7 @@ class InvoiceController
 
     public function showImport(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
@@ -248,7 +281,7 @@ class InvoiceController
 
     public function showAviz(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
@@ -259,10 +292,7 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        $invoice = InvoiceIn::find($invoiceId);
-        if (!$invoice) {
-            Response::abort(404, 'Factura nu a fost gasita.');
-        }
+        $invoice = $this->guardInvoice($invoiceId);
 
         $packages = Package::forInvoice($invoiceId);
         $lines = InvoiceInLine::forInvoice($invoiceId);
@@ -350,7 +380,7 @@ class InvoiceController
 
     public function showOrderNote(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
@@ -361,10 +391,7 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        $invoice = InvoiceIn::find($invoiceId);
-        if (!$invoice) {
-            Response::abort(404, 'Factura nu a fost gasita.');
-        }
+        $invoice = $this->guardInvoice($invoiceId);
 
         $this->ensureOrderNote($invoice);
         $invoice = InvoiceIn::find($invoiceId);
@@ -396,15 +423,31 @@ class InvoiceController
 
     public function showManual(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
         }
 
         $form = Session::pull('manual_invoice', []);
+        $user = Auth::user();
         $partners = Partner::all();
         $commissions = Commission::allWithPartners();
+
+        if ($user && $user->isSupplierUser()) {
+            $suppliers = $this->allowedSuppliers($user);
+            if (!empty($suppliers)) {
+                $partners = array_values(array_filter($partners, static function ($partner) use ($suppliers): bool {
+                    return in_array((string) $partner->cui, $suppliers, true);
+                }));
+                $commissions = array_values(array_filter($commissions, static function ($row) use ($suppliers): bool {
+                    return in_array((string) ($row['supplier_cui'] ?? ''), $suppliers, true);
+                }));
+            } else {
+                $partners = [];
+                $commissions = [];
+            }
+        }
 
         Response::view('admin/invoices/manual', [
             'form' => $form,
@@ -415,7 +458,7 @@ class InvoiceController
 
     public function import(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!isset($_FILES['xml']) || $_FILES['xml']['error'] !== UPLOAD_ERR_OK) {
             Session::flash('error', 'Te rog incarca un fisier XML valid.');
@@ -436,6 +479,8 @@ class InvoiceController
             Session::flash('error', 'Nu pot citi XML-ul: ' . $exception->getMessage());
             Response::redirect('/admin/facturi/import');
         }
+
+        $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
 
         if ($this->invoiceExists($data['supplier_cui'], $data['invoice_series'], $data['invoice_no'], $data['invoice_number'])) {
             Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
@@ -476,7 +521,7 @@ class InvoiceController
 
     public function storeManual(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         if (!$this->ensureInvoiceTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru facturi. Importa schema manual.');
@@ -588,6 +633,8 @@ class InvoiceController
             Response::redirect('/admin/facturi/adauga');
         }
 
+        $this->ensureSupplierAccess($supplierCui);
+
         $invoiceNumber = trim($invoiceSeries . ' ' . $invoiceNo);
 
         if ($this->invoiceExists($supplierCui, $invoiceSeries, $invoiceNo, $invoiceNumber)) {
@@ -649,7 +696,7 @@ class InvoiceController
 
     public function calcManualTotals(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $raw = $_POST['lines_json'] ?? '';
         $lines = json_decode((string) $raw, true);
@@ -706,7 +753,7 @@ class InvoiceController
 
     public function packages(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         $action = $_POST['action'] ?? '';
@@ -719,6 +766,8 @@ class InvoiceController
             Session::flash('error', 'Nu pot crea tabelele pentru facturi.');
             Response::redirect('/admin/facturi');
         }
+
+        $this->guardInvoice($invoiceId);
 
         if ($action === 'generate') {
             if ($this->isInvoiceConfirmed($invoiceId)) {
@@ -776,10 +825,7 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        $invoice = InvoiceIn::find($invoiceId);
-        if (!$invoice) {
-            Response::redirect('/admin/facturi');
-        }
+        $invoice = $this->guardInvoice($invoiceId);
 
         Database::execute('DELETE FROM invoice_in_lines WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
         Database::execute('DELETE FROM packages WHERE invoice_in_id = :invoice', ['invoice' => $invoiceId]);
@@ -1247,7 +1293,7 @@ class InvoiceController
 
     public function downloadPackageSaga(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
         if (!$packageId) {
@@ -1259,7 +1305,7 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        $invoice = InvoiceIn::find($package->invoice_in_id);
+        $invoice = $this->guardInvoice($package->invoice_in_id);
         if (!$invoice || empty($invoice->packages_confirmed)) {
             Session::flash('error', 'Pachetele nu sunt confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $package->invoice_in_id . '#drag-drop');
@@ -1279,14 +1325,14 @@ class InvoiceController
 
     public function downloadInvoiceSaga(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         if (!$invoiceId) {
             Response::redirect('/admin/facturi');
         }
 
-        $invoice = InvoiceIn::find($invoiceId);
+        $invoice = $this->guardInvoice($invoiceId);
         if (!$invoice || empty($invoice->packages_confirmed)) {
             Session::flash('error', 'Pachetele nu sunt confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
@@ -1312,7 +1358,7 @@ class InvoiceController
 
     public function downloadSelectedSaga(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $packageIds = $_POST['package_ids'] ?? [];
         $packageIds = array_values(array_filter(array_map('intval', (array) $packageIds)));
@@ -1322,9 +1368,15 @@ class InvoiceController
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        $packages = $this->fetchConfirmedPackagesByIds($packageIds);
+        $user = Auth::user();
+        $suppliers = $user && $user->isSupplierUser() ? $this->allowedSuppliers($user) : null;
+        $packages = $this->fetchConfirmedPackagesByIds($packageIds, $suppliers);
         if (empty($packages)) {
             Session::flash('error', 'Nu exista pachete confirmate pentru export.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+        if ($user && $user->isSupplierUser() && count($packages) !== count($packageIds)) {
+            Session::flash('error', 'Nu ai acces la toate pachetele selectate.');
             Response::redirect('/admin/pachete-confirmate');
         }
 
@@ -1355,13 +1407,14 @@ class InvoiceController
 
     public function moveLine(): void
     {
-        Auth::requireAdmin();
+        $this->requireInvoiceRole();
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         $lineId = isset($_POST['line_id']) ? (int) $_POST['line_id'] : 0;
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
 
         if ($invoiceId && $lineId) {
+            $this->guardInvoice($invoiceId);
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi modificate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
@@ -1939,7 +1992,7 @@ class InvoiceController
         file_put_contents($dir . '/' . $allFile, $allContent);
     }
 
-    private function fetchConfirmedPackagesByIds(array $packageIds): array
+    private function fetchConfirmedPackagesByIds(array $packageIds, ?array $supplierCuis = null): array
     {
         if (empty($packageIds) || !Database::tableExists('packages')) {
             return [];
@@ -1954,11 +2007,22 @@ class InvoiceController
             $params[$key] = $id;
         }
 
-        $sql = 'SELECT p.*, i.invoice_number, i.issue_date, i.packages_confirmed_at
+        $supplierFilter = '';
+        if (is_array($supplierCuis) && !empty($supplierCuis)) {
+            $supplierPlaceholders = [];
+            foreach ($supplierCuis as $index => $supplier) {
+                $key = 's' . $index;
+                $supplierPlaceholders[] = ':' . $key;
+                $params[$key] = $supplier;
+            }
+            $supplierFilter = ' AND i.supplier_cui IN (' . implode(',', $supplierPlaceholders) . ')';
+        }
+
+        $sql = 'SELECT p.*, i.invoice_number, i.issue_date, i.packages_confirmed_at, i.supplier_cui
                 FROM packages p
                 JOIN invoices_in i ON i.id = p.invoice_in_id
                 WHERE i.packages_confirmed = 1
-                  AND p.id IN (' . implode(',', $placeholders) . ')
+                  AND p.id IN (' . implode(',', $placeholders) . ')' . $supplierFilter . '
                 ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC';
 
         return Database::fetchAll($sql, $params);
@@ -2171,5 +2235,66 @@ class InvoiceController
             'label' => 'Platit integral',
             'class' => 'bg-emerald-50 text-emerald-700',
         ];
+    }
+
+    private function requireInvoiceRole(): void
+    {
+        Auth::requireLogin();
+
+        $user = Auth::user();
+        if (!$user) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        if ($user->isPlatformUser() || $user->isSupplierUser()) {
+            return;
+        }
+
+        Response::abort(403, 'Acces interzis.');
+    }
+
+    private function allowedSuppliers(?\App\Domain\Users\Models\User $user): array
+    {
+        if (!$user || !$user->isSupplierUser()) {
+            return [];
+        }
+
+        UserSupplierAccess::ensureTable();
+
+        return UserSupplierAccess::suppliersForUser($user->id);
+    }
+
+    private function ensureSupplierAccess(string $supplierCui): void
+    {
+        $user = Auth::user();
+        if (!$user || $user->isPlatformUser()) {
+            return;
+        }
+
+        if (!$user->isSupplierUser()) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $supplierCui = preg_replace('/\D+/', '', (string) $supplierCui);
+        if ($supplierCui === '') {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        UserSupplierAccess::ensureTable();
+        if (!UserSupplierAccess::userHasSupplier($user->id, $supplierCui)) {
+            Response::abort(403, 'Nu ai acces la acest furnizor.');
+        }
+    }
+
+    private function guardInvoice(int $invoiceId): InvoiceIn
+    {
+        $invoice = InvoiceIn::find($invoiceId);
+        if (!$invoice) {
+            Response::abort(404, 'Factura nu a fost gasita.');
+        }
+
+        $this->ensureSupplierAccess($invoice->supplier_cui);
+
+        return $invoice;
     }
 }

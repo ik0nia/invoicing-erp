@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Domain\Users\Models\Role;
 use App\Domain\Users\Models\User;
 
 class Auth
@@ -35,6 +36,7 @@ class Auth
         }
 
         Session::put('user_id', $user->id);
+        Role::ensureDefaults();
 
         return true;
     }
@@ -57,7 +59,18 @@ class Auth
 
         $user = self::user();
 
-        if (!$user || !$user->isAdmin()) {
+        if (!$user || !$user->isPlatformUser()) {
+            Response::abort(403, 'Acces interzis.');
+        }
+    }
+
+    public static function requireSuperAdmin(): void
+    {
+        self::requireLogin();
+
+        $user = self::user();
+
+        if (!$user || !$user->isSuperAdmin()) {
             Response::abort(403, 'Acces interzis.');
         }
     }

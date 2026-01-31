@@ -1,4 +1,7 @@
-<?php $title = 'Facturi intrare'; ?>
+<?php
+    $title = 'Facturi intrare';
+    $isPlatform = $isPlatform ?? false;
+?>
 
 <div class="flex items-center justify-between">
     <div>
@@ -102,17 +105,19 @@
                             >
                                 Detalii →
                             </a>
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>" class="inline">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                <button
-                                    type="submit"
-                                    class="ml-2 text-red-600 hover:text-red-700"
-                                    onclick="return confirm('Sigur vrei sa stergi factura?')"
-                                >
-                                    Sterge
-                                </button>
-                            </form>
+                            <?php if (!empty($isPlatform)): ?>
+                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>" class="inline">
+                                    <?= App\Support\Csrf::input() ?>
+                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                    <button
+                                        type="submit"
+                                        class="ml-2 text-red-600 hover:text-red-700"
+                                        onclick="return confirm('Sigur vrei sa stergi factura?')"
+                                    >
+                                        Sterge
+                                    </button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

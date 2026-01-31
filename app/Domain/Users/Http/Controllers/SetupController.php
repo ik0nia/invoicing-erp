@@ -61,7 +61,7 @@ class SetupController
             'password' => $password,
         ]);
 
-        $user->assignRole('admin');
+        $user->assignRole('super_admin');
 
         Session::flash('status', 'Contul de administrator a fost creat.');
         Response::redirect('/login');

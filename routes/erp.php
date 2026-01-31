@@ -6,6 +6,7 @@ use App\Domain\Companies\Http\Controllers\CompanyController;
 use App\Domain\Partners\Http\Controllers\AssociationsController;
 use App\Domain\Payments\Http\Controllers\PaymentsController;
 use App\Domain\Reports\Http\Controllers\ReportsController;
+use App\Domain\Users\Http\Controllers\UsersController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
@@ -54,6 +55,13 @@ $router->post('/admin/plati/email-azi', [PaymentsController::class, 'sendDailyEm
 $router->get('/admin/rapoarte/cashflow', [ReportsController::class, 'cashflow']);
 $router->get('/admin/rapoarte/cashflow/export', [ReportsController::class, 'exportCashflow']);
 $router->get('/admin/rapoarte/cashflow/pdf', [ReportsController::class, 'cashflowPdf']);
+
+$router->get('/admin/utilizatori', [UsersController::class, 'index']);
+$router->get('/admin/utilizatori/adauga', [UsersController::class, 'create']);
+$router->post('/admin/utilizatori/adauga', [UsersController::class, 'store']);
+$router->get('/admin/utilizatori/edit', [UsersController::class, 'edit']);
+$router->post('/admin/utilizatori/update', [UsersController::class, 'update']);
+$router->post('/admin/utilizatori/sterge', [UsersController::class, 'delete']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
 $router->get('/admin/companii/edit', [CompanyController::class, 'edit']);
