@@ -680,6 +680,9 @@ class PaymentsController
         $invoices = [];
 
         foreach ($rows as $row) {
+            if ($this->hasStorno($row)) {
+                continue;
+            }
             $commission = $row['commission_percent'] ?? null;
             if ($commission === null) {
                 $assoc = Commission::forSupplierClient($row['supplier_cui'], $clientCui);
@@ -721,6 +724,9 @@ class PaymentsController
         $invoices = [];
 
         foreach ($rows as $row) {
+            if ($this->hasStorno($row)) {
+                continue;
+            }
             $commission = $row['commission_percent'] ?? null;
             if ($commission === null && !empty($row['selected_client_cui'])) {
                 $assoc = Commission::forSupplierClient($supplierCui, $row['selected_client_cui']);
@@ -747,6 +753,13 @@ class PaymentsController
         }
 
         return $invoices;
+    }
+
+    private function hasStorno(array $row): bool
+    {
+        return trim((string) ($row['fgo_storno_number'] ?? '')) !== ''
+            || trim((string) ($row['fgo_storno_series'] ?? '')) !== ''
+            || trim((string) ($row['fgo_storno_link'] ?? '')) !== '';
     }
 
     private function paymentSuppliers(): array
