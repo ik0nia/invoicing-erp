@@ -407,11 +407,12 @@
                     list.classList.add('hidden');
                 };
 
-                const renderItems = (items, query) => {
+                const renderItems = (items, query, allowEmptyOverride) => {
                     const results = [];
                     const normalized = (query || '').toLowerCase();
+                    const shouldAllowEmpty = typeof allowEmptyOverride === 'boolean' ? allowEmptyOverride : allowEmpty;
 
-                    if (allowEmpty && (normalized === '' || emptyLabel.toLowerCase().includes(normalized))) {
+                    if (shouldAllowEmpty && (normalized === '' || emptyLabel.toLowerCase().includes(normalized))) {
                         results.push({
                             cui: 'none',
                             name: emptyLabel,
@@ -449,13 +450,49 @@
                     list.classList.remove('hidden');
                 };
 
+                const appendFilterParams = (fetchUrl) => {
+                    const form = root.closest('form');
+                    if (!form) {
+                        return;
+                    }
+                    const searchValue = form.querySelector('#invoice-search')?.value ?? '';
+                    if (searchValue) {
+                        fetchUrl.searchParams.set('q', searchValue);
+                    }
+                    const supplierValue = form.querySelector('input[name="supplier_cui"]')?.value ?? '';
+                    if (supplierValue) {
+                        fetchUrl.searchParams.set('supplier_cui', supplierValue);
+                    }
+                    const clientValue = form.querySelector('input[name="client_cui"]')?.value ?? '';
+                    if (clientValue) {
+                        fetchUrl.searchParams.set('client_cui', clientValue);
+                    }
+                    const clientStatus = form.querySelector('#filter-client-status')?.value ?? '';
+                    if (clientStatus) {
+                        fetchUrl.searchParams.set('client_status', clientStatus);
+                    }
+                    const supplierStatus = form.querySelector('#filter-supplier-status')?.value ?? '';
+                    if (supplierStatus) {
+                        fetchUrl.searchParams.set('supplier_status', supplierStatus);
+                    }
+                    const dateFrom = form.querySelector('#filter-date-from')?.value ?? '';
+                    if (dateFrom) {
+                        fetchUrl.searchParams.set('date_from', dateFrom);
+                    }
+                    const dateTo = form.querySelector('#filter-date-to')?.value ?? '';
+                    if (dateTo) {
+                        fetchUrl.searchParams.set('date_to', dateTo);
+                    }
+                };
+
                 const fetchItems = (query) => {
                     const current = ++requestId;
                     list.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Se incarca...</div>';
                     list.classList.remove('hidden');
 
                     const fetchUrl = new URL(url, window.location.origin);
-                    fetchUrl.searchParams.set('q', query || '');
+                    fetchUrl.searchParams.set('term', query || '');
+                    appendFilterParams(fetchUrl);
 
                     fetch(fetchUrl.toString(), { credentials: 'same-origin' })
                         .then((response) => response.json())
@@ -463,7 +500,11 @@
                             if (current !== requestId) {
                                 return;
                             }
-                            renderItems(Array.isArray(payload.items) ? payload.items : [], query);
+                            renderItems(
+                                Array.isArray(payload.items) ? payload.items : [],
+                                query,
+                                typeof payload.allow_empty === 'boolean' ? payload.allow_empty : undefined
+                            );
                         })
                         .catch(() => {
                             if (current !== requestId) {

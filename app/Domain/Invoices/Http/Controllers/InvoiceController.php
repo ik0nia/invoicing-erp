@@ -227,52 +227,41 @@ class InvoiceController
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
         }
 
-        $query = trim((string) ($_GET['q'] ?? ''));
+        $term = trim((string) ($_GET['term'] ?? ''));
         $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $filters = $this->invoiceFiltersFromRequest();
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $filters['supplier_cui'] = '';
 
-        $where = ['supplier_cui <> ""'];
-        $params = [];
-
-        if ($query !== '') {
-            $where[] = '(supplier_name LIKE :q OR supplier_cui LIKE :q)';
-            $params['q'] = '%' . $query . '%';
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
         }
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
 
-        if (!$isPlatform) {
-            $suppliers = $this->allowedSuppliers($user);
-            if (empty($suppliers)) {
-                $this->jsonResponse(['items' => []]);
-            }
-            $placeholders = [];
-            foreach (array_values($suppliers) as $index => $cui) {
-                $key = 's' . $index;
-                $placeholders[] = ':' . $key;
-                $params[$key] = $cui;
-            }
-            $where[] = 'supplier_cui IN (' . implode(',', $placeholders) . ')';
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
         }
-
-        $rows = Database::fetchAll(
-            'SELECT DISTINCT supplier_cui, supplier_name
-             FROM invoices_in
-             WHERE ' . implode(' AND ', $where) . '
-             ORDER BY supplier_name ASC
-             LIMIT ' . $limit,
-            $params
-        );
-
-        $items = array_map(static function (array $row): array {
-            $cui = (string) ($row['supplier_cui'] ?? '');
-            $name = (string) ($row['supplier_name'] ?? $cui);
-            return [
-                'cui' => $cui,
-                'name' => $name !== '' ? $name : $cui,
-            ];
-        }, $rows);
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $filtered = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
+        $items = $this->supplierOptionsFromInvoices($filtered);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
+        }
+        $items = array_slice($items, 0, $limit);
 
         $this->jsonResponse(['items' => $items]);
     }
@@ -283,82 +272,43 @@ class InvoiceController
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
         }
 
-        $query = trim((string) ($_GET['q'] ?? ''));
+        $term = trim((string) ($_GET['term'] ?? ''));
         $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $filters = $this->invoiceFiltersFromRequest();
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $filters['client_cui'] = '';
 
-        $where = ['i.selected_client_cui IS NOT NULL', 'i.selected_client_cui <> ""'];
-        $params = [];
-        $joinCompanies = Database::tableExists('companies');
-        $joinPartners = Database::tableExists('partners');
-        $nameParts = [];
-        if ($joinCompanies) {
-            $nameParts[] = 'NULLIF(MAX(c.denumire), "")';
+        if ($isPlatform) {
+            $invoices = InvoiceIn::all();
+        } else {
+            $invoices = InvoiceIn::forSuppliers($this->allowedSuppliers($user));
         }
-        if ($joinPartners) {
-            $nameParts[] = 'NULLIF(MAX(p.denumire), "")';
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
+
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
         }
-        $nameParts[] = 'i.selected_client_cui';
-        $nameExpression = 'COALESCE(' . implode(', ', $nameParts) . ')';
-
-        if ($query !== '') {
-            $searchParts = ['i.selected_client_cui LIKE :q'];
-            if ($joinCompanies) {
-                $searchParts[] = 'c.denumire LIKE :q';
-            }
-            if ($joinPartners) {
-                $searchParts[] = 'p.denumire LIKE :q';
-            }
-            $where[] = '(' . implode(' OR ', $searchParts) . ')';
-            $params['q'] = '%' . $query . '%';
+        $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
+        $filtered = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
+        [$items, $hasEmpty] = $this->clientOptionsFromInvoices($filtered, $clientNameMap);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
         }
+        $items = array_slice($items, 0, $limit);
 
-        if (!$isPlatform) {
-            $suppliers = $this->allowedSuppliers($user);
-            if (empty($suppliers)) {
-                $this->jsonResponse(['items' => []]);
-            }
-            $placeholders = [];
-            foreach (array_values($suppliers) as $index => $cui) {
-                $key = 's' . $index;
-                $placeholders[] = ':' . $key;
-                $params[$key] = $cui;
-            }
-            $where[] = 'i.supplier_cui IN (' . implode(',', $placeholders) . ')';
-        }
-
-        $joins = '';
-        if ($joinCompanies) {
-            $joins .= ' LEFT JOIN companies c ON c.cui = i.selected_client_cui';
-        }
-        if ($joinPartners) {
-            $joins .= ' LEFT JOIN partners p ON p.cui = i.selected_client_cui';
-        }
-
-        $rows = Database::fetchAll(
-            'SELECT i.selected_client_cui AS cui,
-                    ' . $nameExpression . ' AS name
-             FROM invoices_in i' . $joins . '
-             WHERE ' . implode(' AND ', $where) . '
-             GROUP BY i.selected_client_cui
-             ORDER BY name ASC
-             LIMIT ' . $limit,
-            $params
-        );
-
-        $items = array_map(static function (array $row): array {
-            $cui = (string) ($row['cui'] ?? '');
-            $name = (string) ($row['name'] ?? $cui);
-            return [
-                'cui' => $cui,
-                'name' => $name !== '' ? $name : $cui,
-            ];
-        }, $rows);
-
-        $this->jsonResponse(['items' => $items]);
+        $this->jsonResponse(['items' => $items, 'allow_empty' => $hasEmpty]);
     }
 
     public function export(): void
@@ -2835,6 +2785,70 @@ class InvoiceController
         }
 
         return false;
+    }
+
+    private function supplierOptionsFromInvoices(array $invoices): array
+    {
+        $map = [];
+        foreach ($invoices as $invoice) {
+            $cui = (string) $invoice->supplier_cui;
+            if ($cui === '') {
+                continue;
+            }
+            $map[$cui] = (string) ($invoice->supplier_name ?: $cui);
+        }
+
+        $options = [];
+        foreach ($map as $cui => $name) {
+            $options[] = [
+                'cui' => $cui,
+                'name' => $name !== '' ? $name : $cui,
+            ];
+        }
+
+        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        return $options;
+    }
+
+    private function clientOptionsFromInvoices(array $invoices, array $clientNameMap): array
+    {
+        $map = [];
+        $hasEmpty = false;
+        foreach ($invoices as $invoice) {
+            $cui = trim((string) ($invoice->selected_client_cui ?? ''));
+            if ($cui === '') {
+                $hasEmpty = true;
+                continue;
+            }
+            $map[$cui] = (string) ($clientNameMap[$cui] ?? $cui);
+        }
+
+        $options = [];
+        foreach ($map as $cui => $name) {
+            $options[] = [
+                'cui' => $cui,
+                'name' => $name !== '' ? $name : $cui,
+            ];
+        }
+
+        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
+
+        return [$options, $hasEmpty];
+    }
+
+    private function filterLookupOptions(array $items, string $term): array
+    {
+        $needle = $this->normalizeSearch($term);
+        if ($needle === '') {
+            return $items;
+        }
+
+        return array_values(array_filter($items, function (array $item) use ($needle): bool {
+            $name = (string) ($item['name'] ?? '');
+            $cui = (string) ($item['cui'] ?? '');
+            return $this->containsSearch($name, $needle) || $this->containsSearch($cui, $needle);
+        }));
     }
 
     private function resolveSupplierName(string $supplierCui, array $invoices): string
