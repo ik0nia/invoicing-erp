@@ -66,6 +66,13 @@ $menuSections = [
             'active' => str_starts_with($currentPath, '/admin/asocieri'),
         ],
     ],
+    'Rapoarte' => [
+        [
+            'label' => 'Cashflow lunar',
+            'path' => '/admin/rapoarte/cashflow',
+            'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
+        ],
+    ],
     'Setari' => [
         [
             'label' => 'Setari',

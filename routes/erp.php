@@ -5,11 +5,13 @@ use App\Domain\Invoices\Http\Controllers\InvoiceController;
 use App\Domain\Companies\Http\Controllers\CompanyController;
 use App\Domain\Partners\Http\Controllers\AssociationsController;
 use App\Domain\Payments\Http\Controllers\PaymentsController;
+use App\Domain\Reports\Http\Controllers\ReportsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
+$router->get('/admin/facturi/export', [InvoiceController::class, 'export']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);
 $router->post('/admin/facturi/adauga', [InvoiceController::class, 'storeManual']);
@@ -48,6 +50,10 @@ $router->get('/admin/plati/istoric', [PaymentsController::class, 'historyOut']);
 $router->get('/admin/plati/export', [PaymentsController::class, 'exportOut']);
 $router->post('/admin/plati/sterge', [PaymentsController::class, 'deleteOut']);
 $router->post('/admin/plati/email-azi', [PaymentsController::class, 'sendDailyEmails']);
+
+$router->get('/admin/rapoarte/cashflow', [ReportsController::class, 'cashflow']);
+$router->get('/admin/rapoarte/cashflow/export', [ReportsController::class, 'exportCashflow']);
+$router->get('/admin/rapoarte/cashflow/pdf', [ReportsController::class, 'cashflowPdf']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
 $router->get('/admin/companii/edit', [CompanyController::class, 'edit']);

@@ -130,10 +130,84 @@ class InvoiceController
         }
 
         $invoices = InvoiceIn::all();
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+        $invoiceStatuses = [];
+
+        foreach ($invoices as $invoice) {
+            $invoiceStatuses[$invoice->id] = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
+        }
 
         Response::view('admin/invoices/index', [
             'invoices' => $invoices,
+            'invoiceStatuses' => $invoiceStatuses,
         ]);
+    }
+
+    public function export(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $invoices = InvoiceIn::all();
+        $collectedMap = $this->invoiceAllocationTotals('payment_in_allocations');
+        $paidMap = $this->invoiceAllocationTotals('payment_out_allocations');
+        $commissionMap = $this->commissionMap();
+
+        $filename = 'facturi_intrare_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        fputcsv($out, [
+            'Factura',
+            'Serie',
+            'Numar',
+            'Furnizor',
+            'Data',
+            'Total factura',
+            'Client selectat',
+            'Total client',
+            'Incasat',
+            'Status incasare',
+            'Platit',
+            'Status plata',
+        ]);
+
+        foreach ($invoices as $invoice) {
+            $status = $this->buildInvoiceStatus(
+                $invoice,
+                (float) ($collectedMap[$invoice->id] ?? 0.0),
+                (float) ($paidMap[$invoice->id] ?? 0.0),
+                $commissionMap
+            );
+            fputcsv($out, [
+                $invoice->invoice_number,
+                $invoice->invoice_series ?: '',
+                $invoice->invoice_no ?: '',
+                $invoice->supplier_name,
+                $invoice->issue_date,
+                number_format((float) $invoice->total_with_vat, 2, '.', ''),
+                (string) ($invoice->selected_client_cui ?? ''),
+                $status['client_total'] !== null ? number_format($status['client_total'], 2, '.', '') : '',
+                number_format($status['collected'], 2, '.', ''),
+                $status['client_label'],
+                number_format($status['paid'], 2, '.', ''),
+                $status['supplier_label'],
+            ]);
+        }
+
+        fclose($out);
+        exit;
     }
 
     public function confirmedPackages(): void
@@ -1969,5 +2043,133 @@ class InvoiceController
         }
 
         return (float) $normalized;
+    }
+
+    private function invoiceAllocationTotals(string $table): array
+    {
+        if (!Database::tableExists($table)) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT invoice_in_id, COALESCE(SUM(amount), 0) AS total FROM ' . $table . ' GROUP BY invoice_in_id'
+        );
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[(int) $row['invoice_in_id']] = (float) $row['total'];
+        }
+
+        return $map;
+    }
+
+    private function commissionMap(): array
+    {
+        if (!Database::tableExists('commissions')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll('SELECT supplier_cui, client_cui, commission FROM commissions');
+        $map = [];
+
+        foreach ($rows as $row) {
+            $supplier = (string) $row['supplier_cui'];
+            $client = (string) $row['client_cui'];
+            if ($supplier === '' || $client === '') {
+                continue;
+            }
+            $map[$supplier][$client] = (float) $row['commission'];
+        }
+
+        return $map;
+    }
+
+    private function commissionForInvoice(InvoiceIn $invoice, array $commissionMap): ?float
+    {
+        if ($invoice->commission_percent !== null) {
+            return (float) $invoice->commission_percent;
+        }
+
+        $supplier = (string) $invoice->supplier_cui;
+        $client = (string) ($invoice->selected_client_cui ?? '');
+        if ($supplier === '' || $client === '') {
+            return null;
+        }
+
+        return $commissionMap[$supplier][$client] ?? null;
+    }
+
+    private function buildInvoiceStatus(InvoiceIn $invoice, float $collected, float $paid, array $commissionMap): array
+    {
+        $commission = $this->commissionForInvoice($invoice, $commissionMap);
+        $clientTotal = null;
+
+        if ($commission !== null) {
+            $clientTotal = $this->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+        }
+
+        $clientStatus = $this->clientStatus($clientTotal, $collected);
+        $supplierStatus = $this->supplierStatus((float) $invoice->total_with_vat, $paid);
+
+        return [
+            'collected' => $collected,
+            'paid' => $paid,
+            'client_total' => $clientTotal,
+            'client_label' => $clientStatus['label'],
+            'client_class' => $clientStatus['class'],
+            'supplier_label' => $supplierStatus['label'],
+            'supplier_class' => $supplierStatus['class'],
+        ];
+    }
+
+    private function clientStatus(?float $total, float $collected): array
+    {
+        if ($total === null) {
+            return [
+                'label' => 'Client nesetat',
+                'class' => 'bg-slate-100 text-slate-600',
+            ];
+        }
+
+        if ($collected <= 0.009) {
+            return [
+                'label' => 'Neincasat',
+                'class' => 'bg-rose-50 text-rose-700',
+            ];
+        }
+
+        if ($collected + 0.01 < $total) {
+            return [
+                'label' => 'Incasat partial',
+                'class' => 'bg-amber-50 text-amber-700',
+            ];
+        }
+
+        return [
+            'label' => 'Incasat integral',
+            'class' => 'bg-emerald-50 text-emerald-700',
+        ];
+    }
+
+    private function supplierStatus(float $total, float $paid): array
+    {
+        if ($paid <= 0.009) {
+            return [
+                'label' => 'Neplatit',
+                'class' => 'bg-rose-50 text-rose-700',
+            ];
+        }
+
+        if ($paid + 0.01 < $total) {
+            return [
+                'label' => 'Platit partial',
+                'class' => 'bg-amber-50 text-amber-700',
+            ];
+        }
+
+        return [
+            'label' => 'Platit integral',
+            'class' => 'bg-emerald-50 text-emerald-700',
+        ];
     }
 }

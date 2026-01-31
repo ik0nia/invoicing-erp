@@ -129,7 +129,16 @@
                 <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
             </div>
             <div class="text-xs text-slate-600">
-                <?= ($collectedTotal ?? 0) >= $clientTotal ? 'Incasat integral' : 'Incasat partial' ?>
+                <?php
+                    $collectedValue = (float) ($collectedTotal ?? 0);
+                    if ($collectedValue <= 0.009) {
+                        echo 'Neincasat';
+                    } elseif ($collectedValue + 0.01 < $clientTotal) {
+                        echo 'Incasat partial';
+                    } else {
+                        echo 'Incasat integral';
+                    }
+                ?>
             </div>
         <?php else: ?>
             <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
@@ -141,7 +150,17 @@
             <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
         </div>
         <div class="text-xs text-slate-600">
-            <?= ($paidTotal ?? 0) >= (float) $invoice->total_with_vat ? 'Platit integral' : 'Platit partial' ?>
+            <?php
+                $paidValue = (float) ($paidTotal ?? 0);
+                $supplierTotal = (float) $invoice->total_with_vat;
+                if ($paidValue <= 0.009) {
+                    echo 'Neplatit';
+                } elseif ($paidValue + 0.01 < $supplierTotal) {
+                    echo 'Platit partial';
+                } else {
+                    echo 'Platit integral';
+                }
+            ?>
         </div>
     </div>
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
