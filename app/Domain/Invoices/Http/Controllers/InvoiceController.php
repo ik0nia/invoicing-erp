@@ -27,6 +27,7 @@ class InvoiceController
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
         }
 
         $user = Auth::user();
@@ -150,8 +151,9 @@ class InvoiceController
             );
         }
         $clientNameMap = $this->clientNameMap($this->collectSelectedClientCuis($invoices));
-        $supplierOptions = $this->buildSupplierOptions($invoices);
-        [$clientOptions, $hasEmptyClients] = $this->buildClientOptions($invoices, $clientNameMap);
+        $supplierFilterLabel = $this->resolveSupplierLabel((string) $filters['supplier_cui'], $invoices);
+        $clientFilterLabel = $this->resolveClientLabel((string) $filters['client_cui'], $clientNameMap);
+        $hasEmptyClients = $this->hasEmptySelectedClient($invoices);
 
         $filteredInvoices = $this->applyInvoiceFilters($invoices, $filters, $clientNameMap, $invoiceStatuses);
         $pagination = $this->paginateInvoices($filteredInvoices, $filters['page'], $filters['per_page']);
@@ -165,8 +167,8 @@ class InvoiceController
             'isPlatform' => $isPlatform,
             'filters' => $filters,
             'pagination' => $pagination,
-            'supplierOptions' => $supplierOptions,
-            'clientOptions' => $clientOptions,
+            'supplierFilterLabel' => $supplierFilterLabel,
+            'clientFilterLabel' => $clientFilterLabel,
             'hasEmptyClients' => $hasEmptyClients,
             'clientStatusOptions' => $this->clientStatusOptions(),
             'supplierStatusOptions' => $this->supplierStatusOptions(),
@@ -179,6 +181,7 @@ class InvoiceController
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
         }
 
         $query = trim((string) ($_GET['q'] ?? ''));
@@ -217,6 +220,146 @@ class InvoiceController
             'clientFinals' => $clientFinals,
             'isPlatform' => $isPlatform,
         ], null);
+    }
+
+    public function lookupSuppliers(): void
+    {
+        $this->requireInvoiceRole();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+
+        $where = ['supplier_cui <> ""'];
+        $params = [];
+
+        if ($query !== '') {
+            $where[] = '(supplier_name LIKE :q OR supplier_cui LIKE :q)';
+            $params['q'] = '%' . $query . '%';
+        }
+
+        if (!$isPlatform) {
+            $suppliers = $this->allowedSuppliers($user);
+            if (empty($suppliers)) {
+                $this->jsonResponse(['items' => []]);
+            }
+            $placeholders = [];
+            foreach (array_values($suppliers) as $index => $cui) {
+                $key = 's' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $where[] = 'supplier_cui IN (' . implode(',', $placeholders) . ')';
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT DISTINCT supplier_cui, supplier_name
+             FROM invoices_in
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY supplier_name ASC
+             LIMIT ' . $limit,
+            $params
+        );
+
+        $items = array_map(static function (array $row): array {
+            $cui = (string) ($row['supplier_cui'] ?? '');
+            $name = (string) ($row['supplier_name'] ?? $cui);
+            return [
+                'cui' => $cui,
+                'name' => $name !== '' ? $name : $cui,
+            ];
+        }, $rows);
+
+        $this->jsonResponse(['items' => $items]);
+    }
+
+    public function lookupClients(): void
+    {
+        $this->requireInvoiceRole();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $user = Auth::user();
+        $isPlatform = $user ? $user->isPlatformUser() : false;
+
+        $where = ['i.selected_client_cui IS NOT NULL', 'i.selected_client_cui <> ""'];
+        $params = [];
+        $joinCompanies = Database::tableExists('companies');
+        $joinPartners = Database::tableExists('partners');
+        $nameParts = [];
+        if ($joinCompanies) {
+            $nameParts[] = 'NULLIF(MAX(c.denumire), "")';
+        }
+        if ($joinPartners) {
+            $nameParts[] = 'NULLIF(MAX(p.denumire), "")';
+        }
+        $nameParts[] = 'i.selected_client_cui';
+        $nameExpression = 'COALESCE(' . implode(', ', $nameParts) . ')';
+
+        if ($query !== '') {
+            $searchParts = ['i.selected_client_cui LIKE :q'];
+            if ($joinCompanies) {
+                $searchParts[] = 'c.denumire LIKE :q';
+            }
+            if ($joinPartners) {
+                $searchParts[] = 'p.denumire LIKE :q';
+            }
+            $where[] = '(' . implode(' OR ', $searchParts) . ')';
+            $params['q'] = '%' . $query . '%';
+        }
+
+        if (!$isPlatform) {
+            $suppliers = $this->allowedSuppliers($user);
+            if (empty($suppliers)) {
+                $this->jsonResponse(['items' => []]);
+            }
+            $placeholders = [];
+            foreach (array_values($suppliers) as $index => $cui) {
+                $key = 's' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $where[] = 'i.supplier_cui IN (' . implode(',', $placeholders) . ')';
+        }
+
+        $joins = '';
+        if ($joinCompanies) {
+            $joins .= ' LEFT JOIN companies c ON c.cui = i.selected_client_cui';
+        }
+        if ($joinPartners) {
+            $joins .= ' LEFT JOIN partners p ON p.cui = i.selected_client_cui';
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT i.selected_client_cui AS cui,
+                    ' . $nameExpression . ' AS name
+             FROM invoices_in i' . $joins . '
+             WHERE ' . implode(' AND ', $where) . '
+             GROUP BY i.selected_client_cui
+             ORDER BY name ASC
+             LIMIT ' . $limit,
+            $params
+        );
+
+        $items = array_map(static function (array $row): array {
+            $cui = (string) ($row['cui'] ?? '');
+            $name = (string) ($row['name'] ?? $cui);
+            return [
+                'cui' => $cui,
+                'name' => $name !== '' ? $name : $cui,
+            ];
+        }, $rows);
+
+        $this->jsonResponse(['items' => $items]);
     }
 
     public function export(): void
@@ -2518,54 +2661,42 @@ class InvoiceController
         return array_values($filtered);
     }
 
-    private function buildSupplierOptions(array $invoices): array
+    private function resolveSupplierLabel(string $supplierCui, array $invoices): string
     {
-        $map = [];
+        if ($supplierCui === '') {
+            return '';
+        }
         foreach ($invoices as $invoice) {
-            $cui = (string) $invoice->supplier_cui;
-            if ($cui === '') {
-                continue;
+            if ((string) $invoice->supplier_cui === $supplierCui) {
+                $name = (string) ($invoice->supplier_name ?: $supplierCui);
+                return $name !== '' ? ($name . ' - ' . $supplierCui) : $supplierCui;
             }
-            $map[$cui] = (string) ($invoice->supplier_name ?: $cui);
         }
-
-        $options = [];
-        foreach ($map as $cui => $name) {
-            $options[] = [
-                'cui' => $cui,
-                'name' => $name,
-            ];
-        }
-
-        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
-
-        return $options;
+        return $supplierCui;
     }
 
-    private function buildClientOptions(array $invoices, array $clientNameMap): array
+    private function resolveClientLabel(string $clientCui, array $clientNameMap): string
     {
-        $map = [];
-        $hasEmpty = false;
+        if ($clientCui === '') {
+            return '';
+        }
+        if ($clientCui === 'none') {
+            return 'Fara client';
+        }
+
+        $name = (string) ($clientNameMap[$clientCui] ?? $clientCui);
+        return $name !== '' ? ($name . ' - ' . $clientCui) : $clientCui;
+    }
+
+    private function hasEmptySelectedClient(array $invoices): bool
+    {
         foreach ($invoices as $invoice) {
-            $cui = trim((string) ($invoice->selected_client_cui ?? ''));
-            if ($cui === '') {
-                $hasEmpty = true;
-                continue;
+            if (trim((string) ($invoice->selected_client_cui ?? '')) === '') {
+                return true;
             }
-            $map[$cui] = (string) ($clientNameMap[$cui] ?? $cui);
         }
 
-        $options = [];
-        foreach ($map as $cui => $name) {
-            $options[] = [
-                'cui' => $cui,
-                'name' => $name,
-            ];
-        }
-
-        usort($options, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
-
-        return [$options, $hasEmpty];
+        return false;
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array
@@ -2593,6 +2724,13 @@ class InvoiceController
             'start' => $start,
             'end' => $end,
         ];
+    }
+
+    private function jsonResponse(array $payload): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     private function clientStatusOptions(): array

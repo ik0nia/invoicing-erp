@@ -18,8 +18,8 @@
         'start' => 0,
         'end' => 0,
     ];
-    $supplierOptions = $supplierOptions ?? [];
-    $clientOptions = $clientOptions ?? [];
+    $supplierFilterLabel = $supplierFilterLabel ?? '';
+    $clientFilterLabel = $clientFilterLabel ?? '';
     $hasEmptyClients = $hasEmptyClients ?? false;
     $clientStatusOptions = $clientStatusOptions ?? [];
     $supplierStatusOptions = $supplierStatusOptions ?? [];
@@ -75,60 +75,57 @@
 </div>
 
 <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <div class="xl:col-span-2">
-            <label class="block text-sm font-medium text-slate-700" for="invoice-search">Cauta factura</label>
+    <div>
+        <label class="block text-sm font-medium text-slate-700" for="invoice-search">Cauta factura</label>
+        <input
+            id="invoice-search"
+            name="q"
+            type="text"
+            value="<?= htmlspecialchars((string) ($filters['query'] ?? '')) ?>"
+            placeholder="Factura, client, furnizor, CUI, serie, numar"
+            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+        >
+    </div>
+    <div class="mt-4 flex flex-wrap items-end gap-4">
+        <div
+            class="relative min-w-[220px] flex-1"
+            data-ajax-select
+            data-lookup-url="<?= App\Support\Url::to('admin/facturi/lookup-suppliers') ?>"
+        >
+            <label class="block text-sm font-medium text-slate-700" for="filter-supplier-input">Furnizor</label>
             <input
-                id="invoice-search"
-                name="q"
+                id="filter-supplier-input"
                 type="text"
-                value="<?= htmlspecialchars((string) ($filters['query'] ?? '')) ?>"
-                placeholder="Factura, client, furnizor, CUI, serie, numar"
+                value="<?= htmlspecialchars((string) $supplierFilterLabel) ?>"
+                placeholder="Toti furnizorii"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                autocomplete="off"
+                data-ajax-input
             >
+            <input type="hidden" name="supplier_cui" value="<?= htmlspecialchars((string) ($filters['supplier_cui'] ?? '')) ?>" data-ajax-value>
+            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-supplier">Furnizor</label>
-            <select
-                id="filter-supplier"
-                name="supplier_cui"
+        <div
+            class="relative min-w-[220px] flex-1"
+            data-ajax-select
+            data-lookup-url="<?= App\Support\Url::to('admin/facturi/lookup-clients') ?>"
+            data-allow-empty="<?= $hasEmptyClients ? '1' : '0' ?>"
+            data-empty-label="Fara client"
+        >
+            <label class="block text-sm font-medium text-slate-700" for="filter-client-input">Client final</label>
+            <input
+                id="filter-client-input"
+                type="text"
+                value="<?= htmlspecialchars((string) $clientFilterLabel) ?>"
+                placeholder="Toti clientii"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                autocomplete="off"
+                data-ajax-input
             >
-                <option value="">Toti furnizorii</option>
-                <?php foreach ($supplierOptions as $option): ?>
-                    <option
-                        value="<?= htmlspecialchars($option['cui']) ?>"
-                        <?= (string) ($filters['supplier_cui'] ?? '') === (string) $option['cui'] ? 'selected' : '' ?>
-                    >
-                        <?= htmlspecialchars($option['name']) ?> (<?= htmlspecialchars($option['cui']) ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <input type="hidden" name="client_cui" value="<?= htmlspecialchars((string) ($filters['client_cui'] ?? '')) ?>" data-ajax-value>
+            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-lg" data-ajax-list></div>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-client">Client final</label>
-            <select
-                id="filter-client"
-                name="client_cui"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-                <option value="">Toti clientii</option>
-                <?php if ($hasEmptyClients): ?>
-                    <option value="none" <?= ($filters['client_cui'] ?? '') === 'none' ? 'selected' : '' ?>>
-                        Fara client
-                    </option>
-                <?php endif; ?>
-                <?php foreach ($clientOptions as $option): ?>
-                    <option
-                        value="<?= htmlspecialchars($option['cui']) ?>"
-                        <?= (string) ($filters['client_cui'] ?? '') === (string) $option['cui'] ? 'selected' : '' ?>
-                    >
-                        <?= htmlspecialchars($option['name']) ?> (<?= htmlspecialchars($option['cui']) ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div>
+        <div class="min-w-[180px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-client-status">Incasare client</label>
             <select
                 id="filter-client-status"
@@ -146,7 +143,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div>
+        <div class="min-w-[180px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-supplier-status">Plata furnizor</label>
             <select
                 id="filter-supplier-status"
@@ -164,7 +161,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div>
+        <div class="min-w-[140px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Per pagina</label>
             <select
                 id="filter-per-page"
@@ -178,22 +175,22 @@
                 <?php endforeach; ?>
             </select>
         </div>
-    </div>
-    <div class="mt-4 flex flex-wrap items-center gap-2">
-        <button
-            type="submit"
-            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-        >
-            Aplica filtre
-        </button>
-        <?php if ($hasFilters): ?>
-            <a
-                href="<?= App\Support\Url::to('admin/facturi') ?>"
-                class="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+            <button
+                type="submit"
+                class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
             >
-                Anuleaza filtrele
-            </a>
-        <?php endif; ?>
+                Aplica filtre
+            </button>
+            <?php if ($hasFilters): ?>
+                <a
+                    href="<?= App\Support\Url::to('admin/facturi') ?>"
+                    class="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                    Anuleaza filtrele
+                </a>
+            <?php endif; ?>
+        </div>
     </div>
 </form>
 
@@ -250,12 +247,12 @@
             $pages[] = $totalPages;
         }
     ?>
-    <div class="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+    <div class="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center">
         <div>
             Afisezi <?= (int) ($pagination['start'] ?? 0) ?>-<?= (int) ($pagination['end'] ?? 0) ?>
             din <?= (int) ($pagination['total'] ?? 0) ?> facturi
         </div>
-        <div class="flex flex-wrap items-center gap-1">
+        <div class="ml-auto inline-flex flex-wrap items-center gap-1">
             <a
                 href="<?= htmlspecialchars($buildPageUrl(max(1, $page - 1))) ?>"
                 class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 <?= $page <= 1 ? 'pointer-events-none opacity-50' : '' ?>"
@@ -309,6 +306,161 @@
 
 <script>
     (function () {
+        const escapeHtml = (value) => {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+
+        const initAjaxSelects = () => {
+            const selects = Array.from(document.querySelectorAll('[data-ajax-select]'));
+            if (!selects.length) {
+                return;
+            }
+
+            selects.forEach((root) => {
+                const input = root.querySelector('[data-ajax-input]');
+                const hidden = root.querySelector('[data-ajax-value]');
+                const list = root.querySelector('[data-ajax-list]');
+                const url = root.getAttribute('data-lookup-url');
+                const allowEmpty = root.getAttribute('data-allow-empty') === '1';
+                const emptyLabel = root.getAttribute('data-empty-label') || 'Fara client';
+                let timer = null;
+                let requestId = 0;
+
+                if (!input || !hidden || !list || !url) {
+                    return;
+                }
+
+                const clearList = () => {
+                    list.innerHTML = '';
+                    list.classList.add('hidden');
+                };
+
+                const renderItems = (items, query) => {
+                    const results = [];
+                    const normalized = (query || '').toLowerCase();
+
+                    if (allowEmpty && (normalized === '' || emptyLabel.toLowerCase().includes(normalized))) {
+                        results.push({
+                            cui: 'none',
+                            name: emptyLabel,
+                        });
+                    }
+
+                    items.forEach((item) => results.push(item));
+
+                    if (!results.length) {
+                        list.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                        list.classList.remove('hidden');
+                        return;
+                    }
+
+                    list.innerHTML = results
+                        .map((item) => {
+                            const name = escapeHtml(item.name || item.cui || '');
+                            const cui = escapeHtml(item.cui || '');
+                            const label = item.cui === 'none' ? name : `${name} - ${cui}`;
+                            return `
+                                <button
+                                    type="button"
+                                    class="block w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                                    data-ajax-item
+                                    data-value="${cui}"
+                                    data-label="${escapeHtml(label)}"
+                                >
+                                    <div class="font-medium text-slate-900">${name}</div>
+                                    ${item.cui === 'none' ? '' : `<div class="text-xs text-slate-500">${cui}</div>`}
+                                </button>
+                            `;
+                        })
+                        .join('');
+
+                    list.classList.remove('hidden');
+                };
+
+                const fetchItems = (query) => {
+                    const current = ++requestId;
+                    list.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Se incarca...</div>';
+                    list.classList.remove('hidden');
+
+                    const fetchUrl = new URL(url, window.location.origin);
+                    fetchUrl.searchParams.set('q', query || '');
+
+                    fetch(fetchUrl.toString(), { credentials: 'same-origin' })
+                        .then((response) => response.json())
+                        .then((payload) => {
+                            if (current !== requestId) {
+                                return;
+                            }
+                            renderItems(Array.isArray(payload.items) ? payload.items : [], query);
+                        })
+                        .catch(() => {
+                            if (current !== requestId) {
+                                return;
+                            }
+                            list.innerHTML = '<div class="px-3 py-2 text-xs text-rose-600">Eroare la incarcare.</div>';
+                            list.classList.remove('hidden');
+                        });
+                };
+
+                const scheduleFetch = () => {
+                    if (timer) {
+                        clearTimeout(timer);
+                    }
+                    timer = setTimeout(() => {
+                        fetchItems(input.value.trim());
+                    }, 200);
+                };
+
+                input.addEventListener('input', () => {
+                    hidden.value = '';
+                    scheduleFetch();
+                });
+
+                input.addEventListener('focus', () => {
+                    fetchItems(input.value.trim());
+                });
+
+                input.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape') {
+                        clearList();
+                    }
+                });
+
+                input.addEventListener('blur', () => {
+                    setTimeout(() => {
+                        clearList();
+                        if (!hidden.value) {
+                            const digits = input.value.replace(/\D+/g, '');
+                            if (digits) {
+                                hidden.value = digits;
+                            }
+                        }
+                    }, 150);
+                });
+
+                list.addEventListener('click', (event) => {
+                    const item = event.target.closest('[data-ajax-item]');
+                    if (!item) {
+                        return;
+                    }
+                    hidden.value = item.getAttribute('data-value') || '';
+                    input.value = item.getAttribute('data-label') || '';
+                    clearList();
+                });
+
+                document.addEventListener('click', (event) => {
+                    if (!root.contains(event.target)) {
+                        clearList();
+                    }
+                });
+            });
+        };
+
         const wireRowClicks = () => {
             const rows = Array.from(document.querySelectorAll('.invoice-row'));
             rows.forEach((row) => {
@@ -325,5 +477,6 @@
         };
 
         wireRowClicks();
+        initAjaxSelects();
     })();
 </script>
