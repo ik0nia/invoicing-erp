@@ -141,25 +141,45 @@
             <input type="hidden" name="client_cui" value="<?= htmlspecialchars((string) ($filters['client_cui'] ?? '')) ?>" data-ajax-value>
             <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-ajax-list></div>
         </div>
-        <div class="min-w-[160px]">
+        <div class="min-w-[170px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-date-from">Data inceput</label>
-            <input
-                id="filter-date-from"
-                name="date_from"
-                type="date"
-                value="<?= htmlspecialchars((string) ($filters['date_from'] ?? '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
+            <div class="relative mt-1">
+                <input
+                    id="filter-date-from"
+                    name="date_from"
+                    type="date"
+                    value="<?= htmlspecialchars((string) ($filters['date_from'] ?? '')) ?>"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
+                >
+                <button
+                    type="button"
+                    class="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
+                    aria-label="Sterge data inceput"
+                    data-date-clear="from"
+                >
+                    &#10005;
+                </button>
+            </div>
         </div>
-        <div class="min-w-[160px]">
+        <div class="min-w-[170px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-date-to">Data final</label>
-            <input
-                id="filter-date-to"
-                name="date_to"
-                type="date"
-                value="<?= htmlspecialchars((string) ($filters['date_to'] ?? '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
+            <div class="relative mt-1">
+                <input
+                    id="filter-date-to"
+                    name="date_to"
+                    type="date"
+                    value="<?= htmlspecialchars((string) ($filters['date_to'] ?? '')) ?>"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 pr-9 text-sm"
+                >
+                <button
+                    type="button"
+                    class="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
+                    aria-label="Sterge data final"
+                    data-date-clear="to"
+                >
+                    &#10005;
+                </button>
+            </div>
         </div>
         <div class="min-w-[180px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-client-status">Incasare client</label>
@@ -567,24 +587,61 @@
             });
 
             const dateInputs = form.querySelectorAll('#filter-date-from, #filter-date-to');
+            const dateClearButtons = form.querySelectorAll('[data-date-clear]');
             const isValidDateValue = (value) => {
                 if (value === '') {
                     return true;
                 }
                 return /^\d{4}-\d{2}-\d{2}$/.test(value);
             };
-            dateInputs.forEach((input) => {
-                input.addEventListener('change', () => {
-                    if (isValidDateValue(input.value)) {
-                        submitWithDebounce(0);
+            let dateTimer = null;
+            const scheduleDateSubmit = () => {
+                if (dateTimer) {
+                    clearTimeout(dateTimer);
+                }
+                dateTimer = setTimeout(() => {
+                    const fromValue = form.querySelector('#filter-date-from')?.value ?? '';
+                    const toValue = form.querySelector('#filter-date-to')?.value ?? '';
+                    if (isValidDateValue(fromValue) && isValidDateValue(toValue)) {
+                        submitForm();
+                    }
+                }, 1200);
+            };
+            const updateDateClear = () => {
+                const fromValue = form.querySelector('#filter-date-from')?.value ?? '';
+                const toValue = form.querySelector('#filter-date-to')?.value ?? '';
+                dateClearButtons.forEach((button) => {
+                    const key = button.getAttribute('data-date-clear');
+                    if (key === 'from') {
+                        button.classList.toggle('hidden', fromValue === '');
+                    }
+                    if (key === 'to') {
+                        button.classList.toggle('hidden', toValue === '');
                     }
                 });
-                input.addEventListener('blur', () => {
-                    if (isValidDateValue(input.value)) {
-                        submitWithDebounce(0);
-                    }
+            };
+            dateInputs.forEach((input) => {
+                input.addEventListener('input', () => {
+                    scheduleDateSubmit();
+                    updateDateClear();
+                });
+                input.addEventListener('change', () => {
+                    scheduleDateSubmit();
+                    updateDateClear();
                 });
             });
+            dateClearButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const key = button.getAttribute('data-date-clear');
+                    const target = form.querySelector(key === 'from' ? '#filter-date-from' : '#filter-date-to');
+                    if (target) {
+                        target.value = '';
+                    }
+                    updateDateClear();
+                    submitForm();
+                });
+            });
+            updateDateClear();
         }
 
         wireRowClicks();
