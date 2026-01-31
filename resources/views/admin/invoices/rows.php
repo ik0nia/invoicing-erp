@@ -1,6 +1,6 @@
 <?php if (empty($invoices)): ?>
     <tr>
-        <td colspan="11" class="px-4 py-6 text-center text-slate-500">
+        <td colspan="10" class="px-4 py-6 text-center text-slate-500">
             Nu exista facturi importate.
         </td>
     </tr>
@@ -91,9 +91,6 @@
                 <?php else: ?>
                     <div class="text-xs text-slate-500">—</div>
                 <?php endif; ?>
-            </td>
-            <td class="px-4 py-3 text-right block md:table-cell" data-label="Actiuni">
-                —
             </td>
         </tr>
     <?php endforeach; ?>

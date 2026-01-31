@@ -55,7 +55,6 @@
                 <th class="px-4 py-3">Total factura client</th>
                 <th class="px-4 py-3">Incasare client</th>
                 <th class="px-4 py-3">Plata furnizor</th>
-                <th class="px-4 py-3"></th>
             </tr>
         </thead>
         <tbody id="invoice-table-body">
