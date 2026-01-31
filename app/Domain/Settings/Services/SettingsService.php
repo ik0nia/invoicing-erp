@@ -59,6 +59,7 @@ class SettingsService
             ]
         );
 
+        @unlink($this->cacheFile);
         $cache = $this->readCache();
         $cache[$key] = $value;
         $this->writeCache($cache);
