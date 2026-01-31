@@ -122,6 +122,10 @@ if ($isSuperAdmin) {
         body.sidebar-open #mobile-overlay {
             display: block;
         }
+        #sidebar {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900">
@@ -133,7 +137,7 @@ if ($isSuperAdmin) {
         ></div>
         <aside
             id="sidebar"
-            class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0"
             aria-label="Meniu principal"
         >
             <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
