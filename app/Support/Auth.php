@@ -15,6 +15,8 @@ class Auth
             return null;
         }
 
+        Role::ensureDefaults();
+
         return User::find((int) $userId);
     }
 
