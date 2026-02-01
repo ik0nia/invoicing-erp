@@ -41,7 +41,13 @@ class InvoiceXmlParser
         $currency = $this->value($xml, '/inv:Invoice/cbc:DocumentCurrencyCode') ?: 'RON';
 
         $supplierParty = $xml->xpath('//cac:AccountingSupplierParty/cac:Party')[0] ?? null;
+        if (!$supplierParty) {
+            $supplierParty = $xml->xpath('//*[local-name()="AccountingSupplierParty"]/*[local-name()="Party"]')[0] ?? null;
+        }
         $customerParty = $xml->xpath('//cac:AccountingCustomerParty/cac:Party')[0] ?? null;
+        if (!$customerParty) {
+            $customerParty = $xml->xpath('//*[local-name()="AccountingCustomerParty"]/*[local-name()="Party"]')[0] ?? null;
+        }
 
         [$supplierCui, $supplierName] = $this->partyData($supplierParty);
         [$customerCui, $customerName] = $this->partyData($customerParty);
@@ -56,6 +62,9 @@ class InvoiceXmlParser
 
         $lines = [];
         $invoiceLines = $xml->xpath('//cac:InvoiceLine') ?: [];
+        if (empty($invoiceLines)) {
+            $invoiceLines = $xml->xpath('//*[local-name()="InvoiceLine"]') ?: [];
+        }
 
         foreach ($invoiceLines as $line) {
             $lineNo = $this->value($line, 'cbc:ID') ?: '';
@@ -355,6 +364,13 @@ class InvoiceXmlParser
         $result = $context->xpath($path);
 
         if (!$result || !isset($result[0])) {
+            $localPath = $this->localNamePath($path);
+            if ($localPath !== $path) {
+                $result = $context->xpath($localPath);
+            }
+        }
+
+        if (!$result || !isset($result[0])) {
             return null;
         }
 
@@ -364,6 +380,13 @@ class InvoiceXmlParser
     private function attribute(\SimpleXMLElement $context, string $path, string $attribute): ?string
     {
         $result = $context->xpath($path);
+
+        if (!$result || !isset($result[0])) {
+            $localPath = $this->localNamePath($path);
+            if ($localPath !== $path) {
+                $result = $context->xpath($localPath);
+            }
+        }
 
         if (!$result || !isset($result[0])) {
             return null;
@@ -376,5 +399,49 @@ class InvoiceXmlParser
         }
 
         return trim((string) $attrs[$attribute]);
+    }
+
+    private function localNamePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return $path;
+        }
+
+        $isAbsolute = str_starts_with($path, '/');
+        $parts = array_filter(explode('/', trim($path, '/')), static function (string $part): bool {
+            return $part !== '';
+        });
+
+        $converted = [];
+        foreach ($parts as $part) {
+            if ($part === '.' || $part === '..') {
+                $converted[] = $part;
+                continue;
+            }
+
+            $predicate = '';
+            $base = $part;
+            $bracketPos = strpos($part, '[');
+            if ($bracketPos !== false) {
+                $base = substr($part, 0, $bracketPos);
+                $predicate = substr($part, $bracketPos);
+            }
+
+            $name = $base;
+            $colonPos = strpos($base, ':');
+            if ($colonPos !== false) {
+                $name = substr($base, $colonPos + 1);
+            }
+
+            if ($name === '') {
+                $name = $base;
+            }
+
+            $converted[] = "*[local-name()='" . $name . "']" . $predicate;
+        }
+
+        $localPath = implode('/', $converted);
+        return $isAbsolute ? '/' . $localPath : $localPath;
     }
 }
