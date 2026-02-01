@@ -444,9 +444,21 @@ class InvoiceController
         if ($extension === 'xml') {
             $content = file_get_contents($filePath) ?: '';
             $formatted = $this->formatXmlForDisplay($content);
+            $parser = new InvoiceXmlParser();
+            $parsed = null;
+            $parseError = null;
+
+            try {
+                $parsed = $parser->parse($filePath);
+            } catch (\Throwable $error) {
+                $parseError = $error->getMessage();
+            }
+
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
                 'content' => $formatted,
+                'data' => $parsed,
+                'error' => $parseError,
             ], null);
             return;
         }
