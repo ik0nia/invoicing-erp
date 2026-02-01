@@ -51,26 +51,7 @@
             Alege clientul pentru a calcula comisionul pe pachete.
         </p>
 
-        <?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
-            <div class="mt-3 rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                <div class="font-semibold text-slate-800">Solicita generare factura</div>
-                <p class="mt-1 text-xs text-slate-500">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/incarca-fisier') ?>" enctype="multipart/form-data" class="mt-3 flex flex-wrap items-center gap-2">
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <input
-                        type="file"
-                        name="supplier_file"
-                        accept=".xml,.pdf"
-                        class="text-xs text-slate-600"
-                        required
-                    >
-                    <button class="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700">
-                        Solicita generare factura
-                    </button>
-                </form>
-            </div>
-        <?php elseif (!empty($invoice->xml_path)): ?>
+        <?php if (!empty($invoice->xml_path)): ?>
             <div class="mt-3 text-xs text-slate-600">
                 Fisier furnizor:
                 <a
@@ -183,6 +164,27 @@
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
+    <div class="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+        <div class="text-base font-semibold text-blue-900">Solicita generare factura</div>
+        <p class="mt-1 text-sm text-blue-800/80">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/incarca-fisier') ?>" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input
+                type="file"
+                name="supplier_file"
+                accept=".xml,.pdf"
+                class="text-xs text-slate-700"
+                required
+            >
+            <button class="rounded border border-blue-700 bg-blue-700 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-blue-800">
+                Solicita generare factura
+            </button>
+        </form>
+    </div>
+<?php endif; ?>
 
 <div class="mt-4 grid gap-4 md:grid-cols-3">
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
