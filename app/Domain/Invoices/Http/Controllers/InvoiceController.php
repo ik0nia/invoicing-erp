@@ -442,31 +442,11 @@ class InvoiceController
 
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         if ($extension === 'xml') {
-            $parser = new InvoiceXmlParser();
-            $parsed = null;
-            $parseError = null;
-            $notice = null;
-
-            try {
-                $parsed = $parser->parse($filePath);
-            } catch (\Throwable $error) {
-                $parseError = $error->getMessage();
-            }
-
-            $fallback = $this->buildXmlFallbackData($invoice);
-            $merged = $this->mergeXmlViewData($parsed, $fallback);
-
-            if ($parsed === null) {
-                $notice = 'Nu am putut interpreta XML-ul complet. Datele sunt afisate din factura salvata.';
-            } elseif ($this->xmlDataIncomplete($parsed)) {
-                $notice = 'XML-ul a fost completat cu datele salvate in factura.';
-            }
-
+            $content = file_get_contents($filePath) ?: '';
+            $formatted = $this->formatXmlForDisplay($content);
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
-                'data' => $merged,
-                'error' => $parseError ? 'Nu am putut interpreta XML-ul complet.' : null,
-                'notice' => $notice,
+                'content' => $formatted,
             ], null);
             return;
         }
@@ -2075,6 +2055,31 @@ class InvoiceController
         }
 
         return $data;
+    }
+
+    private function formatXmlForDisplay(string $content): string
+    {
+        $content = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $content) ?? $content;
+        $content = trim($content);
+        if ($content === '') {
+            return '';
+        }
+
+        if (class_exists(\DOMDocument::class)) {
+            libxml_use_internal_errors(true);
+            $dom = new \DOMDocument('1.0', 'UTF-8');
+            $dom->preserveWhiteSpace = false;
+            $dom->formatOutput = true;
+
+            if (@$dom->loadXML($content, LIBXML_NONET | LIBXML_NOCDATA | LIBXML_PARSEHUGE)) {
+                libxml_clear_errors();
+                return $dom->saveXML();
+            }
+
+            libxml_clear_errors();
+        }
+
+        return preg_replace('/>\s*</', ">\n<", $content) ?? $content;
     }
 
     private function detectMimeType(string $path): string
