@@ -55,7 +55,7 @@
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
                 <div class="inline-flex items-center gap-2">
-                    <?php if (!empty($invoice->supplier_request_at) && !empty($canShowRequestAlert)): ?>
+                        <?php if (!empty($invoice->supplier_request_at) && empty($invoice->fgo_number) && empty($invoice->fgo_storno_number) && !empty($canShowRequestAlert)): ?>
                         <?php
                             $requestTs = strtotime((string) $invoice->supplier_request_at);
                             $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;

@@ -27,7 +27,27 @@
     </a>
 </div>
 
-<?php if (!empty($invoice->supplier_request_at)): ?>
+<?php if (!empty($invoice->fgo_storno_number)): ?>
+    <?php
+        $stornoDate = (string) ($invoice->fgo_storno_at ?? '');
+        $stornoTs = $stornoDate !== '' ? strtotime($stornoDate) : false;
+        $stornoLabel = $stornoTs ? date('d.m.Y H:i', $stornoTs) : ($invoice->fgo_date ? date('d.m.Y', strtotime((string) $invoice->fgo_date)) : '');
+        $stornoLabel = $stornoLabel !== '' ? $stornoLabel : '-';
+    ?>
+    <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        Factura a fost stornata la data <strong><?= htmlspecialchars($stornoLabel) ?></strong>.
+    </div>
+<?php elseif (!empty($invoice->fgo_number)): ?>
+    <?php
+        $generatedDate = (string) ($invoice->fgo_generated_at ?? '');
+        $generatedTs = $generatedDate !== '' ? strtotime($generatedDate) : false;
+        $generatedLabel = $generatedTs ? date('d.m.Y H:i', $generatedTs) : ($invoice->fgo_date ? date('d.m.Y', strtotime((string) $invoice->fgo_date)) : '');
+        $generatedLabel = $generatedLabel !== '' ? $generatedLabel : '-';
+    ?>
+    <div class="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        Factura a fost generata la data <strong><?= htmlspecialchars($generatedLabel) ?></strong>.
+    </div>
+<?php elseif (!empty($invoice->supplier_request_at)): ?>
     <?php
         $requestTs = strtotime((string) $invoice->supplier_request_at);
         $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;

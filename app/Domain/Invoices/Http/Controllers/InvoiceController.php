@@ -442,11 +442,22 @@ class InvoiceController
 
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         if ($extension === 'xml') {
-            $content = file_get_contents($filePath) ?: '';
+            $parser = new InvoiceXmlParser();
+            $parsed = null;
+            $parseError = null;
+
+            try {
+                $parsed = $parser->parse($filePath);
+            } catch (\Throwable $error) {
+                $parseError = $error->getMessage();
+            }
+
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
-                'content' => $content,
+                'data' => $parsed,
+                'error' => $parseError,
             ], null);
+            return;
         }
 
         $mime = $this->detectMimeType($filePath);
@@ -1490,11 +1501,19 @@ class InvoiceController
         }
 
         Database::execute(
-            'UPDATE invoices_in SET fgo_series = :serie, fgo_number = :numar, fgo_date = :fgo_date, fgo_link = :link, updated_at = :now WHERE id = :id',
+            'UPDATE invoices_in
+             SET fgo_series = :serie,
+                 fgo_number = :numar,
+                 fgo_date = :fgo_date,
+                 fgo_generated_at = :generated_at,
+                 fgo_link = :link,
+                 updated_at = :now
+             WHERE id = :id',
             [
                 'serie' => $fgoSeries,
                 'numar' => $fgoNumber,
                 'fgo_date' => $issueDate,
+                'generated_at' => date('Y-m-d H:i:s'),
                 'link' => $fgoLink,
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoice->id,
@@ -1654,11 +1673,18 @@ class InvoiceController
         }
 
         Database::execute(
-            'UPDATE invoices_in SET fgo_storno_series = :serie, fgo_storno_number = :numar, fgo_storno_link = :link, updated_at = :now WHERE id = :id',
+            'UPDATE invoices_in
+             SET fgo_storno_series = :serie,
+                 fgo_storno_number = :numar,
+                 fgo_storno_link = :link,
+                 fgo_storno_at = :storno_at,
+                 updated_at = :now
+             WHERE id = :id',
             [
                 'serie' => $stornoSeries,
                 'numar' => $stornoNumber,
                 'link' => $stornoLink,
+                'storno_at' => date('Y-m-d H:i:s'),
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoice->id,
             ]
@@ -2026,10 +2052,13 @@ class InvoiceController
                     packages_confirmed_at DATETIME NULL,
                     fgo_series VARCHAR(32) NULL,
                     fgo_number VARCHAR(32) NULL,
+                    fgo_date DATE NULL,
+                    fgo_generated_at DATETIME NULL,
                     fgo_link VARCHAR(255) NULL,
                     fgo_storno_series VARCHAR(32) NULL,
                     fgo_storno_number VARCHAR(32) NULL,
                     fgo_storno_link VARCHAR(255) NULL,
+                    fgo_storno_at DATETIME NULL,
                     order_note_no INT NULL,
                     order_note_date DATE NULL,
                     commission_percent DECIMAL(6,2) NULL,
@@ -2100,8 +2129,11 @@ class InvoiceController
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_date')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_date DATE NULL AFTER fgo_number');
         }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_generated_at')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_generated_at DATETIME NULL AFTER fgo_date');
+        }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_link')) {
-            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_date');
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_generated_at');
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_series')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_series VARCHAR(32) NULL AFTER fgo_link');
@@ -2112,8 +2144,11 @@ class InvoiceController
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_link')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_link VARCHAR(255) NULL AFTER fgo_storno_number');
         }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_storno_at')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_storno_at DATETIME NULL AFTER fgo_storno_link');
+        }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'order_note_no')) {
-            Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_no INT NULL AFTER fgo_storno_link');
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_no INT NULL AFTER fgo_storno_at');
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'order_note_date')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN order_note_date DATE NULL AFTER order_note_no');

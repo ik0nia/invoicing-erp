@@ -27,10 +27,12 @@ class InvoiceIn
     public ?string $fgo_series = null;
     public ?string $fgo_number = null;
     public ?string $fgo_date = null;
+    public ?string $fgo_generated_at = null;
     public ?string $fgo_link = null;
     public ?string $fgo_storno_series = null;
     public ?string $fgo_storno_number = null;
     public ?string $fgo_storno_link = null;
+    public ?string $fgo_storno_at = null;
     public ?int $order_note_no = null;
     public ?string $order_note_date = null;
     public ?float $commission_percent = null;
@@ -171,10 +173,12 @@ class InvoiceIn
         $invoice->fgo_series = $row['fgo_series'] ?? null;
         $invoice->fgo_number = $row['fgo_number'] ?? null;
         $invoice->fgo_date = $row['fgo_date'] ?? null;
+        $invoice->fgo_generated_at = $row['fgo_generated_at'] ?? null;
         $invoice->fgo_link = $row['fgo_link'] ?? null;
         $invoice->fgo_storno_series = $row['fgo_storno_series'] ?? null;
         $invoice->fgo_storno_number = $row['fgo_storno_number'] ?? null;
         $invoice->fgo_storno_link = $row['fgo_storno_link'] ?? null;
+        $invoice->fgo_storno_at = $row['fgo_storno_at'] ?? null;
         $invoice->order_note_no = isset($row['order_note_no']) ? (int) $row['order_note_no'] : null;
         $invoice->order_note_date = $row['order_note_date'] ?? null;
         $invoice->commission_percent = isset($row['commission_percent']) ? (float) $row['commission_percent'] : null;
