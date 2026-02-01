@@ -2,6 +2,7 @@
 
 namespace App\Domain\Dashboard\Http\Controllers;
 
+use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -10,18 +11,55 @@ class DashboardController
 {
     public function index(): void
     {
-        Auth::requireAdmin();
+        Auth::requireLogin();
+
+        $user = Auth::user();
+        if (!$user) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $isPlatform = $user->isPlatformUser();
+        $isSupplierUser = $user->isSupplierUser();
+        if (!$isPlatform && !$isSupplierUser) {
+            Response::abort(403, 'Acces interzis.');
+        }
 
         $latestInvoices = [];
         $pendingPackages = [];
+        $supplierFilter = '';
+        $supplierPlaceholders = '';
+        $params = [];
+
+        if ($isSupplierUser) {
+            UserSupplierAccess::ensureTable();
+            $suppliers = UserSupplierAccess::suppliersForUser($user->id);
+            if (empty($suppliers)) {
+                Response::view('admin/dashboard/index', [
+                    'user' => $user,
+                    'latestInvoices' => $latestInvoices,
+                    'pendingPackages' => $pendingPackages,
+                ]);
+                return;
+            }
+            $placeholders = [];
+            foreach (array_values($suppliers) as $index => $supplier) {
+                $key = 's' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $supplier;
+            }
+            $supplierPlaceholders = implode(',', $placeholders);
+            $supplierFilter = ' AND supplier_cui IN (' . implode(',', $placeholders) . ')';
+        }
 
         if (Database::tableExists('invoices_in')) {
             try {
                 $latestInvoices = Database::fetchAll(
                     'SELECT id, invoice_number, supplier_name, issue_date, total_with_vat
                      FROM invoices_in
+                     WHERE 1=1' . $supplierFilter . '
                      ORDER BY created_at DESC, id DESC
-                     LIMIT 10'
+                     LIMIT 10',
+                    $params
                 );
             } catch (\Throwable $exception) {
                 $latestInvoices = [];
@@ -43,9 +81,10 @@ class DashboardController
                      FROM packages p
                      JOIN invoices_in i ON i.id = p.invoice_in_id
                      WHERE i.packages_confirmed = 1
-                       AND (i.fgo_number IS NULL OR i.fgo_number = "")
+                       AND (i.fgo_number IS NULL OR i.fgo_number = "")' . ($supplierPlaceholders !== '' ? ' AND i.supplier_cui IN (' . $supplierPlaceholders . ')' : '') . '
                      ORDER BY ' . $orderBy . ' DESC, p.package_no ASC, p.id ASC
-                     LIMIT 10'
+                     LIMIT 10',
+                    $params
                 );
             } catch (\Throwable $exception) {
                 $pendingPackages = [];
@@ -53,7 +92,7 @@ class DashboardController
         }
 
         Response::view('admin/dashboard/index', [
-            'user' => Auth::user(),
+            'user' => $user,
             'latestInvoices' => $latestInvoices,
             'pendingPackages' => $pendingPackages,
         ]);

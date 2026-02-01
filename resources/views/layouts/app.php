@@ -29,7 +29,7 @@ if ($base !== '' && str_starts_with($currentPath, $base)) {
 
 $menuSections = [];
 
-if ($isPlatformUser) {
+if ($isPlatformUser || $isSupplierUser) {
     $menuSections['General'] = [
         [
             'label' => 'Dashboard',
