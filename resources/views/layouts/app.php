@@ -94,13 +94,19 @@ if ($isPlatformUser) {
     ];
 }
 
-if ($isSuperAdmin) {
-    $menuSections['Administrare'] = [
-        [
+if ($isPlatformUser) {
+    $menuSections['Administrare'] = [];
+    if ($isSuperAdmin) {
+        $menuSections['Administrare'][] = [
             'label' => 'Utilizatori',
             'path' => '/admin/utilizatori',
             'active' => str_starts_with($currentPath, '/admin/utilizatori'),
-        ],
+        ];
+    }
+    $menuSections['Administrare'][] = [
+        'label' => 'Permisiuni pachete',
+        'path' => '/admin/utilizatori/permisiuni-pachete',
+        'active' => str_starts_with($currentPath, '/admin/utilizatori/permisiuni-pachete'),
     ];
 }
 ?>

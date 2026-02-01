@@ -52,8 +52,15 @@
             ?>
             <div class="rounded border border-slate-200">
                 <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                    <?php
+                        $labelText = trim((string) ($package->label ?? ''));
+                        if ($labelText === '') {
+                            $labelText = 'Pachet de produse';
+                        }
+                        $label = $labelText . ' #' . $package->package_no;
+                    ?>
                     <div class="text-xs font-semibold text-slate-900">
-                        <?= htmlspecialchars('Pachet de produse #' . $package->package_no) ?>
+                        <?= htmlspecialchars($label) ?>
                     </div>
                     <div class="text-xs text-slate-600">
                         Total pachet: <strong><?= number_format($packageTotal, 2, '.', ' ') ?> RON</strong>

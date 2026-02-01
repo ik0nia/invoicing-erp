@@ -88,6 +88,14 @@ class Package
         );
     }
 
+    public static function updateLabel(int $packageId, ?string $label): void
+    {
+        Database::execute(
+            'UPDATE packages SET label = :label WHERE id = :id',
+            ['label' => $label, 'id' => $packageId]
+        );
+    }
+
     public static function fromArray(array $row): self
     {
         $package = new self();

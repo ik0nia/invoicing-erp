@@ -12,6 +12,7 @@ use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
+use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\CompanyName;
@@ -48,6 +49,7 @@ class InvoiceController
             $commissionPercent = null;
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
+            $canRenamePackages = $this->canRenamePackages($user);
             $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
@@ -124,6 +126,7 @@ class InvoiceController
                 'commissionPercent' => $commissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
+                'canRenamePackages' => $canRenamePackages,
                 'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
@@ -432,6 +435,46 @@ class InvoiceController
         Session::put($this->clientUnlockKey($invoiceId), true);
         Session::flash('status', 'Clientul a fost deblocat pentru modificare.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+    }
+
+    public function renamePackage(): void
+    {
+        $this->requireInvoiceRole();
+
+        $user = Auth::user();
+        if (!$this->canRenamePackages($user)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
+        if (!$invoiceId || !$packageId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        $package = Package::find($packageId);
+        if (!$package || $package->invoice_in_id !== $invoice->id) {
+            Response::abort(404, 'Pachet inexistent.');
+        }
+
+        $label = trim((string) ($_POST['label'] ?? ''));
+        if ($label !== '') {
+            $label = preg_replace('/\s*#\s*\d+\s*$/', '', $label);
+            $label = trim((string) $label);
+        }
+        if ($label !== '' && strlen($label) > 60) {
+            $label = substr($label, 0, 60);
+        }
+
+        Package::updateLabel($package->id, $label !== '' ? $label : null);
+        Session::flash('status', 'Pachetul a fost redenumit.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
     public function printSituation(): void
@@ -1267,7 +1310,7 @@ class InvoiceController
             $total = $this->applyCommission($stat['total_vat'], $commission->commission);
 
             $content[] = [
-                'Denumire' => 'Pachet de produse #' . $package->package_no,
+                'Denumire' => $this->packageLabel($package),
                 'UM' => 'BUC',
                 'NrProduse' => 1,
                 'CotaTVA' => (float) $package->vat_percent,
@@ -1774,7 +1817,7 @@ class InvoiceController
 
         foreach ($packages as $package) {
             $stats[$package->id] = [
-                'label' => 'Pachet de produse #' . $package->package_no,
+                'label' => $this->packageLabel($package),
                 'package_no' => $package->package_no,
                 'vat_percent' => $package->vat_percent,
                 'line_count' => 0,
@@ -2169,7 +2212,7 @@ class InvoiceController
 
             $data[] = [
                 'package_no' => $package->package_no,
-                'label' => 'Pachet de produse #' . $package->package_no,
+                'label' => $this->packageLabel($package),
                 'total' => $total,
                 'lines' => $items,
                 'date' => $date,
@@ -2940,6 +2983,33 @@ class InvoiceController
     private function isClientUnlocked(int $invoiceId): bool
     {
         return (bool) Session::get($this->clientUnlockKey($invoiceId), false);
+    }
+
+    private function canRenamePackages(?\App\Domain\Users\Models\User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ($user->hasRole(['super_admin', 'admin', 'contabil', 'staff'])) {
+            return true;
+        }
+
+        UserPermission::ensureTable();
+        return UserPermission::userHas($user->id, UserPermission::RENAME_PACKAGES);
+    }
+
+    private function packageLabelText(Package $package): string
+    {
+        $label = trim((string) ($package->label ?? ''));
+        if ($label === '') {
+            $label = 'Pachet de produse';
+        }
+        return $label;
+    }
+
+    private function packageLabel(Package $package): string
+    {
+        return $this->packageLabelText($package) . ' #' . $package->package_no;
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array

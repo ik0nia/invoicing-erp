@@ -4,6 +4,7 @@ namespace App\Domain\Users\Http\Controllers;
 
 use App\Domain\Users\Models\Role;
 use App\Domain\Users\Models\User;
+use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Database;
@@ -298,6 +299,74 @@ class UsersController
 
         Session::flash('status', 'Utilizatorul a fost sters.');
         Response::redirect('/admin/utilizatori');
+    }
+
+    public function packagePermissions(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureUserTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        Role::ensureDefaults();
+        UserSupplierAccess::ensureTable();
+        UserPermission::ensureTable();
+
+        $rows = Database::fetchAll(
+            'SELECT u.*, GROUP_CONCAT(r.key ORDER BY r.key SEPARATOR ",") AS roles,
+                    GROUP_CONCAT(r.label ORDER BY r.key SEPARATOR ",") AS role_labels
+             FROM users u
+             LEFT JOIN role_user ru ON ru.user_id = u.id
+             LEFT JOIN roles r ON r.id = ru.role_id
+             GROUP BY u.id
+             ORDER BY u.id DESC'
+        );
+
+        $userIds = array_map(static fn (array $row) => (int) $row['id'], $rows);
+        $permissionMap = UserPermission::permissionMapForUsers($userIds, UserPermission::RENAME_PACKAGES);
+
+        $users = [];
+        foreach ($rows as $row) {
+            $roles = array_filter(array_map('trim', explode(',', (string) $row['roles'])));
+            $labels = array_filter(array_map('trim', explode(',', (string) $row['role_labels'])));
+            $id = (int) $row['id'];
+
+            $users[] = [
+                'id' => $id,
+                'name' => (string) $row['name'],
+                'email' => (string) $row['email'],
+                'roles' => $roles,
+                'role_labels' => $labels,
+                'can_rename' => !empty($permissionMap[$id]),
+            ];
+        }
+
+        Response::view('admin/users/package_permissions', [
+            'users' => $users,
+            'currentUserId' => Auth::user()?->id ?? 0,
+        ]);
+    }
+
+    public function savePackagePermission(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureUserTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru utilizatori.');
+            Response::redirect('/admin/utilizatori/permisiuni-pachete');
+        }
+
+        $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+        $enabled = !empty($_POST['can_rename_packages']);
+
+        if (!$userId) {
+            Response::redirect('/admin/utilizatori/permisiuni-pachete');
+        }
+
+        UserPermission::setForUser($userId, UserPermission::RENAME_PACKAGES, $enabled);
+        Session::flash('status', 'Permisiunea a fost actualizata.');
+        Response::redirect('/admin/utilizatori/permisiuni-pachete');
     }
 
     private function ensureUserTables(): bool

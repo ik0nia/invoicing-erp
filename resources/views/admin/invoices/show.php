@@ -293,6 +293,13 @@
             <?php $packageLines = $linesByPackage[$package->id] ?? []; ?>
             <?php $stat = $packageStats[$package->id] ?? null; ?>
             <?php $commissionTotal = $packageTotalsWithCommission['packages'][$package->id] ?? null; ?>
+            <?php
+                $packageLabelText = trim((string) ($package->label ?? ''));
+                if ($packageLabelText === '') {
+                    $packageLabelText = 'Pachet de produse';
+                }
+                $packageLabel = $packageLabelText . ' #' . $package->package_no;
+            ?>
             <div
                 class="rounded border border-slate-300 bg-white p-4 shadow-sm"
                 data-drop-zone
@@ -301,7 +308,7 @@
             >
                 <div class="flex items-start justify-between gap-2">
                     <div class="text-sm font-semibold text-slate-900">
-                        <?= htmlspecialchars('Pachet de produse #' . $package->package_no) ?>
+                        <?= htmlspecialchars($packageLabel) ?>
                     </div>
                     <?php if (!empty($isConfirmed)): ?>
                         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">
@@ -319,6 +326,24 @@
                         </form>
                     <?php endif; ?>
                 </div>
+                <?php if (!empty($canRenamePackages)): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/redenumeste-pachet') ?>" class="mt-2 flex flex-wrap items-center gap-2">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                        <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                        <input
+                            type="text"
+                            name="label"
+                            value="<?= htmlspecialchars($packageLabelText) ?>"
+                            class="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+                            placeholder="Denumire pachet"
+                        >
+                        <span class="text-xs font-semibold text-slate-500">#<?= (int) $package->package_no ?></span>
+                        <button class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                            Salveaza
+                        </button>
+                    </form>
+                <?php endif; ?>
                 <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
                     <div class="mt-1 text-xs text-slate-600">

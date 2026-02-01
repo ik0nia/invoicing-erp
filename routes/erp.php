@@ -38,6 +38,7 @@ $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
 $router->post('/admin/facturi/deblocheaza-client', [InvoiceController::class, 'unlockClient']);
+$router->post('/admin/facturi/redenumeste-pachet', [InvoiceController::class, 'renamePackage']);
 $router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'downloadPackageSaga']);
 $router->post('/admin/facturi/saga/factura', [InvoiceController::class, 'downloadInvoiceSaga']);
 $router->post('/admin/pachete-confirmate/descarca', [InvoiceController::class, 'downloadSelectedSaga']);
@@ -69,6 +70,8 @@ $router->get('/admin/utilizatori/adauga', [UsersController::class, 'create']);
 $router->post('/admin/utilizatori/adauga', [UsersController::class, 'store']);
 $router->get('/admin/utilizatori/edit', [UsersController::class, 'edit']);
 $router->post('/admin/utilizatori/update', [UsersController::class, 'update']);
+$router->get('/admin/utilizatori/permisiuni-pachete', [UsersController::class, 'packagePermissions']);
+$router->post('/admin/utilizatori/permisiuni-pachete', [UsersController::class, 'savePackagePermission']);
 $router->post('/admin/utilizatori/sterge', [UsersController::class, 'delete']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
