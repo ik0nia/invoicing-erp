@@ -33,7 +33,7 @@
         $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;
     ?>
     <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Refacturare solicitata la data <strong><?= htmlspecialchars($requestLabel) ?></strong>.
+        Facturare solicitata la data <strong><?= htmlspecialchars($requestLabel) ?></strong>.
     </div>
 <?php endif; ?>
 
