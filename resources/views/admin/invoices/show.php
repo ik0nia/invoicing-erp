@@ -165,27 +165,6 @@
     </div>
 </div>
 
-<?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
-    <div class="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
-        <div class="text-base font-semibold text-blue-900">Solicita generare factura</div>
-        <p class="mt-1 text-sm text-blue-800/80">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/incarca-fisier') ?>" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <input
-                type="file"
-                name="supplier_file"
-                accept=".xml,.pdf"
-                class="text-xs text-slate-700"
-                required
-            >
-            <button class="rounded border border-blue-700 bg-blue-700 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-blue-800">
-                Solicita generare factura
-            </button>
-        </form>
-    </div>
-<?php endif; ?>
-
 <div class="mt-4 grid gap-4 md:grid-cols-3">
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <div class="text-slate-500">Incasat client</div>
@@ -670,6 +649,46 @@
     </div>
 <?php endif; ?>
 
+<?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
+    <div class="mt-8 rounded-lg border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+        <div class="text-base font-semibold text-blue-900">Solicita generare factura</div>
+        <p class="mt-1 text-sm text-blue-800/80">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
+        <form
+            method="POST"
+            action="<?= App\Support\Url::to('admin/facturi/incarca-fisier') ?>"
+            enctype="multipart/form-data"
+            class="mt-4 flex flex-wrap items-center gap-3"
+            data-supplier-upload
+        >
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input
+                id="supplier_file_upload"
+                type="file"
+                name="supplier_file"
+                accept=".xml,.pdf"
+                class="sr-only"
+                required
+                data-upload-input
+            >
+            <label
+                for="supplier_file_upload"
+                class="inline-flex items-center gap-2 rounded border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+            >
+                <span>Alege fisier</span>
+                <span class="text-slate-500" data-upload-name>Nicio selectie</span>
+            </label>
+            <button
+                class="rounded border border-blue-700 bg-blue-700 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled
+                data-upload-submit
+            >
+                Solicita generare factura
+            </button>
+        </form>
+    </div>
+<?php endif; ?>
+
 <script>
     (function () {
         const searchInput = document.getElementById('client-search');
@@ -739,6 +758,26 @@
                 });
             }
         });
+
+        const uploadForm = document.querySelector('[data-supplier-upload]');
+        if (uploadForm) {
+            const uploadInput = uploadForm.querySelector('[data-upload-input]');
+            const uploadName = uploadForm.querySelector('[data-upload-name]');
+            const uploadSubmit = uploadForm.querySelector('[data-upload-submit]');
+            const updateUpload = () => {
+                const hasFile = uploadInput && uploadInput.files && uploadInput.files.length > 0;
+                if (uploadName) {
+                    uploadName.textContent = hasFile ? uploadInput.files[0].name : 'Nicio selectie';
+                }
+                if (uploadSubmit) {
+                    uploadSubmit.disabled = !hasFile;
+                }
+            };
+            if (uploadInput) {
+                uploadInput.addEventListener('change', updateUpload);
+                updateUpload();
+            }
+        }
 
         const params = new URLSearchParams(window.location.search);
         const anchor = params.get('anchor');
