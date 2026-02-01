@@ -70,8 +70,6 @@ $router->get('/admin/utilizatori/adauga', [UsersController::class, 'create']);
 $router->post('/admin/utilizatori/adauga', [UsersController::class, 'store']);
 $router->get('/admin/utilizatori/edit', [UsersController::class, 'edit']);
 $router->post('/admin/utilizatori/update', [UsersController::class, 'update']);
-$router->get('/admin/utilizatori/permisiuni-pachete', [UsersController::class, 'packagePermissions']);
-$router->post('/admin/utilizatori/permisiuni-pachete', [UsersController::class, 'savePackagePermission']);
 $router->post('/admin/utilizatori/sterge', [UsersController::class, 'delete']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);

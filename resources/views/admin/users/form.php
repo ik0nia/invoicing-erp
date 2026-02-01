@@ -92,6 +92,21 @@
             </select>
         </div>
 
+        <?php if (!empty($canManagePackagePermission)): ?>
+            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="text-sm font-semibold text-slate-700">Permisiuni pachete</div>
+                <label class="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                        type="checkbox"
+                        name="can_rename_packages"
+                        value="1"
+                        <?= !empty($form['can_rename_packages']) ? 'checked' : '' ?>
+                    >
+                    Permite redenumirea pachetelor
+                </label>
+            </div>
+        <?php endif; ?>
+
         <div class="rounded border border-slate-200 bg-slate-50 p-4" data-supplier-section>
             <div class="text-sm font-semibold text-slate-700">Acces furnizori</div>
             <p class="mt-1 text-xs text-slate-500">Selecteaza furnizorii pe care ii poate gestiona utilizatorul.</p>

@@ -80,6 +80,7 @@ class UsersController
         Response::view('admin/users/create', [
             'roles' => $this->roleOptions(),
             'suppliers' => $this->supplierOptions(),
+            'canManagePackagePermission' => $this->canManagePackagePermission(Auth::user()),
         ]);
     }
 
@@ -102,6 +103,7 @@ class UsersController
         $passwordConfirm = (string) ($payload['password_confirmation'] ?? '');
         $role = trim((string) ($payload['role'] ?? ''));
         $supplierCuis = array_map('strval', (array) ($payload['supplier_cuis'] ?? []));
+        $canRenamePackages = !empty($payload['can_rename_packages']);
 
         $errors = [];
 
@@ -149,6 +151,10 @@ class UsersController
             UserSupplierAccess::replaceForUser($user->id, []);
         }
 
+        if ($this->canManagePackagePermission(Auth::user())) {
+            UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
+        }
+
         Session::flash('status', 'Utilizatorul a fost creat.');
         Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
     }
@@ -163,6 +169,7 @@ class UsersController
 
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
+        UserPermission::ensureTable();
 
         $userId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         $user = $userId ? User::find($userId) : null;
@@ -179,6 +186,9 @@ class UsersController
             'role' => $selectedRole,
             'supplier_cuis' => $supplierCuis,
         ]);
+        $form['can_rename_packages'] = isset($form['can_rename_packages'])
+            ? (bool) $form['can_rename_packages']
+            : UserPermission::userHas($user->id, UserPermission::RENAME_PACKAGES);
 
         Response::view('admin/users/edit', [
             'user' => $user,
@@ -188,6 +198,7 @@ class UsersController
             'selectedRole' => $selectedRole,
             'selectedSuppliers' => $supplierCuis,
             'currentUserId' => Auth::user()?->id ?? 0,
+            'canManagePackagePermission' => $this->canManagePackagePermission(Auth::user()),
         ]);
     }
 
@@ -215,6 +226,7 @@ class UsersController
         $passwordConfirm = (string) ($_POST['password_confirmation'] ?? '');
         $role = trim((string) ($_POST['role'] ?? ''));
         $supplierCuis = array_map('strval', (array) ($_POST['supplier_cuis'] ?? []));
+        $canRenamePackages = !empty($_POST['can_rename_packages']);
 
         $errors = [];
 
@@ -271,6 +283,10 @@ class UsersController
             UserSupplierAccess::replaceForUser($user->id, []);
         }
 
+        if ($this->canManagePackagePermission(Auth::user())) {
+            UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
+        }
+
         Session::flash('status', 'Utilizatorul a fost actualizat.');
         Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
     }
@@ -301,73 +317,6 @@ class UsersController
         Response::redirect('/admin/utilizatori');
     }
 
-    public function packagePermissions(): void
-    {
-        Auth::requireAdmin();
-
-        if (!$this->ensureUserTables()) {
-            Response::view('errors/schema', [], 'layouts/app');
-        }
-
-        Role::ensureDefaults();
-        UserSupplierAccess::ensureTable();
-        UserPermission::ensureTable();
-
-        $rows = Database::fetchAll(
-            'SELECT u.*, GROUP_CONCAT(r.key ORDER BY r.key SEPARATOR ",") AS roles,
-                    GROUP_CONCAT(r.label ORDER BY r.key SEPARATOR ",") AS role_labels
-             FROM users u
-             LEFT JOIN role_user ru ON ru.user_id = u.id
-             LEFT JOIN roles r ON r.id = ru.role_id
-             GROUP BY u.id
-             ORDER BY u.id DESC'
-        );
-
-        $userIds = array_map(static fn (array $row) => (int) $row['id'], $rows);
-        $permissionMap = UserPermission::permissionMapForUsers($userIds, UserPermission::RENAME_PACKAGES);
-
-        $users = [];
-        foreach ($rows as $row) {
-            $roles = array_filter(array_map('trim', explode(',', (string) $row['roles'])));
-            $labels = array_filter(array_map('trim', explode(',', (string) $row['role_labels'])));
-            $id = (int) $row['id'];
-
-            $users[] = [
-                'id' => $id,
-                'name' => (string) $row['name'],
-                'email' => (string) $row['email'],
-                'roles' => $roles,
-                'role_labels' => $labels,
-                'can_rename' => !empty($permissionMap[$id]),
-            ];
-        }
-
-        Response::view('admin/users/package_permissions', [
-            'users' => $users,
-            'currentUserId' => Auth::user()?->id ?? 0,
-        ]);
-    }
-
-    public function savePackagePermission(): void
-    {
-        Auth::requireAdmin();
-
-        if (!$this->ensureUserTables()) {
-            Session::flash('error', 'Nu pot crea tabelele pentru utilizatori.');
-            Response::redirect('/admin/utilizatori/permisiuni-pachete');
-        }
-
-        $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-        $enabled = !empty($_POST['can_rename_packages']);
-
-        if (!$userId) {
-            Response::redirect('/admin/utilizatori/permisiuni-pachete');
-        }
-
-        UserPermission::setForUser($userId, UserPermission::RENAME_PACKAGES, $enabled);
-        Session::flash('status', 'Permisiunea a fost actualizata.');
-        Response::redirect('/admin/utilizatori/permisiuni-pachete');
-    }
 
     private function ensureUserTables(): bool
     {
@@ -519,5 +468,14 @@ class UsersController
         }
 
         return $priority[1] ?? 'admin';
+    }
+
+    private function canManagePackagePermission(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole(['super_admin', 'admin', 'contabil']);
     }
 }
