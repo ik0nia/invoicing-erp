@@ -660,7 +660,7 @@
 <?php endif; ?>
 
 <?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
-    <div class="mt-8 rounded-lg border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
+    <div id="supplier-request" class="mt-8 rounded-lg border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
         <div class="text-base font-semibold text-blue-900">Solicita generare factura</div>
         <p class="mt-1 text-sm text-blue-800/80">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
         <form

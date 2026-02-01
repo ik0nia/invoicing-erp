@@ -34,6 +34,7 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
+        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
         $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
 
@@ -131,6 +132,7 @@ class InvoiceController
                 'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
                 'isSupplierUser' => $isSupplierUser,
+                'canShowRequestAlert' => $canShowRequestAlert,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
                 'collectedTotal' => $collectedTotal,
@@ -174,6 +176,7 @@ class InvoiceController
             'invoiceStatuses' => $invoiceStatuses,
             'clientFinals' => $clientFinals,
             'isPlatform' => $isPlatform,
+            'canShowRequestAlert' => $canShowRequestAlert,
             'filters' => $filters,
             'pagination' => $pagination,
             'supplierFilterLabel' => $supplierFilterLabel,
@@ -196,6 +199,7 @@ class InvoiceController
         $query = trim((string) ($_GET['q'] ?? ''));
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
         if ($isPlatform) {
             $invoices = InvoiceIn::all();
         } else {
@@ -227,6 +231,7 @@ class InvoiceController
             'invoiceStatuses' => $invoiceStatuses,
             'clientFinals' => $clientFinals,
             'isPlatform' => $isPlatform,
+            'canShowRequestAlert' => $canShowRequestAlert,
         ], null);
     }
 
@@ -937,6 +942,19 @@ class InvoiceController
             'xml_path' => $xmlPath,
         ]);
 
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->isSupplierUser()) {
+            Database::execute(
+                'UPDATE invoices_in SET supplier_request_at = :requested_at, updated_at = :now WHERE id = :id',
+                [
+                    'requested_at' => date('Y-m-d H:i:s'),
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+            $invoice = InvoiceIn::find($invoice->id);
+        }
+
         Partner::createIfMissing($data['supplier_cui'], $data['supplier_name']);
         Partner::createIfMissing($data['customer_cui'], $data['customer_name']);
 
@@ -1245,6 +1263,7 @@ class InvoiceController
             $this->confirmPackages($invoiceId);
             $this->storeSagaFiles($invoiceId);
             Session::flash('status', 'Pachetele au fost confirmate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#supplier-request');
         }
 
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');

@@ -119,7 +119,7 @@ class InvoiceIn
             return [];
         }
 
-        $rows = Database::fetchAll('SELECT * FROM invoices_in ORDER BY issue_date DESC, id DESC');
+        $rows = Database::fetchAll('SELECT * FROM invoices_in ORDER BY created_at DESC, id DESC');
 
         return array_map([self::class, 'fromArray'], $rows);
     }
@@ -140,7 +140,7 @@ class InvoiceIn
 
         $rows = Database::fetchAll(
             'SELECT * FROM invoices_in WHERE supplier_cui IN (' . implode(',', $placeholders) . ')
-             ORDER BY issue_date DESC, id DESC',
+             ORDER BY created_at DESC, id DESC',
             $params
         );
 
