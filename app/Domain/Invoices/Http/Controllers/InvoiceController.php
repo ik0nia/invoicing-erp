@@ -559,7 +559,7 @@ class InvoiceController
 
     public function confirmedPackages(): void
     {
-        $this->requireInvoiceRole();
+        Auth::requireAdmin();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');

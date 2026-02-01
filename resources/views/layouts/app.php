@@ -45,12 +45,15 @@ $menuSections['Facturare'] = [
         'path' => '/admin/facturi',
         'active' => str_starts_with($currentPath, '/admin/facturi'),
     ],
-    [
+];
+
+if ($isPlatformUser) {
+    $menuSections['Facturare'][] = [
         'label' => 'Pachete confirmate',
         'path' => '/admin/pachete-confirmate',
         'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
-    ],
-];
+    ];
+}
 
 if ($isPlatformUser) {
     $menuSections['Facturare'][] = [
