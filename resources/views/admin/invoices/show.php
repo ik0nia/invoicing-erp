@@ -327,22 +327,36 @@
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($canRenamePackages)): ?>
-                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/redenumeste-pachet') ?>" class="mt-2 flex flex-wrap items-center gap-2">
-                        <?= App\Support\Csrf::input() ?>
-                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                        <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                        <input
-                            type="text"
-                            name="label"
-                            value="<?= htmlspecialchars($packageLabelText) ?>"
-                            class="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
-                            placeholder="Denumire pachet"
+                    <div class="mt-2" data-package-rename>
+                        <button
+                            type="button"
+                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                            data-rename-edit
                         >
-                        <span class="text-xs font-semibold text-slate-500">#<?= (int) $package->package_no ?></span>
-                        <button class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                            Salveaza
+                            Editeaza
                         </button>
-                    </form>
+                        <form
+                            method="POST"
+                            action="<?= App\Support\Url::to('admin/facturi/redenumeste-pachet') ?>"
+                            class="mt-2 hidden flex-wrap items-center gap-2"
+                            data-rename-form
+                        >
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                            <input
+                                type="text"
+                                name="label"
+                                value="<?= htmlspecialchars($packageLabelText) ?>"
+                                class="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
+                                placeholder="Denumire pachet"
+                            >
+                            <span class="text-xs font-semibold text-slate-500">#<?= (int) $package->package_no ?></span>
+                            <button class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                                Salveaza
+                            </button>
+                        </form>
+                    </div>
                 <?php endif; ?>
                 <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
@@ -651,6 +665,20 @@
                 });
             }
         }
+
+        const renameBlocks = Array.from(document.querySelectorAll('[data-package-rename]'));
+        renameBlocks.forEach((block) => {
+            const editButton = block.querySelector('[data-rename-edit]');
+            const form = block.querySelector('[data-rename-form]');
+            if (!editButton || !form) {
+                return;
+            }
+            editButton.addEventListener('click', () => {
+                form.classList.remove('hidden');
+                form.classList.add('flex');
+                editButton.classList.add('hidden');
+            });
+        });
 
         const params = new URLSearchParams(window.location.search);
         const anchor = params.get('anchor');
