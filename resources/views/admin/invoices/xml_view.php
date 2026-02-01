@@ -1,6 +1,7 @@
 <?php
     $data = $data ?? null;
     $error = $error ?? null;
+    $notice = $notice ?? null;
     $invoiceNumber = $data['invoice_number'] ?? (isset($invoice) ? ($invoice->invoice_number ?? '') : '');
     $issueDate = $data['issue_date'] ?? '';
     $dueDate = $data['due_date'] ?? '';
@@ -44,12 +45,19 @@
         .right { text-align: right; }
         .muted { color: #94a3b8; }
         .error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 10px; font-size: 13px; }
+        .notice { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 12px; border-radius: 10px; font-size: 13px; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="title">Factura furnizor<?= $invoiceNumber !== '' ? ' #' . htmlspecialchars($invoiceNumber) : '' ?></div>
         <div class="subtitle">Vizualizare detalii factura furnizor.</div>
+
+        <?php if ($notice): ?>
+            <div class="notice">
+                <?= htmlspecialchars($notice) ?>
+            </div>
+        <?php endif; ?>
 
         <?php if ($error || !$data): ?>
             <div class="error">

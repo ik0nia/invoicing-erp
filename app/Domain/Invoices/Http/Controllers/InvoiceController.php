@@ -445,6 +445,7 @@ class InvoiceController
             $parser = new InvoiceXmlParser();
             $parsed = null;
             $parseError = null;
+            $notice = null;
 
             try {
                 $parsed = $parser->parse($filePath);
@@ -452,10 +453,16 @@ class InvoiceController
                 $parseError = $error->getMessage();
             }
 
+            if ($this->xmlDataIncomplete($parsed)) {
+                $parsed = $this->buildXmlFallbackData($invoice);
+                $notice = 'Datele sunt afisate din factura salvata deoarece XML-ul nu a putut fi interpretat complet.';
+            }
+
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
                 'data' => $parsed,
-                'error' => $parseError,
+                'error' => null,
+                'notice' => $notice,
             ], null);
             return;
         }
@@ -1980,6 +1987,65 @@ class InvoiceController
 
         $full = BASE_PATH . '/' . ltrim($path, '/');
         return $full !== '' ? $full : null;
+    }
+
+    private function xmlDataIncomplete(?array $data): bool
+    {
+        if (!$data) {
+            return true;
+        }
+
+        $lines = $data['lines'] ?? [];
+        $hasLines = !empty($lines);
+        $hasInvoice = !empty($data['invoice_number']);
+        $hasSupplier = !empty($data['supplier_name']) || !empty($data['supplier_cui']);
+        $hasCustomer = !empty($data['customer_name']) || !empty($data['customer_cui']);
+
+        if (!$hasLines) {
+            return true;
+        }
+
+        if (!$hasInvoice && !$hasSupplier && !$hasCustomer) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function buildXmlFallbackData(InvoiceIn $invoice): array
+    {
+        $lines = InvoiceInLine::forInvoice($invoice->id);
+        $mappedLines = [];
+
+        foreach ($lines as $line) {
+            $mappedLines[] = [
+                'line_no' => $line->line_no,
+                'product_name' => $line->product_name,
+                'quantity' => $line->quantity,
+                'unit_code' => $line->unit_code,
+                'unit_price' => $line->unit_price,
+                'line_total' => $line->line_total,
+                'tax_percent' => $line->tax_percent,
+                'line_total_vat' => $line->line_total_vat,
+            ];
+        }
+
+        return [
+            'invoice_number' => (string) $invoice->invoice_number,
+            'invoice_series' => (string) $invoice->invoice_series,
+            'invoice_no' => (string) $invoice->invoice_no,
+            'issue_date' => (string) $invoice->issue_date,
+            'due_date' => $invoice->due_date ? (string) $invoice->due_date : null,
+            'currency' => (string) ($invoice->currency ?: 'RON'),
+            'supplier_cui' => (string) $invoice->supplier_cui,
+            'supplier_name' => (string) $invoice->supplier_name,
+            'customer_cui' => (string) $invoice->customer_cui,
+            'customer_name' => (string) $invoice->customer_name,
+            'total_without_vat' => (float) $invoice->total_without_vat,
+            'total_vat' => (float) $invoice->total_vat,
+            'total_with_vat' => (float) $invoice->total_with_vat,
+            'lines' => $mappedLines,
+        ];
     }
 
     private function detectMimeType(string $path): string
