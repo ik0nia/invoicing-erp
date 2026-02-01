@@ -4,6 +4,8 @@
     $selectedSuppliers = $form['supplier_cuis'] ?? ($selectedSuppliers ?? []);
     $selectedSuppliers = array_map('strval', (array) $selectedSuppliers);
     $currentUserId = $currentUserId ?? 0;
+    $canEditUsers = $canEditUsers ?? true;
+    $fieldDisabled = $canEditUsers ? '' : 'disabled';
 ?>
 
 <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -36,6 +38,7 @@
                     value="<?= htmlspecialchars($form['name'] ?? ($user->name ?? '')) ?>"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     required
+                    <?= $fieldDisabled ?>
                 >
             </div>
             <div>
@@ -47,6 +50,7 @@
                     value="<?= htmlspecialchars($form['email'] ?? ($user->email ?? '')) ?>"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     required
+                    <?= $fieldDisabled ?>
                 >
             </div>
         </div>
@@ -61,6 +65,7 @@
                     name="password"
                     type="password"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    <?= $fieldDisabled ?>
                 >
             </div>
             <div>
@@ -72,6 +77,7 @@
                     name="password_confirmation"
                     type="password"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    <?= $fieldDisabled ?>
                 >
             </div>
         </div>
@@ -83,6 +89,7 @@
                 name="role"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 data-role-select
+                <?= $fieldDisabled ?>
             >
                 <?php foreach ($roles as $role): ?>
                     <option value="<?= htmlspecialchars($role['key']) ?>" <?= $selectedRole === $role['key'] ? 'selected' : '' ?>>
@@ -107,7 +114,7 @@
             </div>
         <?php endif; ?>
 
-        <div class="rounded border border-slate-200 bg-slate-50 p-4" data-supplier-section>
+        <div class="rounded border border-slate-200 bg-slate-50 p-4 <?= $canEditUsers ? '' : 'opacity-60' ?>" data-supplier-section>
             <div class="text-sm font-semibold text-slate-700">Acces furnizori</div>
             <p class="mt-1 text-xs text-slate-500">Selecteaza furnizorii pe care ii poate gestiona utilizatorul.</p>
 
@@ -119,6 +126,7 @@
                     placeholder="Cauta dupa nume sau CUI"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     data-supplier-search
+                    <?= $fieldDisabled ?>
                 >
             </div>
 
@@ -139,6 +147,7 @@
                                     name="supplier_cuis[]"
                                     value="<?= htmlspecialchars($cui) ?>"
                                     <?= in_array($cui, $selectedSuppliers, true) ? 'checked' : '' ?>
+                                    <?= $fieldDisabled ?>
                                 >
                                 <span><?= htmlspecialchars($name) ?> · <?= htmlspecialchars($cui) ?></span>
                             </label>

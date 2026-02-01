@@ -1,6 +1,7 @@
 <?php
     $title = 'Utilizatori';
     $currentUserId = $currentUserId ?? 0;
+    $canEditUsers = $canEditUsers ?? false;
 ?>
 
 <div class="flex flex-wrap items-center justify-between gap-4">
@@ -8,12 +9,14 @@
         <h1 class="text-xl font-semibold text-slate-900">Utilizatori</h1>
         <p class="mt-1 text-sm text-slate-500">Administrare roluri si acces furnizori.</p>
     </div>
-    <a
-        href="<?= App\Support\Url::to('admin/utilizatori/adauga') ?>"
-        class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-    >
-        Adauga utilizator
-    </a>
+    <?php if ($canEditUsers): ?>
+        <a
+            href="<?= App\Support\Url::to('admin/utilizatori/adauga') ?>"
+            class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+        >
+            Adauga utilizator
+        </a>
+    <?php endif; ?>
 </div>
 
 <div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -79,7 +82,7 @@
                             >
                                 Editeaza
                             </a>
-                            <?php if ((int) $currentUserId !== (int) $user['id']): ?>
+                            <?php if ($canEditUsers && (int) $currentUserId !== (int) $user['id']): ?>
                                 <form method="POST" action="<?= App\Support\Url::to('admin/utilizatori/sterge') ?>" class="inline">
                                     <?= App\Support\Csrf::input() ?>
                                     <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">

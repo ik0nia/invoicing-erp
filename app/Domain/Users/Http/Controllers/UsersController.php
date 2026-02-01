@@ -15,7 +15,7 @@ class UsersController
 {
     public function index(): void
     {
-        Auth::requireSuperAdmin();
+        Auth::requireAdmin();
 
         if (!$this->ensureUserTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -63,6 +63,7 @@ class UsersController
         Response::view('admin/users/index', [
             'users' => $users,
             'currentUserId' => Auth::user()?->id ?? 0,
+            'canEditUsers' => Auth::user()?->isSuperAdmin() ?? false,
         ]);
     }
 
@@ -161,7 +162,7 @@ class UsersController
 
     public function edit(): void
     {
-        Auth::requireSuperAdmin();
+        Auth::requireAdmin();
 
         if (!$this->ensureUserTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -199,12 +200,13 @@ class UsersController
             'selectedSuppliers' => $supplierCuis,
             'currentUserId' => Auth::user()?->id ?? 0,
             'canManagePackagePermission' => $this->canManagePackagePermission(Auth::user()),
+            'canEditUsers' => Auth::user()?->isSuperAdmin() ?? false,
         ]);
     }
 
     public function update(): void
     {
-        Auth::requireSuperAdmin();
+        Auth::requireAdmin();
 
         if (!$this->ensureUserTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru utilizatori.');
@@ -213,11 +215,25 @@ class UsersController
 
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
+        UserPermission::ensureTable();
 
         $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
         $user = $userId ? User::find($userId) : null;
         if (!$user) {
             Response::redirect('/admin/utilizatori');
+        }
+
+        $currentUser = Auth::user();
+        $canEditUsers = $currentUser?->isSuperAdmin() ?? false;
+        $canRenamePackages = !empty($_POST['can_rename_packages']);
+
+        if (!$canEditUsers) {
+            if ($this->canManagePackagePermission($currentUser)) {
+                UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
+                Session::flash('status', 'Permisiunea a fost actualizata.');
+                Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
+            }
+            Response::abort(403, 'Acces interzis.');
         }
 
         $name = trim((string) ($_POST['name'] ?? ''));
@@ -281,6 +297,10 @@ class UsersController
             UserSupplierAccess::replaceForUser($user->id, $supplierCuis);
         } else {
             UserSupplierAccess::replaceForUser($user->id, []);
+        }
+
+        if ($this->canManagePackagePermission(Auth::user())) {
+            UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
         }
 
         if ($this->canManagePackagePermission(Auth::user())) {
