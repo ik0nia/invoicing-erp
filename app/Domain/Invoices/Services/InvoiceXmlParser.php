@@ -91,7 +91,7 @@ class InvoiceXmlParser
 
         [$invoiceSeries, $invoiceNo] = $this->splitInvoiceNumber($invoiceNumber);
 
-        return [
+        $data = [
             'invoice_number' => $invoiceNumber,
             'invoice_series' => $invoiceSeries,
             'invoice_no' => $invoiceNo,
@@ -107,6 +107,29 @@ class InvoiceXmlParser
             'total_with_vat' => $totalWithVat,
             'lines' => $lines,
         ];
+
+        $missingCore = ($invoiceNumber === '' || $issueDate === '' || empty($lines))
+            || ($supplierName === '' && $customerName === '');
+
+        if ($missingCore) {
+            $fallback = $this->parseByRegex($contents);
+            if ($fallback !== null) {
+                foreach ($fallback as $key => $value) {
+                    if ($key === 'lines') {
+                        if (empty($data['lines']) && !empty($value)) {
+                            $data['lines'] = $value;
+                        }
+                        continue;
+                    }
+
+                    if (!isset($data[$key]) || $data[$key] === '' || $data[$key] === null) {
+                        $data[$key] = $value;
+                    }
+                }
+            }
+        }
+
+        return $data;
     }
 
     private function stripBom(string $contents): string
@@ -192,17 +215,19 @@ class InvoiceXmlParser
 
     private function parseByRegex(string $contents): ?array
     {
-        if (!str_contains($contents, '<Invoice')) {
+        if (!preg_match('/<\s*(?:[A-Za-z0-9_\-]+:)?Invoice\b/i', $contents)) {
             return null;
         }
 
-        $invoiceNumber = $this->firstTagValue($contents, 'cbc:ID');
-        $issueDate = $this->firstTagValue($contents, 'cbc:IssueDate');
-        $dueDate = $this->firstTagValue($contents, 'cbc:DueDate');
-        $currency = $this->firstTagValue($contents, 'cbc:DocumentCurrencyCode') ?: 'RON';
+        $invoiceBlock = $this->extractBlock($contents, 'Invoice') ?? $contents;
 
-        $supplierBlock = $this->extractBlock($contents, 'cac:AccountingSupplierParty');
-        $customerBlock = $this->extractBlock($contents, 'cac:AccountingCustomerParty');
+        $invoiceNumber = $this->firstTagValue($invoiceBlock, 'ID');
+        $issueDate = $this->firstTagValue($invoiceBlock, 'IssueDate');
+        $dueDate = $this->firstTagValue($invoiceBlock, 'DueDate');
+        $currency = $this->firstTagValue($invoiceBlock, 'DocumentCurrencyCode') ?: 'RON';
+
+        $supplierBlock = $this->extractBlock($contents, 'AccountingSupplierParty');
+        $customerBlock = $this->extractBlock($contents, 'AccountingCustomerParty');
 
         [$supplierCui, $supplierName] = $this->partyFromBlock($supplierBlock);
         [$customerCui, $customerName] = $this->partyFromBlock($customerBlock);
@@ -216,13 +241,13 @@ class InvoiceXmlParser
         }
 
         $lines = [];
-        if (preg_match_all('/<cac:InvoiceLine\b[^>]*>(.*?)<\/cac:InvoiceLine>/s', $contents, $matches)) {
+        if (preg_match_all('/<\s*(?:[A-Za-z0-9_\-]+:)?InvoiceLine\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?InvoiceLine\s*>/s', $contents, $matches)) {
             foreach ($matches[1] as $lineBlock) {
-                $lineNo = $this->firstTagValue($lineBlock, 'cbc:ID') ?: '';
-                $productName = $this->firstTagValue($lineBlock, 'cbc:Name') ?: '';
-                $lineTotal = (float) $this->firstTagValue($lineBlock, 'cbc:LineExtensionAmount');
-                $unitPrice = (float) $this->firstTagValue($lineBlock, 'cbc:PriceAmount');
-                $taxPercent = (float) $this->firstTagValue($lineBlock, 'cbc:Percent');
+                $lineNo = $this->firstTagValue($lineBlock, 'ID') ?: '';
+                $productName = $this->firstTagValue($lineBlock, 'Name') ?: '';
+                $lineTotal = (float) $this->firstTagValue($lineBlock, 'LineExtensionAmount');
+                $unitPrice = (float) $this->firstTagValue($lineBlock, 'PriceAmount');
+                $taxPercent = (float) $this->firstTagValue($lineBlock, 'Percent');
 
                 [$quantity, $unitCode] = $this->quantityFromBlock($lineBlock);
                 $lineTotalVat = round($lineTotal * (1 + $taxPercent / 100), 2);
@@ -240,17 +265,17 @@ class InvoiceXmlParser
             }
         }
 
-        if ($invoiceNumber === null || $issueDate === null || empty($lines)) {
+        if ($invoiceNumber === null && $issueDate === null && empty($lines)) {
             return null;
         }
 
-        [$invoiceSeries, $invoiceNo] = $this->splitInvoiceNumber($invoiceNumber);
+        [$invoiceSeries, $invoiceNo] = $this->splitInvoiceNumber($invoiceNumber ?: '');
 
         return [
-            'invoice_number' => $invoiceNumber,
+            'invoice_number' => $invoiceNumber ?: '',
             'invoice_series' => $invoiceSeries,
             'invoice_no' => $invoiceNo,
-            'issue_date' => $issueDate,
+            'issue_date' => $issueDate ?: '',
             'due_date' => $dueDate ?: null,
             'currency' => $currency,
             'supplier_cui' => $supplierCui,
@@ -266,9 +291,9 @@ class InvoiceXmlParser
 
     private function extractBlock(string $contents, string $tag): ?string
     {
-        $tag = preg_quote($tag, '/');
+        $tag = $this->tagPattern($tag);
 
-        if (preg_match('/<' . $tag . '\b[^>]*>(.*?)<\/' . $tag . '>/s', $contents, $match)) {
+        if (preg_match('/<\s*' . $tag . '\b[^>]*>(.*?)<\/\s*' . $tag . '\s*>/s', $contents, $match)) {
             return $match[1];
         }
 
@@ -277,9 +302,9 @@ class InvoiceXmlParser
 
     private function firstTagValue(string $contents, string $tag): ?string
     {
-        $tag = preg_quote($tag, '/');
+        $tag = $this->tagPattern($tag);
 
-        if (preg_match('/<' . $tag . '\b[^>]*>(.*?)<\/' . $tag . '>/s', $contents, $match)) {
+        if (preg_match('/<\s*' . $tag . '\b[^>]*>(.*?)<\/\s*' . $tag . '\s*>/s', $contents, $match)) {
             return trim($match[1]);
         }
 
@@ -292,10 +317,10 @@ class InvoiceXmlParser
             return ['', ''];
         }
 
-        $companyId = $this->firstTagValue($block, 'cbc:CompanyID')
-            ?: $this->firstTagValue($block, 'cbc:ID');
-        $registration = $this->firstTagValue($block, 'cbc:RegistrationName')
-            ?: $this->firstTagValue($block, 'cbc:Name');
+        $companyId = $this->firstTagValue($block, 'CompanyID')
+            ?: $this->firstTagValue($block, 'ID');
+        $registration = $this->firstTagValue($block, 'RegistrationName')
+            ?: $this->firstTagValue($block, 'Name');
 
         $cui = $this->normalizeCui($companyId);
 
@@ -304,7 +329,7 @@ class InvoiceXmlParser
 
     private function quantityFromBlock(string $block): array
     {
-        if (preg_match('/<cbc:InvoicedQuantity[^>]*unitCode="([^"]+)"[^>]*>(.*?)<\/cbc:InvoicedQuantity>/s', $block, $match)) {
+        if (preg_match('/<\s*(?:[A-Za-z0-9_\-]+:)?InvoicedQuantity[^>]*unitCode="([^"]+)"[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?InvoicedQuantity\s*>/s', $block, $match)) {
             return [(float) trim($match[2]), trim($match[1]) ?: 'BUC'];
         }
 
@@ -371,6 +396,13 @@ class InvoiceXmlParser
         }
 
         if (!$result || !isset($result[0])) {
+            $anyPath = $this->anywherePath($path);
+            if ($anyPath !== '') {
+                $result = $context->xpath($anyPath);
+            }
+        }
+
+        if (!$result || !isset($result[0])) {
             return null;
         }
 
@@ -385,6 +417,13 @@ class InvoiceXmlParser
             $localPath = $this->localNamePath($path);
             if ($localPath !== $path) {
                 $result = $context->xpath($localPath);
+            }
+        }
+
+        if (!$result || !isset($result[0])) {
+            $anyPath = $this->anywherePath($path);
+            if ($anyPath !== '') {
+                $result = $context->xpath($anyPath);
             }
         }
 
@@ -443,5 +482,38 @@ class InvoiceXmlParser
 
         $localPath = implode('/', $converted);
         return $isAbsolute ? '/' . $localPath : $localPath;
+    }
+
+    private function anywherePath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return '';
+        }
+
+        $localPath = $this->localNamePath($path);
+        if ($localPath === '') {
+            return '';
+        }
+
+        $trimmed = ltrim($localPath, '/');
+        return '//' . $trimmed;
+    }
+
+    private function tagPattern(string $tag): string
+    {
+        $tag = trim($tag);
+        if ($tag === '') {
+            return '';
+        }
+
+        $name = $tag;
+        $colonPos = strpos($tag, ':');
+        if ($colonPos !== false) {
+            $name = substr($tag, $colonPos + 1);
+        }
+
+        $name = preg_quote($name, '/');
+        return '(?:[A-Za-z0-9_\\-]+:)?' . $name;
     }
 }
