@@ -453,15 +453,19 @@ class InvoiceController
                 $parseError = $error->getMessage();
             }
 
-            if ($this->xmlDataIncomplete($parsed)) {
-                $parsed = $this->buildXmlFallbackData($invoice);
-                $notice = 'Datele sunt afisate din factura salvata deoarece XML-ul nu a putut fi interpretat complet.';
+            $fallback = $this->buildXmlFallbackData($invoice);
+            $merged = $this->mergeXmlViewData($parsed, $fallback);
+
+            if ($parsed === null) {
+                $notice = 'Nu am putut interpreta XML-ul complet. Datele sunt afisate din factura salvata.';
+            } elseif ($this->xmlDataIncomplete($parsed)) {
+                $notice = 'XML-ul a fost completat cu datele salvate in factura.';
             }
 
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
-                'data' => $parsed,
-                'error' => null,
+                'data' => $merged,
+                'error' => $parseError ? 'Nu am putut interpreta XML-ul complet.' : null,
                 'notice' => $notice,
             ], null);
             return;
@@ -2046,6 +2050,31 @@ class InvoiceController
             'total_with_vat' => (float) $invoice->total_with_vat,
             'lines' => $mappedLines,
         ];
+    }
+
+    private function mergeXmlViewData(?array $parsed, array $fallback): array
+    {
+        $data = $parsed ?? [];
+
+        foreach ($fallback as $key => $value) {
+            if ($key === 'lines') {
+                if (empty($data['lines']) && !empty($value)) {
+                    $data['lines'] = $value;
+                }
+                continue;
+            }
+
+            if (!array_key_exists($key, $data) || $data[$key] === null || $data[$key] === '') {
+                $data[$key] = $value;
+                continue;
+            }
+
+            if (is_numeric($data[$key]) && (float) $data[$key] == 0.0 && (float) $value != 0.0) {
+                $data[$key] = $value;
+            }
+        }
+
+        return $data;
     }
 
     private function detectMimeType(string $path): string
