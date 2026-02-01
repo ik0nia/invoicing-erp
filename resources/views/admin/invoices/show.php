@@ -33,13 +33,10 @@
         <div class="mt-1 font-medium text-slate-900"><?= htmlspecialchars($invoice->supplier_name) ?></div>
         <div class="mt-2 space-y-1 text-slate-600">
             <div><span class="text-slate-500">CUI:</span> <?= htmlspecialchars($invoice->supplier_cui) ?></div>
-            <?php if (!empty($invoice->invoice_series) || !empty($invoice->invoice_no)): ?>
-                <div>
-                    <span class="text-slate-500">Serie/Numar:</span>
-                    <?= htmlspecialchars(trim($invoice->invoice_series . ' ' . $invoice->invoice_no)) ?>
-                </div>
-            <?php endif; ?>
-            <div><span class="text-slate-500">Factura:</span> <?= htmlspecialchars($invoice->invoice_number) ?></div>
+            <div>
+                <span class="text-slate-500">Nr factura:</span>
+                <?= htmlspecialchars(trim($invoice->invoice_series . ' ' . $invoice->invoice_no) ?: $invoice->invoice_number) ?>
+            </div>
             <div><span class="text-slate-500">Data emitere:</span> <?= htmlspecialchars($invoice->issue_date) ?></div>
             <div><span class="text-slate-500">Scadenta:</span> <?= htmlspecialchars($invoice->due_date ?: '—') ?></div>
             <div><span class="text-slate-500">Moneda:</span> <?= htmlspecialchars($invoice->currency) ?></div>
@@ -75,7 +72,14 @@
             </div>
         <?php endif; ?>
 
-        <?php if (empty($clients)): ?>
+        <?php if (!empty($clientLocked) && !empty($selectedClientCui)): ?>
+            <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div>Client selectat: <strong><?= htmlspecialchars($selectedClientName ?: $selectedClientCui) ?></strong></div>
+                <?php if ($commissionPercent !== null): ?>
+                    <div class="mt-1">Comision: <strong><?= number_format($commissionPercent, 2, '.', ' ') ?>%</strong></div>
+                <?php endif; ?>
+            </div>
+        <?php elseif (empty($clients)): ?>
             <p class="mt-4 text-sm text-slate-600">Nu exista comisioane importate pentru acest furnizor.</p>
         <?php else: ?>
             <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form" data-client-locked="<?= !empty($clientLocked) ? '1' : '0' ?>">
