@@ -444,20 +444,13 @@ class InvoiceController
         if ($extension === 'xml') {
             $content = file_get_contents($filePath) ?: '';
             $formatted = $this->formatXmlForDisplay($content);
-            $parser = new InvoiceXmlParser();
-            $parsed = null;
             $parseError = null;
-
-            try {
-                $parsed = $parser->parse($filePath);
-            } catch (\Throwable $error) {
-                $parseError = $error->getMessage();
-            }
+            $tree = $this->buildXmlTree($content, $parseError);
 
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
                 'content' => $formatted,
-                'data' => $parsed,
+                'tree' => $tree,
                 'error' => $parseError,
             ], null);
             return;
@@ -2092,6 +2085,187 @@ class InvoiceController
         }
 
         return preg_replace('/>\s*</', ">\n<", $content) ?? $content;
+    }
+
+    private function buildXmlTree(string $content, ?string &$error = null): ?array
+    {
+        $content = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $content) ?? $content;
+        $content = trim($content);
+
+        if ($content === '') {
+            $error = 'Fisierul XML este gol.';
+            return null;
+        }
+
+        if (!class_exists(\DOMDocument::class)) {
+            $error = 'Parserul XML nu este disponibil.';
+            return null;
+        }
+
+        libxml_use_internal_errors(true);
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $dom->preserveWhiteSpace = false;
+
+        if (!@$dom->loadXML($content, LIBXML_NONET | LIBXML_NOCDATA | LIBXML_PARSEHUGE)) {
+            $error = $this->xmlErrorMessage() ?? 'XML invalid.';
+            return null;
+        }
+
+        libxml_clear_errors();
+        $root = $dom->documentElement;
+
+        if (!$root) {
+            $error = 'XML invalid.';
+            return null;
+        }
+
+        return $this->xmlNodeToTree($root);
+    }
+
+    private function xmlNodeToTree(\DOMNode $node): array
+    {
+        $name = $node->localName ?: $node->nodeName;
+        $attributes = [];
+
+        if ($node->attributes) {
+            foreach ($node->attributes as $attr) {
+                if (!$attr instanceof \DOMAttr) {
+                    continue;
+                }
+                $attributes[$attr->name] = $attr->value;
+            }
+        }
+
+        $children = [];
+        $textParts = [];
+
+        foreach ($node->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE) {
+                $children[] = $this->xmlNodeToTree($child);
+                continue;
+            }
+
+            if (in_array($child->nodeType, [XML_TEXT_NODE, XML_CDATA_SECTION_NODE], true)) {
+                $text = trim((string) $child->textContent);
+                if ($text !== '') {
+                    $textParts[] = $text;
+                }
+            }
+        }
+
+        $value = !empty($textParts) ? implode(' ', $textParts) : null;
+
+        return [
+            'name' => $name,
+            'label' => $this->humanizeXmlTag($name),
+            'attributes' => $attributes,
+            'value' => $value,
+            'children' => $children,
+        ];
+    }
+
+    private function humanizeXmlTag(string $name): string
+    {
+        $map = [
+            'Invoice' => 'Factura',
+            'UBLVersionID' => 'Versiune UBL',
+            'CustomizationID' => 'Personalizare',
+            'ID' => 'ID',
+            'IssueDate' => 'Data emitere',
+            'DueDate' => 'Scadenta',
+            'InvoiceTypeCode' => 'Tip factura',
+            'Note' => 'Nota',
+            'TaxPointDate' => 'Data taxare',
+            'DocumentCurrencyCode' => 'Moneda',
+            'TaxCurrencyCode' => 'Moneda TVA',
+            'OrderReference' => 'Referinta comanda',
+            'DespatchDocumentReference' => 'Document expeditie',
+            'AccountingSupplierParty' => 'Furnizor',
+            'AccountingCustomerParty' => 'Client',
+            'PartyIdentification' => 'Identificare',
+            'PartyName' => 'Denumire',
+            'PostalAddress' => 'Adresa',
+            'StreetName' => 'Strada',
+            'CityName' => 'Localitate',
+            'PostalZone' => 'Cod postal',
+            'CountrySubentity' => 'Judet',
+            'Country' => 'Tara',
+            'IdentificationCode' => 'Cod tara',
+            'PartyTaxScheme' => 'Date fiscale',
+            'CompanyID' => 'CUI',
+            'TaxScheme' => 'Schema TVA',
+            'PartyLegalEntity' => 'Entitate juridica',
+            'RegistrationName' => 'Denumire registru',
+            'CompanyLegalForm' => 'Forma juridica',
+            'Delivery' => 'Livrare',
+            'ActualDeliveryDate' => 'Data livrare',
+            'DeliveryLocation' => 'Loc livrare',
+            'Address' => 'Adresa',
+            'DeliveryParty' => 'Destinatar',
+            'PaymentMeans' => 'Plata',
+            'PaymentMeansCode' => 'Cod plata',
+            'PayeeFinancialAccount' => 'Cont incasare',
+            'TaxTotal' => 'Total TVA',
+            'TaxSubtotal' => 'Subtotal TVA',
+            'TaxableAmount' => 'Baza TVA',
+            'TaxAmount' => 'Valoare TVA',
+            'TaxCategory' => 'Categorie TVA',
+            'Percent' => 'Procent',
+            'LegalMonetaryTotal' => 'Totaluri',
+            'LineExtensionAmount' => 'Valoare fara TVA',
+            'TaxExclusiveAmount' => 'Total fara TVA',
+            'TaxInclusiveAmount' => 'Total cu TVA',
+            'PayableAmount' => 'Total de plata',
+            'InvoiceLine' => 'Linie factura',
+            'InvoicedQuantity' => 'Cantitate',
+            'LineID' => 'ID linie',
+            'Item' => 'Produs',
+            'Name' => 'Denumire',
+            'ClassifiedTaxCategory' => 'TVA produs',
+            'Price' => 'Pret',
+            'PriceAmount' => 'Pret unitar',
+            'BaseQuantity' => 'Cantitate baza',
+            'AllowanceCharge' => 'Taxa/Discount',
+            'ChargeIndicator' => 'Taxa aplicata',
+            'AllowanceChargeReason' => 'Motiv taxa',
+            'Amount' => 'Suma',
+        ];
+
+        if (isset($map[$name])) {
+            return $map[$name];
+        }
+
+        $label = preg_replace('/[_-]+/', ' ', $name);
+        $label = preg_replace('/(?<!^)([A-Z])/', ' $1', (string) $label);
+        $label = trim((string) $label);
+
+        if ($label === '') {
+            return $name;
+        }
+
+        return ucfirst($label);
+    }
+
+    private function xmlErrorMessage(): ?string
+    {
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+
+        if (!$errors) {
+            return null;
+        }
+
+        $first = $errors[0];
+        $message = trim($first->message ?? '');
+
+        if ($message === '') {
+            return null;
+        }
+
+        $line = $first->line ?? 0;
+        $column = $first->column ?? 0;
+
+        return 'Detalii: ' . $message . ($line ? ' (linia ' . $line . ', coloana ' . $column . ')' : '');
     }
 
     private function detectMimeType(string $path): string
