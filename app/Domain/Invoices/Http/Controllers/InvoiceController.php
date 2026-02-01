@@ -443,14 +443,17 @@ class InvoiceController
         $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
         if ($extension === 'xml') {
             $content = file_get_contents($filePath) ?: '';
-            $formatted = $this->formatXmlForDisplay($content);
             $parseError = null;
-            $tree = $this->buildXmlTree($content, $parseError);
+            $dom = $this->loadXmlDocument($content, $parseError);
+            $tree = $dom ? $this->xmlNodeToTree($dom->documentElement) : null;
+            $display = $dom ? $this->buildXmlDisplayData($dom) : null;
+            $formatted = $dom ? $dom->saveXML() : $this->formatXmlForDisplay($content);
 
             Response::view('admin/invoices/xml_view', [
                 'invoice' => $invoice,
                 'content' => $formatted,
                 'tree' => $tree,
+                'display' => $display,
                 'error' => $parseError,
             ], null);
             return;
@@ -2087,7 +2090,7 @@ class InvoiceController
         return preg_replace('/>\s*</', ">\n<", $content) ?? $content;
     }
 
-    private function buildXmlTree(string $content, ?string &$error = null): ?array
+    private function loadXmlDocument(string $content, ?string &$error = null): ?\DOMDocument
     {
         $content = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $content) ?? $content;
         $content = trim($content);
@@ -2112,14 +2115,13 @@ class InvoiceController
         }
 
         libxml_clear_errors();
-        $root = $dom->documentElement;
 
-        if (!$root) {
+        if (!$dom->documentElement) {
             $error = 'XML invalid.';
             return null;
         }
 
-        return $this->xmlNodeToTree($root);
+        return $dom;
     }
 
     private function xmlNodeToTree(\DOMNode $node): array
@@ -2161,6 +2163,126 @@ class InvoiceController
             'attributes' => $attributes,
             'value' => $value,
             'children' => $children,
+        ];
+    }
+
+    private function buildXmlDisplayData(\DOMDocument $dom): array
+    {
+        $xpath = new \DOMXPath($dom);
+
+        $invoiceNumber = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="ID"][1]') ?? '';
+        $issueDate = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="IssueDate"][1]') ?? '';
+        $dueDate = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="DueDate"][1]');
+        $currency = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="DocumentCurrencyCode"][1]') ?? 'RON';
+        $invoiceType = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="InvoiceTypeCode"][1]');
+        $note = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="Note"][1]');
+        $orderRef = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="OrderReference"]/*[local-name()="ID"][1]');
+        $despatchRef = $this->domValue($xpath, '/*[local-name()="Invoice"]/*[local-name()="DespatchDocumentReference"]/*[local-name()="ID"][1]');
+
+        $supplierParty = $this->domNode($xpath, '//*[local-name()="AccountingSupplierParty"]//*[local-name()="Party"][1]');
+        $customerParty = $this->domNode($xpath, '//*[local-name()="AccountingCustomerParty"]//*[local-name()="Party"][1]');
+
+        $supplier = $this->domPartyData($xpath, $supplierParty);
+        $customer = $this->domPartyData($xpath, $customerParty);
+
+        $deliveryNode = $this->domNode($xpath, '//*[local-name()="Delivery"][1]');
+        $deliveryAddressNode = $deliveryNode ? $this->domNode($xpath, './/*[local-name()="DeliveryLocation"]//*[local-name()="Address"][1]', $deliveryNode) : null;
+        $delivery = [
+            'date' => $deliveryNode ? $this->domValue($xpath, './/*[local-name()="ActualDeliveryDate"][1]', $deliveryNode) : null,
+            'location_id' => $deliveryNode ? $this->domValue($xpath, './/*[local-name()="DeliveryLocation"]/*[local-name()="ID"][1]', $deliveryNode) : null,
+            'address' => $deliveryAddressNode ? $this->domAddressData($xpath, $deliveryAddressNode) : [],
+        ];
+
+        $paymentNode = $this->domNode($xpath, '//*[local-name()="PaymentMeans"][1]');
+        $payment = [
+            'code' => $paymentNode ? $this->domValue($xpath, './/*[local-name()="PaymentMeansCode"][1]', $paymentNode) : null,
+            'account' => $paymentNode ? $this->domValue($xpath, './/*[local-name()="PayeeFinancialAccount"]/*[local-name()="ID"][1]', $paymentNode) : null,
+            'bank' => $paymentNode ? $this->domValue($xpath, './/*[local-name()="PayeeFinancialAccount"]/*[local-name()="Name"][1]', $paymentNode) : null,
+        ];
+
+        $totalsNode = $this->domNode($xpath, '//*[local-name()="LegalMonetaryTotal"][1]');
+        $totals = [
+            'line_extension' => $totalsNode ? $this->domValue($xpath, './/*[local-name()="LineExtensionAmount"][1]', $totalsNode) : null,
+            'tax_exclusive' => $totalsNode ? $this->domValue($xpath, './/*[local-name()="TaxExclusiveAmount"][1]', $totalsNode) : null,
+            'tax_inclusive' => $totalsNode ? $this->domValue($xpath, './/*[local-name()="TaxInclusiveAmount"][1]', $totalsNode) : null,
+            'payable' => $totalsNode ? $this->domValue($xpath, './/*[local-name()="PayableAmount"][1]', $totalsNode) : null,
+        ];
+
+        $taxTotalNode = $this->domNode($xpath, '//*[local-name()="TaxTotal"][1]');
+        $taxTotal = $taxTotalNode ? $this->domValue($xpath, './/*[local-name()="TaxAmount"][1]', $taxTotalNode) : null;
+
+        $taxSubtotals = [];
+        foreach ($this->domNodes($xpath, '//*[local-name()="TaxSubtotal"]') as $node) {
+            $taxSubtotals[] = [
+                'taxable' => $this->domValue($xpath, './/*[local-name()="TaxableAmount"][1]', $node),
+                'tax' => $this->domValue($xpath, './/*[local-name()="TaxAmount"][1]', $node),
+                'category' => $this->domValue($xpath, './/*[local-name()="TaxCategory"]/*[local-name()="ID"][1]', $node),
+                'percent' => $this->domValue($xpath, './/*[local-name()="TaxCategory"]/*[local-name()="Percent"][1]', $node),
+                'scheme' => $this->domValue($xpath, './/*[local-name()="TaxCategory"]/*[local-name()="TaxScheme"]/*[local-name()="ID"][1]', $node),
+            ];
+        }
+
+        $lines = [];
+        foreach ($this->domNodes($xpath, '//*[local-name()="InvoiceLine"]') as $lineNode) {
+            $quantityNode = $this->domNode($xpath, './/*[local-name()="InvoicedQuantity"][1]', $lineNode);
+            $lineAmountNode = $this->domNode($xpath, './/*[local-name()="LineExtensionAmount"][1]', $lineNode);
+            $priceAmountNode = $this->domNode($xpath, './/*[local-name()="PriceAmount"][1]', $lineNode);
+
+            $lineTotal = $lineAmountNode ? $this->domValue($xpath, '.', $lineAmountNode) : null;
+            $taxPercent = $this->domValue($xpath, './/*[local-name()="ClassifiedTaxCategory"]/*[local-name()="Percent"][1]', $lineNode);
+
+            $lineTotalVat = null;
+            if (is_numeric($lineTotal) && is_numeric($taxPercent)) {
+                $lineTotalVat = round((float) $lineTotal * (1 + (float) $taxPercent / 100), 2);
+            }
+
+            $allowances = [];
+            foreach ($this->domNodes($xpath, './/*[local-name()="AllowanceCharge"]', $lineNode) as $allowNode) {
+                $amountNode = $this->domNode($xpath, './/*[local-name()="Amount"][1]', $allowNode);
+                $allowances[] = [
+                    'charge' => $this->domValue($xpath, './/*[local-name()="ChargeIndicator"][1]', $allowNode),
+                    'reason' => $this->domValue($xpath, './/*[local-name()="AllowanceChargeReason"][1]', $allowNode),
+                    'amount' => $amountNode ? $this->domValue($xpath, '.', $amountNode) : null,
+                    'currency' => $amountNode ? $this->domAttr($amountNode, 'currencyID') : null,
+                ];
+            }
+
+            $lines[] = [
+                'id' => $this->domValue($xpath, './/*[local-name()="ID"][1]', $lineNode),
+                'line_ref' => $this->domValue($xpath, './/*[local-name()="OrderLineReference"]/*[local-name()="LineID"][1]', $lineNode),
+                'quantity' => $quantityNode ? $this->domValue($xpath, '.', $quantityNode) : null,
+                'unit_code' => $quantityNode ? $this->domAttr($quantityNode, 'unitCode') : null,
+                'line_total' => $lineTotal,
+                'line_currency' => $lineAmountNode ? $this->domAttr($lineAmountNode, 'currencyID') : null,
+                'product_name' => $this->domValue($xpath, './/*[local-name()="Item"]/*[local-name()="Name"][1]', $lineNode),
+                'tax_category' => $this->domValue($xpath, './/*[local-name()="ClassifiedTaxCategory"]/*[local-name()="ID"][1]', $lineNode),
+                'tax_percent' => $taxPercent,
+                'unit_price' => $priceAmountNode ? $this->domValue($xpath, '.', $priceAmountNode) : null,
+                'unit_currency' => $priceAmountNode ? $this->domAttr($priceAmountNode, 'currencyID') : null,
+                'base_qty' => $this->domValue($xpath, './/*[local-name()="BaseQuantity"][1]', $lineNode),
+                'base_unit' => ($baseNode = $this->domNode($xpath, './/*[local-name()="BaseQuantity"][1]', $lineNode)) ? $this->domAttr($baseNode, 'unitCode') : null,
+                'total_with_vat' => $lineTotalVat,
+                'allowances' => $allowances,
+            ];
+        }
+
+        return [
+            'invoice_number' => $invoiceNumber,
+            'issue_date' => $issueDate,
+            'due_date' => $dueDate,
+            'currency' => $currency,
+            'invoice_type' => $invoiceType,
+            'note' => $note,
+            'order_ref' => $orderRef,
+            'despatch_ref' => $despatchRef,
+            'supplier' => $supplier,
+            'customer' => $customer,
+            'delivery' => $delivery,
+            'payment' => $payment,
+            'totals' => $totals,
+            'tax_total' => $taxTotal,
+            'tax_subtotals' => $taxSubtotals,
+            'lines' => $lines,
         ];
     }
 
@@ -2244,6 +2366,93 @@ class InvoiceController
         }
 
         return ucfirst($label);
+    }
+
+    private function domValue(\DOMXPath $xpath, string $query, ?\DOMNode $context = null): ?string
+    {
+        $nodes = $xpath->query($query, $context);
+        if (!$nodes || $nodes->length === 0) {
+            return null;
+        }
+
+        $value = trim((string) $nodes->item(0)?->textContent);
+        return $value !== '' ? $value : null;
+    }
+
+    private function domNode(\DOMXPath $xpath, string $query, ?\DOMNode $context = null): ?\DOMNode
+    {
+        $nodes = $xpath->query($query, $context);
+        if (!$nodes || $nodes->length === 0) {
+            return null;
+        }
+
+        return $nodes->item(0);
+    }
+
+    private function domNodes(\DOMXPath $xpath, string $query, ?\DOMNode $context = null): array
+    {
+        $nodes = $xpath->query($query, $context);
+        if (!$nodes || $nodes->length === 0) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($nodes as $node) {
+            if ($node instanceof \DOMNode) {
+                $result[] = $node;
+            }
+        }
+
+        return $result;
+    }
+
+    private function domAttr(?\DOMNode $node, string $name): ?string
+    {
+        if (!$node || !$node->attributes) {
+            return null;
+        }
+
+        $attr = $node->attributes->getNamedItem($name);
+        if (!$attr) {
+            return null;
+        }
+
+        $value = trim((string) $attr->nodeValue);
+        return $value !== '' ? $value : null;
+    }
+
+    private function domAddressData(\DOMXPath $xpath, \DOMNode $context): array
+    {
+        return [
+            'street' => $this->domValue($xpath, './/*[local-name()="StreetName"][1]', $context),
+            'city' => $this->domValue($xpath, './/*[local-name()="CityName"][1]', $context),
+            'postal' => $this->domValue($xpath, './/*[local-name()="PostalZone"][1]', $context),
+            'region' => $this->domValue($xpath, './/*[local-name()="CountrySubentity"][1]', $context),
+            'country' => $this->domValue($xpath, './/*[local-name()="Country"]/*[local-name()="IdentificationCode"][1]', $context),
+        ];
+    }
+
+    private function domPartyData(\DOMXPath $xpath, ?\DOMNode $party): array
+    {
+        if (!$party) {
+            return [
+                'name' => null,
+                'cui' => null,
+                'reg' => null,
+                'address' => [],
+            ];
+        }
+
+        $addressNode = $this->domNode($xpath, './/*[local-name()="PostalAddress"][1]', $party);
+
+        return [
+            'name' => $this->domValue($xpath, './/*[local-name()="PartyName"]/*[local-name()="Name"][1]', $party)
+                ?: $this->domValue($xpath, './/*[local-name()="PartyLegalEntity"]/*[local-name()="RegistrationName"][1]', $party),
+            'cui' => $this->domValue($xpath, './/*[local-name()="PartyTaxScheme"]/*[local-name()="CompanyID"][1]', $party)
+                ?: $this->domValue($xpath, './/*[local-name()="PartyIdentification"]/*[local-name()="ID"][1]', $party),
+            'reg' => $this->domValue($xpath, './/*[local-name()="PartyLegalEntity"]/*[local-name()="CompanyID"][1]', $party),
+            'address' => $addressNode ? $this->domAddressData($xpath, $addressNode) : [],
+        ];
     }
 
     private function xmlErrorMessage(): ?string
