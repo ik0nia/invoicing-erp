@@ -15,6 +15,7 @@ use App\Support\Session;
 
 class SettingsController
 {
+    private const APP_VERSION = 'v1.0.0';
     private SettingsService $settings;
 
     public function __construct()
@@ -628,5 +629,58 @@ class SettingsController
                 @unlink($item);
             }
         }
+    }
+
+    public function manual(): void
+    {
+        Auth::requireAdmin();
+
+        Response::view('admin/manual', [
+            'version' => self::APP_VERSION,
+            'releases' => $this->readChangelog(),
+        ]);
+    }
+
+    private function readChangelog(): array
+    {
+        $path = BASE_PATH . '/CHANGELOG.md';
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        $lines = file($path, FILE_IGNORE_NEW_LINES);
+        if ($lines === false) {
+            return [];
+        }
+
+        $releases = [];
+        $currentIndex = null;
+
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^##\s+v?([0-9A-Za-z\.\-]+)/', $line, $match)) {
+                $version = 'v' . ltrim($match[1], 'v');
+                $releases[] = [
+                    'version' => $version,
+                    'items' => [],
+                ];
+                $currentIndex = count($releases) - 1;
+                continue;
+            }
+
+            if ($currentIndex === null) {
+                continue;
+            }
+
+            if (str_starts_with($line, '- ')) {
+                $releases[$currentIndex]['items'][] = substr($line, 2);
+            }
+        }
+
+        return $releases;
     }
 }

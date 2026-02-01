@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.0
+
+- Lansare ERP completa pentru facturare furnizori/clienti.
+- Import XML (UBL) + vizualizare factura furnizor formatata.
+- Facturi manuale, pachete de produse, confirmari, drag & drop.
+- Integrare FGO: generare, printare, stornare, link PDF.
+- Plati furnizori si incasari clienti cu alocari partiale.
+- Rapoarte cashflow + export CSV + print situatie.
+- Administrare utilizatori si roluri (super_admin/admin/contabil/staff/supplier_user).
+- Setari generale, branding, API keys, generare/curatare demo.
+
 ## v0.0.2
 
 - Trecere la aplicatie custom PHP (fara composer) pentru shared hosting.

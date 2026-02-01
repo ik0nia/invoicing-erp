@@ -94,6 +94,11 @@ if ($isPlatformUser) {
             'path' => '/admin/setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ],
+        [
+            'label' => 'Manual',
+            'path' => '/admin/manual',
+            'active' => str_starts_with($currentPath, '/admin/manual'),
+        ],
     ];
 }
 
