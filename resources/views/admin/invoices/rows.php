@@ -54,18 +54,29 @@
                 <?= htmlspecialchars($invoice->supplier_name) ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
-                <?php if (!empty($invoice->xml_path)): ?>
-                    <a
-                        href="<?= App\Support\Url::to('admin/facturi/fisier') ?>?invoice_id=<?= (int) $invoice->id ?>"
-                        target="_blank"
-                        rel="noopener"
-                        class="text-blue-700 hover:text-blue-800"
-                    >
+                <div class="inline-flex items-center gap-2">
+                    <?php if (!empty($invoice->supplier_request_at) && !empty($isPlatform)): ?>
+                        <?php
+                            $requestTs = strtotime((string) $invoice->supplier_request_at);
+                            $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;
+                        ?>
+                        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700" title="Refacturare solicitata la <?= htmlspecialchars($requestLabel) ?>">
+                            !
+                        </span>
+                    <?php endif; ?>
+                    <?php if (!empty($invoice->xml_path)): ?>
+                        <a
+                            href="<?= App\Support\Url::to('admin/facturi/fisier') ?>?invoice_id=<?= (int) $invoice->id ?>"
+                            target="_blank"
+                            rel="noopener"
+                            class="text-blue-700 hover:text-blue-800"
+                        >
+                            <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
+                        </a>
+                    <?php else: ?>
                         <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
-                    </a>
-                <?php else: ?>
-                    <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
-                <?php endif; ?>
+                    <?php endif; ?>
+                </div>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura furnizor">
                 <?= htmlspecialchars($invoice->issue_date) ?>

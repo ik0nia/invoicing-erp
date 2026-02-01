@@ -491,9 +491,10 @@ class InvoiceController
         }
 
         Database::execute(
-            'UPDATE invoices_in SET xml_path = :path, updated_at = :now WHERE id = :id',
+            'UPDATE invoices_in SET xml_path = :path, supplier_request_at = :requested_at, updated_at = :now WHERE id = :id',
             [
                 'path' => $stored,
+                'requested_at' => date('Y-m-d H:i:s'),
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoiceId,
             ]
@@ -2013,6 +2014,7 @@ class InvoiceController
                     order_note_no INT NULL,
                     order_note_date DATE NULL,
                     commission_percent DECIMAL(6,2) NULL,
+                    supplier_request_at DATETIME NULL,
                     created_at DATETIME NULL,
                     updated_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
@@ -2099,6 +2101,9 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'commission_percent')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN commission_percent DECIMAL(6,2) NULL AFTER order_note_date');
+        }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'supplier_request_at')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN supplier_request_at DATETIME NULL AFTER commission_percent');
         }
 
         $this->ensurePackageAutoIncrement();

@@ -27,6 +27,16 @@
     </a>
 </div>
 
+<?php if (!empty($invoice->supplier_request_at)): ?>
+    <?php
+        $requestTs = strtotime((string) $invoice->supplier_request_at);
+        $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;
+    ?>
+    <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        Refacturare solicitata la data <strong><?= htmlspecialchars($requestLabel) ?></strong>.
+    </div>
+<?php endif; ?>
+
 <div class="mt-6 grid gap-4 lg:grid-cols-3">
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm lg:col-span-1">
         <div class="text-slate-500">Furnizor</div>

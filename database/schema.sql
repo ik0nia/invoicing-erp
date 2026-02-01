@@ -110,6 +110,7 @@ CREATE TABLE invoices_in (
     order_note_no INT NULL,
     order_note_date DATE NULL,
     commission_percent DECIMAL(6,2) NULL,
+    supplier_request_at DATETIME NULL,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
