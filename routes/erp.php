@@ -16,6 +16,7 @@ $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/search', [InvoiceController::class, 'search']);
 $router->get('/admin/facturi/export', [InvoiceController::class, 'export']);
+$router->get('/admin/facturi/fisier', [InvoiceController::class, 'showSupplierFile']);
 $router->get('/admin/facturi/print-situatie', [InvoiceController::class, 'printSituation']);
 $router->get('/admin/facturi/lookup-suppliers', [InvoiceController::class, 'lookupSuppliers']);
 $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookupClients']);
@@ -37,6 +38,7 @@ $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
+$router->post('/admin/facturi/incarca-fisier', [InvoiceController::class, 'uploadSupplierFile']);
 $router->post('/admin/facturi/deblocheaza-client', [InvoiceController::class, 'unlockClient']);
 $router->post('/admin/facturi/redenumeste-pachet', [InvoiceController::class, 'renamePackage']);
 $router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'downloadPackageSaga']);

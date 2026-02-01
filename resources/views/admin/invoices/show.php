@@ -51,6 +51,39 @@
             Alege clientul pentru a calcula comisionul pe pachete.
         </p>
 
+        <?php if (!empty($isSupplierUser) && !empty($isConfirmed) && empty($invoice->xml_path)): ?>
+            <div class="mt-3 rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div class="font-semibold text-slate-800">Solicita generare factura</div>
+                <p class="mt-1 text-xs text-slate-500">Incarca factura furnizorului (XML/PDF) pentru a continua.</p>
+                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/incarca-fisier') ?>" enctype="multipart/form-data" class="mt-3 flex flex-wrap items-center gap-2">
+                    <?= App\Support\Csrf::input() ?>
+                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                    <input
+                        type="file"
+                        name="supplier_file"
+                        accept=".xml,.pdf"
+                        class="text-xs text-slate-600"
+                        required
+                    >
+                    <button class="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700">
+                        Solicita generare factura
+                    </button>
+                </form>
+            </div>
+        <?php elseif (!empty($invoice->xml_path)): ?>
+            <div class="mt-3 text-xs text-slate-600">
+                Fisier furnizor:
+                <a
+                    href="<?= App\Support\Url::to('admin/facturi/fisier') ?>?invoice_id=<?= (int) $invoice->id ?>"
+                    target="_blank"
+                    rel="noopener"
+                    class="text-blue-700 hover:text-blue-800"
+                >
+                    Deschide
+                </a>
+            </div>
+        <?php endif; ?>
+
         <?php if (!empty($clientLocked)): ?>
             <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 Clientul este blocat deoarece pachetele sunt confirmate.

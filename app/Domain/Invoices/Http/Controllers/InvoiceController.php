@@ -33,6 +33,7 @@ class InvoiceController
 
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
         $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
 
@@ -129,6 +130,7 @@ class InvoiceController
                 'canRenamePackages' => $canRenamePackages,
                 'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
+                'isSupplierUser' => $isSupplierUser,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
                 'collectedTotal' => $collectedTotal,
@@ -411,6 +413,94 @@ class InvoiceController
 
         fclose($out);
         exit;
+    }
+
+    public function showSupplierFile(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        $filePath = $this->invoiceFilePath($invoice);
+        if (!$filePath || !file_exists($filePath)) {
+            Response::abort(404, 'Fisierul nu a fost gasit.');
+        }
+
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        if ($extension === 'xml') {
+            $content = file_get_contents($filePath) ?: '';
+            Response::view('admin/invoices/xml_view', [
+                'invoice' => $invoice,
+                'content' => $content,
+            ], null);
+        }
+
+        $mime = $this->detectMimeType($filePath);
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($filePath) . '"');
+        header('Content-Length: ' . filesize($filePath));
+        readfile($filePath);
+        exit;
+    }
+
+    public function uploadSupplierFile(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        if (empty($invoice->packages_confirmed)) {
+            Session::flash('error', 'Pachetele nu sunt confirmate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        }
+
+        if (empty($_FILES['supplier_file']) || $_FILES['supplier_file']['error'] !== UPLOAD_ERR_OK) {
+            Session::flash('error', 'Te rog incarca un fisier valid.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        }
+
+        $file = $_FILES['supplier_file'];
+        $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+        if (!in_array($ext, ['xml', 'pdf'], true)) {
+            Session::flash('error', 'Acceptam doar fisiere XML sau PDF.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        }
+
+        $stored = $this->storeSupplierFile($file['tmp_name'], $invoice->invoice_number ?: (string) $invoice->id, $ext);
+        if (!$stored) {
+            Session::flash('error', 'Nu am putut salva fisierul incarcat.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET xml_path = :path, updated_at = :now WHERE id = :id',
+            [
+                'path' => $stored,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoiceId,
+            ]
+        );
+
+        Session::flash('status', 'Fisierul a fost incarcat.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
     }
 
     public function unlockClient(): void
@@ -1200,6 +1290,12 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
+        $currentUser = Auth::user();
+        if ($currentUser && $currentUser->hasRole('staff') && !$this->invoiceFilePath($invoice)) {
+            Session::flash('error', 'Nu poti genera factura fara fisierul furnizorului.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
+        }
+
         if (!$this->isInvoiceConfirmed($invoiceId)) {
             Session::flash('error', 'Confirma pachetele inainte de generare.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
@@ -1809,6 +1905,52 @@ class InvoiceController
         }
 
         return 'storage/invoices_in/' . basename($target);
+    }
+
+    private function storeSupplierFile(string $tmpPath, string $invoiceNumber, string $extension): ?string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $invoiceNumber ?: 'factura');
+        $dir = BASE_PATH . '/storage/invoices_in';
+
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        $target = $dir . '/' . $safe . '_' . date('Ymd_His') . '.' . $extension;
+
+        if (!move_uploaded_file($tmpPath, $target)) {
+            return null;
+        }
+
+        return 'storage/invoices_in/' . basename($target);
+    }
+
+    private function invoiceFilePath(InvoiceIn $invoice): ?string
+    {
+        $path = trim((string) ($invoice->xml_path ?? ''));
+        if ($path === '') {
+            return null;
+        }
+
+        $full = BASE_PATH . '/' . ltrim($path, '/');
+        return $full !== '' ? $full : null;
+    }
+
+    private function detectMimeType(string $path): string
+    {
+        if (function_exists('mime_content_type')) {
+            $mime = mime_content_type($path);
+            if (is_string($mime) && $mime !== '') {
+                return $mime;
+            }
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        return match ($ext) {
+            'pdf' => 'application/pdf',
+            'xml' => 'application/xml',
+            default => 'application/octet-stream',
+        };
     }
 
     private function packageStats(array $lines, array $packages): array

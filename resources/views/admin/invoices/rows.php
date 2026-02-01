@@ -54,7 +54,18 @@
                 <?= htmlspecialchars($invoice->supplier_name) ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
-                <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
+                <?php if (!empty($invoice->xml_path)): ?>
+                    <a
+                        href="<?= App\Support\Url::to('admin/facturi/fisier') ?>?invoice_id=<?= (int) $invoice->id ?>"
+                        target="_blank"
+                        rel="noopener"
+                        class="text-blue-700 hover:text-blue-800"
+                    >
+                        <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
+                    </a>
+                <?php else: ?>
+                    <?= htmlspecialchars($supplierInvoice !== '' ? $supplierInvoice : '—') ?>
+                <?php endif; ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura furnizor">
                 <?= htmlspecialchars($invoice->issue_date) ?>
