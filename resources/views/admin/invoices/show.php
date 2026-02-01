@@ -350,10 +350,18 @@
                                 value="<?= htmlspecialchars($packageLabelText) ?>"
                                 class="w-48 rounded border border-slate-200 px-2 py-1 text-xs"
                                 placeholder="Denumire pachet"
+                                data-rename-input
                             >
                             <span class="text-xs font-semibold text-slate-500">#<?= (int) $package->package_no ?></span>
                             <button class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                                 Salveaza
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                                data-rename-cancel
+                            >
+                                Renunta
                             </button>
                         </form>
                     </div>
@@ -670,14 +678,27 @@
         renameBlocks.forEach((block) => {
             const editButton = block.querySelector('[data-rename-edit]');
             const form = block.querySelector('[data-rename-form]');
+            const cancelButton = block.querySelector('[data-rename-cancel]');
+            const input = block.querySelector('[data-rename-input]');
             if (!editButton || !form) {
                 return;
             }
+            const initialValue = input ? input.value : '';
             editButton.addEventListener('click', () => {
                 form.classList.remove('hidden');
                 form.classList.add('flex');
                 editButton.classList.add('hidden');
             });
+            if (cancelButton) {
+                cancelButton.addEventListener('click', () => {
+                    if (input) {
+                        input.value = initialValue;
+                    }
+                    form.classList.add('hidden');
+                    form.classList.remove('flex');
+                    editButton.classList.remove('hidden');
+                });
+            }
         });
 
         const params = new URLSearchParams(window.location.search);
