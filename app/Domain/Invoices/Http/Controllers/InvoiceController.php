@@ -48,6 +48,7 @@ class InvoiceController
             $commissionPercent = null;
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
+            $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
             $fgoSeriesOptions = $settings->get('fgo.series_list', []);
@@ -59,7 +60,9 @@ class InvoiceController
                 $fgoSeriesSelected = $invoice->fgo_series;
             }
 
-            if ($selectedClientCui === '' && $storedClientCui !== '') {
+            if ($clientLocked) {
+                $selectedClientCui = $storedClientCui;
+            } elseif ($selectedClientCui === '' && $storedClientCui !== '') {
                 $selectedClientCui = $storedClientCui;
             } elseif ($selectedClientCui !== '' && $selectedClientCui !== $storedClientCui) {
                 Database::execute(
@@ -121,6 +124,7 @@ class InvoiceController
                 'commissionPercent' => $commissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
+                'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
@@ -404,6 +408,30 @@ class InvoiceController
 
         fclose($out);
         exit;
+    }
+
+    public function unlockClient(): void
+    {
+        Auth::requireAdmin();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+            return;
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        if (empty($invoice->packages_confirmed)) {
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        }
+
+        Session::put($this->clientUnlockKey($invoiceId), true);
+        Session::flash('status', 'Clientul a fost deblocat pentru modificare.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
     }
 
     public function printSituation(): void
@@ -2902,6 +2930,16 @@ class InvoiceController
             return '';
         }
         return date('d.m.Y', $timestamp);
+    }
+
+    private function clientUnlockKey(int $invoiceId): string
+    {
+        return 'invoice_client_unlocked_' . $invoiceId;
+    }
+
+    private function isClientUnlocked(int $invoiceId): bool
+    {
+        return (bool) Session::get($this->clientUnlockKey($invoiceId), false);
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array

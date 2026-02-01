@@ -54,10 +54,31 @@
             Alege clientul pentru a calcula comisionul pe pachete.
         </p>
 
+        <?php if (!empty($clientLocked)): ?>
+            <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Clientul este blocat deoarece pachetele sunt confirmate.
+                <?php if (!empty($isAdmin)): ?>
+                    <div class="mt-2">
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/deblocheaza-client') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <button
+                                type="submit"
+                                class="rounded border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                                onclick="return confirm('Sigur doresti deblocarea clientului pentru aceasta factura confirmata?')"
+                            >
+                                Deblocheaza client
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
         <?php if (empty($clients)): ?>
             <p class="mt-4 text-sm text-slate-600">Nu exista comisioane importate pentru acest furnizor.</p>
         <?php else: ?>
-            <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form">
+            <form method="GET" action="<?= App\Support\Url::to('admin/facturi') ?>" class="mt-4 space-y-3" id="client-form" data-client-locked="<?= !empty($clientLocked) ? '1' : '0' ?>">
                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                 <input type="hidden" name="anchor" value="client-select">
                 <div>
@@ -66,11 +87,12 @@
                         id="client-search"
                         type="text"
                         placeholder="Cauta dupa nume sau CUI"
-                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm <?= !empty($clientLocked) ? 'bg-slate-100 text-slate-400' : '' ?>"
+                        <?= !empty($clientLocked) ? 'disabled' : '' ?>
                     >
                 </div>
 
-                <div class="max-h-64 overflow-auto rounded border border-slate-200">
+                <div class="max-h-64 overflow-auto rounded border border-slate-200 <?= !empty($clientLocked) ? 'opacity-60' : '' ?>">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 text-slate-600 sticky top-0">
                             <tr>
@@ -98,6 +120,7 @@
                                             name="client_cui"
                                             value="<?= htmlspecialchars($clientCui) ?>"
                                             <?= $isSelected ? 'checked' : '' ?>
+                                            <?= !empty($clientLocked) ? 'disabled' : '' ?>
                                         >
                                     </td>
                                     <td class="px-3 py-2 text-slate-800">
@@ -567,6 +590,7 @@
         if (searchInput) {
             const rows = Array.from(document.querySelectorAll('[data-client-row]'));
             const form = document.getElementById('client-form');
+            const locked = form && form.dataset.clientLocked === '1';
             const filterRows = () => {
                 const value = searchInput.value.trim().toLowerCase();
                 rows.forEach((row) => {
@@ -577,28 +601,30 @@
             searchInput.addEventListener('input', filterRows);
             filterRows();
 
-            rows.forEach((row) => {
-                row.addEventListener('click', (event) => {
-                    const radio = row.querySelector('input[type="radio"]');
-                    if (radio) {
-                        radio.checked = true;
-                        if (form) {
-                            form.submit();
-                        }
-                    }
-                });
-            });
-
-            rows.forEach((row) => {
-                const radio = row.querySelector('input[type="radio"]');
-                if (radio) {
-                    radio.addEventListener('change', () => {
-                        if (form) {
-                            form.submit();
+            if (!locked) {
+                rows.forEach((row) => {
+                    row.addEventListener('click', (event) => {
+                        const radio = row.querySelector('input[type="radio"]');
+                        if (radio) {
+                            radio.checked = true;
+                            if (form) {
+                                form.submit();
+                            }
                         }
                     });
-                }
-            });
+                });
+
+                rows.forEach((row) => {
+                    const radio = row.querySelector('input[type="radio"]');
+                    if (radio) {
+                        radio.addEventListener('change', () => {
+                            if (form) {
+                                form.submit();
+                            }
+                        });
+                    }
+                });
+            }
         }
 
         const params = new URLSearchParams(window.location.search);

@@ -37,6 +37,7 @@ $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
+$router->post('/admin/facturi/deblocheaza-client', [InvoiceController::class, 'unlockClient']);
 $router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'downloadPackageSaga']);
 $router->post('/admin/facturi/saga/factura', [InvoiceController::class, 'downloadInvoiceSaga']);
 $router->post('/admin/pachete-confirmate/descarca', [InvoiceController::class, 'downloadSelectedSaga']);
