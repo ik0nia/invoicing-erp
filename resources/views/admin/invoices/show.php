@@ -522,8 +522,29 @@
         </form>
     <?php endif; ?>
 
-    <?php if (!empty($isConfirmed) && !empty($packages) && !empty($isAdmin)): ?>
+    <?php if (!empty($isConfirmed) && !empty($packages)): ?>
         <div class="mt-4 space-y-3">
+            <?php if (!empty($canUnconfirmPackages)): ?>
+                <div class="flex justify-end">
+                    <?php if (empty($hasFgoInvoice)): ?>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <input type="hidden" name="action" value="unconfirm">
+                            <button
+                                class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                                onclick="return confirm('Sigur doresti anularea confirmarii pachetelor?')"
+                            >
+                                Anuleaza confirmarea
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                            Factura FGO este emisa. Confirmarea nu mai poate fi anulata.
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
             <div class="flex justify-end">
                 <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/factura') ?>">
                     <?= App\Support\Csrf::input() ?>
@@ -533,7 +554,7 @@
                     </button>
                 </form>
             </div>
-            <?php if (empty($invoice->fgo_number)): ?>
+            <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
                 <div class="flex justify-end">
                     <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>">
                         <?= App\Support\Csrf::input() ?>

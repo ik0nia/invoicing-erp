@@ -52,6 +52,8 @@ class InvoiceController
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
             $canRenamePackages = $this->canRenamePackages($user);
+            $canUnconfirmPackages = $this->canUnconfirmPackages($user);
+            $hasFgoInvoice = $this->hasFgoInvoice($invoice);
             $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
@@ -129,6 +131,8 @@ class InvoiceController
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
                 'canRenamePackages' => $canRenamePackages,
+                'canUnconfirmPackages' => $canUnconfirmPackages,
+                'hasFgoInvoice' => $hasFgoInvoice,
                 'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
                 'isSupplierUser' => $isSupplierUser,
@@ -1229,7 +1233,7 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
-        $this->guardInvoice($invoiceId);
+        $invoice = $this->guardInvoice($invoiceId);
 
         if ($action === 'generate') {
             if ($this->isInvoiceConfirmed($invoiceId)) {
@@ -1274,6 +1278,28 @@ class InvoiceController
             $this->storeSagaFiles($invoiceId);
             Session::flash('status', 'Pachetele au fost confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#supplier-request');
+        }
+
+        if ($action === 'unconfirm') {
+            $user = Auth::user();
+            if (!$this->canUnconfirmPackages($user)) {
+                Response::abort(403, 'Acces interzis.');
+            }
+
+            if (!$this->isInvoiceConfirmed($invoiceId)) {
+                Session::flash('status', 'Pachetele nu sunt confirmate.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+
+            if ($this->hasFgoInvoice($invoice)) {
+                Session::flash('error', 'Nu poti anula confirmarea dupa emiterea facturii FGO.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+
+            $this->unconfirmPackages($invoiceId);
+            Session::forget($this->clientUnlockKey($invoiceId));
+            Session::flash('status', 'Confirmarea pachetelor a fost anulata.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
@@ -2887,6 +2913,40 @@ class InvoiceController
         return $invoice ? (bool) $invoice->packages_confirmed : false;
     }
 
+    private function unconfirmPackages(int $invoiceId): void
+    {
+        Database::execute(
+            'UPDATE invoices_in SET packages_confirmed = 0, packages_confirmed_at = NULL, updated_at = :now WHERE id = :id',
+            ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
+        );
+        $this->deleteSagaFiles($invoiceId);
+    }
+
+    private function deleteSagaFiles(int $invoiceId): void
+    {
+        $dir = BASE_PATH . '/storage/saga/invoice_' . $invoiceId;
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = scandir($dir);
+        if ($items === false) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $path = $dir . '/' . $item;
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+
+        @rmdir($dir);
+    }
+
     private function buildSagaPackagesData(array $packages, array $linesByPackage, array $packageStats, string $date): array
     {
         $data = [];
@@ -3694,6 +3754,23 @@ class InvoiceController
         return UserPermission::userHas($user->id, UserPermission::RENAME_PACKAGES);
     }
 
+    private function canUnconfirmPackages(?\App\Domain\Users\Models\User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole(['super_admin', 'admin', 'contabil', 'staff']);
+    }
+
+    private function hasFgoInvoice(InvoiceIn $invoice): bool
+    {
+        return trim((string) ($invoice->fgo_number ?? '')) !== ''
+            || trim((string) ($invoice->fgo_series ?? '')) !== ''
+            || trim((string) ($invoice->fgo_storno_number ?? '')) !== ''
+            || trim((string) ($invoice->fgo_storno_series ?? '')) !== '';
+    }
+
     private function packageLabelText(Package $package): string
     {
         $label = trim((string) ($package->label ?? ''));
@@ -3811,7 +3888,7 @@ class InvoiceController
             Response::abort(403, 'Acces interzis.');
         }
 
-        if ($user->isPlatformUser() || $user->isSupplierUser()) {
+        if ($user->isPlatformUser() || $user->isSupplierUser() || $user->hasRole('staff')) {
             return;
         }
 
