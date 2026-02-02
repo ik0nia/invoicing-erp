@@ -46,17 +46,21 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="amount">Suma disponibila</label>
+            <label class="block text-sm font-medium text-slate-700" for="amount">Suma de plata</label>
             <input
                 id="amount"
                 name="amount"
                 type="text"
-                readonly
-                value="<?= htmlspecialchars(number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', '')) ?>"
+                inputmode="decimal"
+                value=""
+                placeholder="<?= htmlspecialchars(number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', '')) ?>"
                 data-available="<?= htmlspecialchars(number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
-            <p class="mt-1 text-xs text-slate-500">Se actualizeaza dupa selectia facturilor.</p>
+            <p class="mt-1 text-xs text-slate-500">
+                Disponibil incasat net: <strong><?= number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', ' ') ?> RON</strong>.
+                Introdu suma si o voi distribui automat pe facturi (dupa incasarile nete).
+            </p>
         </div>
         <div class="md:col-span-2">
             <label class="block text-sm font-medium text-slate-700" for="notes">Observatii</label>
@@ -81,8 +85,9 @@
                         <th class="px-4 py-2">Factura</th>
                         <th class="px-4 py-2">Data</th>
                         <th class="px-4 py-2">Total furnizor</th>
+                        <th class="px-4 py-2">Incasat net</th>
                         <th class="px-4 py-2">Platit</th>
-                        <th class="px-4 py-2">Rest</th>
+                        <th class="px-4 py-2">Disponibil</th>
                         <th class="px-4 py-2">Aloca</th>
                     </tr>
                 </thead>
@@ -98,7 +103,8 @@
                                     <input
                                         type="checkbox"
                                         class="invoice-check"
-                                        data-allocatable="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                        data-allocatable="<?= htmlspecialchars(number_format($invoice['available'], 2, '.', '')) ?>"
+                                        <?= $invoice['available'] <= 0 ? 'disabled' : '' ?>
                                     >
                                 </td>
                                 <td class="px-4 py-2">
@@ -111,14 +117,20 @@
                                 </td>
                                 <td class="px-4 py-2"><?= htmlspecialchars($invoice['issue_date']) ?></td>
                                 <td class="px-4 py-2"><?= number_format($invoice['total_supplier'], 2, '.', ' ') ?> RON</td>
+                                <td class="px-4 py-2">
+                                    <?= number_format($invoice['collected_net'], 2, '.', ' ') ?> RON
+                                    <?php if (!empty($invoice['commission'])): ?>
+                                        <div class="text-xs text-slate-500">Comision <?= number_format($invoice['commission'], 2, '.', ' ') ?>%</div>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="px-4 py-2"><?= number_format($invoice['paid'], 2, '.', ' ') ?> RON</td>
-                                <td class="px-4 py-2"><?= number_format($invoice['balance'], 2, '.', ' ') ?> RON</td>
+                                <td class="px-4 py-2"><?= number_format($invoice['available'], 2, '.', ' ') ?> RON</td>
                                 <td class="px-4 py-2">
                                     <input
                                         name="allocations[<?= (int) $invoice['id'] ?>]"
                                         type="text"
                                         class="w-28 rounded border border-slate-300 px-2 py-1 text-sm allocation-input bg-white"
-                                        data-allocatable="<?= htmlspecialchars(number_format($invoice['balance'], 2, '.', '')) ?>"
+                                        data-allocatable="<?= htmlspecialchars(number_format($invoice['available'], 2, '.', '')) ?>"
                                         disabled
                                     >
                                 </td>
@@ -163,26 +175,85 @@
             return Number.isFinite(number) ? number : 0;
         };
 
-        const recompute = () => {
-            const available = parseAmount(amountInput.dataset.available || '0');
+        const formatAmount = (value) => {
+            return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+        };
+
+        const availableTotal = parseAmount(amountInput.dataset.available || '0');
+
+        const setWarning = (allocated, target, hasSelection) => {
+            if (!warning) {
+                return;
+            }
+            if (!hasSelection) {
+                warning.textContent = 'Selecteaza cel putin o factura.';
+                return;
+            }
+            if (allocated > availableTotal + 0.01) {
+                warning.textContent = 'Suma alocata depaseste disponibilul incasat.';
+                return;
+            }
+            if (target > availableTotal + 0.01) {
+                warning.textContent = `Ai introdus ${formatAmount(target)} RON, dar disponibilul este ${formatAmount(availableTotal)} RON.`;
+                return;
+            }
+            if (target > 0) {
+                warning.textContent = `Total alocat: ${formatAmount(allocated)} RON din ${formatAmount(target)} RON.`;
+                return;
+            }
+            warning.textContent = `Total alocat: ${formatAmount(allocated)} RON.`;
+        };
+
+        const clearAll = () => {
+            checks.forEach((check, idx) => {
+                const input = allocations[idx];
+                check.checked = false;
+                input.value = '';
+                input.disabled = true;
+            });
+        };
+
+        const autoAllocate = (target) => {
+            let remaining = target;
+            let allocated = 0;
+
+            checks.forEach((check, idx) => {
+                const input = allocations[idx];
+                const allocatable = parseAmount(input.dataset.allocatable || '0');
+                if (allocatable <= 0 || remaining <= 0) {
+                    check.checked = false;
+                    input.value = '';
+                    input.disabled = true;
+                    return;
+                }
+                check.checked = true;
+                input.disabled = false;
+                const value = Math.min(allocatable, remaining);
+                input.value = value > 0 ? value.toFixed(2) : '';
+                remaining -= value;
+                allocated += value;
+            });
+
+            return allocated;
+        };
+
+        const recomputeManual = () => {
             let allocated = 0;
             let hasSelection = false;
 
             checks.forEach((check, idx) => {
                 const input = allocations[idx];
+                const allocatable = parseAmount(input.dataset.allocatable || '0');
+
                 if (!check.checked) {
                     input.value = '';
                     input.disabled = true;
                     return;
                 }
+
                 hasSelection = true;
                 input.disabled = false;
-                const allocatable = parseAmount(input.dataset.allocatable || '0');
                 let value = parseAmount(input.value || '0');
-                if (!value) {
-                    value = Math.min(allocatable, Math.max(0, available - allocated));
-                    input.value = value > 0 ? value.toFixed(2) : '';
-                }
                 if (value > allocatable) {
                     value = allocatable;
                     input.value = value.toFixed(2);
@@ -190,27 +261,35 @@
                 allocated += value;
             });
 
-            const remaining = Math.max(0, available - allocated);
-            amountInput.value = remaining.toFixed(2);
-
             if (submitBtn) {
-                submitBtn.disabled = !hasSelection || allocated > available + 0.01;
+                submitBtn.disabled = !hasSelection || allocated <= 0 || allocated > availableTotal + 0.01;
             }
-            if (warning) {
-                warning.textContent = hasSelection
-                    ? (allocated > available + 0.01 ? 'Suma alocata depaseste suma disponibila.' : 'Poti ajusta manual sumele alocate.')
-                    : 'Selecteaza cel putin o factura.';
-            }
+            setWarning(allocated, parseAmount(amountInput.value || '0'), hasSelection);
         };
 
+        amountInput.addEventListener('input', () => {
+            const targetRaw = parseAmount(amountInput.value || '0');
+            if (targetRaw <= 0) {
+                clearAll();
+                recomputeManual();
+                return;
+            }
+            const target = Math.min(targetRaw, availableTotal);
+            const allocated = autoAllocate(target);
+            if (submitBtn) {
+                submitBtn.disabled = allocated <= 0 || allocated > availableTotal + 0.01;
+            }
+            setWarning(allocated, targetRaw, allocated > 0);
+        });
+
         checks.forEach((check) => {
-            check.addEventListener('change', recompute);
+            check.addEventListener('change', recomputeManual);
         });
 
         allocations.forEach((input) => {
-            input.addEventListener('input', recompute);
+            input.addEventListener('input', recomputeManual);
         });
 
-        recompute();
+        recomputeManual();
     })();
 </script>

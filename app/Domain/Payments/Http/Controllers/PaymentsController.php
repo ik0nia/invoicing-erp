@@ -536,7 +536,7 @@ class PaymentsController
 
         $invoiceMap = [];
         foreach ($this->supplierInvoicesWithBalances($supplierCui) as $invoice) {
-            $invoiceMap[$invoice['id']] = $invoice['balance'];
+            $invoiceMap[$invoice['id']] = $invoice['available'];
         }
 
         foreach ($allocations as $allocation) {
@@ -825,10 +825,15 @@ class PaymentsController
             $totalSupplier = (float) $row['total_with_vat'];
             $paid = (float) $row['paid'];
             $collected = (float) $row['collected'];
-            $collectedNet = $commission !== null && $commission !== 0.0
-                ? $this->applyCommission($collected, -abs($commission))
+            $commissionValue = (float) ($commission ?? 0.0);
+            $collectedNet = $commissionValue !== 0.0
+                ? $this->applyCommission($collected, -abs($commissionValue))
                 : $collected;
             $available = max(0, $collectedNet - $paid);
+            $balance = max(0, $totalSupplier - $paid);
+            if ($available > $balance) {
+                $available = $balance;
+            }
 
             $invoices[] = [
                 'id' => (int) $row['id'],
@@ -836,7 +841,10 @@ class PaymentsController
                 'issue_date' => (string) $row['issue_date'],
                 'total_supplier' => $totalSupplier,
                 'paid' => $paid,
-                'balance' => max(0, $totalSupplier - $paid),
+                'balance' => $balance,
+                'collected' => $collected,
+                'collected_net' => $collectedNet,
+                'commission' => $commissionValue,
                 'available' => max(0, $available),
             ];
         }

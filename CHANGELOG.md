@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.1
+
+- Hotfix plati furnizori: suma editabila si auto-alocare dupa incasari nete.
+- Alocari pe facturi bazate pe incasari minus comision.
+- Afisare incasat net si disponibil in lista de alocare.
+
 ## v1.0.0
 
 - Lansare ERP completa pentru facturare furnizori/clienti.
