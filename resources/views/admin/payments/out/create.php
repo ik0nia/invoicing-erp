@@ -59,7 +59,7 @@
             >
             <p class="mt-1 text-xs text-slate-500">
                 Disponibil incasat net: <strong><?= number_format((float) ($supplierSummary['due'] ?? 0), 2, '.', ' ') ?> RON</strong>.
-                Introdu suma si o voi distribui automat pe facturi (dupa incasarile nete).
+                Introdu suma si o voi distribui automat pe facturi (dupa incasarile nete). Poti edita manual.
             </p>
         </div>
         <div class="md:col-span-2">
@@ -131,7 +131,6 @@
                                         type="text"
                                         class="w-28 rounded border border-slate-300 px-2 py-1 text-sm allocation-input bg-white"
                                         data-allocatable="<?= htmlspecialchars(number_format($invoice['available'], 2, '.', '')) ?>"
-                                        disabled
                                     >
                                 </td>
                             </tr>
@@ -209,7 +208,6 @@
                 const input = allocations[idx];
                 check.checked = false;
                 input.value = '';
-                input.disabled = true;
             });
         };
 
@@ -223,11 +221,9 @@
                 if (allocatable <= 0 || remaining <= 0) {
                     check.checked = false;
                     input.value = '';
-                    input.disabled = true;
                     return;
                 }
                 check.checked = true;
-                input.disabled = false;
                 const value = Math.min(allocatable, remaining);
                 input.value = value > 0 ? value.toFixed(2) : '';
                 remaining -= value;
@@ -244,21 +240,27 @@
             checks.forEach((check, idx) => {
                 const input = allocations[idx];
                 const allocatable = parseAmount(input.dataset.allocatable || '0');
-
-                if (!check.checked) {
+                if (check.disabled || allocatable <= 0) {
                     input.value = '';
-                    input.disabled = true;
+                    check.checked = false;
+                    return;
+                }
+                let value = parseAmount(input.value || '0');
+
+                if (value > 0) {
+                    if (value > allocatable) {
+                        value = allocatable;
+                        input.value = value.toFixed(2);
+                    }
+                    check.checked = true;
+                    hasSelection = true;
+                    allocated += value;
                     return;
                 }
 
-                hasSelection = true;
-                input.disabled = false;
-                let value = parseAmount(input.value || '0');
-                if (value > allocatable) {
-                    value = allocatable;
-                    input.value = value.toFixed(2);
+                if (check.checked) {
+                    hasSelection = true;
                 }
-                allocated += value;
             });
 
             if (submitBtn) {
