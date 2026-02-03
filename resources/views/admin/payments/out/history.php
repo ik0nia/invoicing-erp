@@ -143,7 +143,7 @@
                             <tbody>
                                 <?php foreach ($rows as $row): ?>
                                     <?php
-                                        $clientName = trim((string) ($row['customer_name'] ?? ''));
+                                        $clientName = trim((string) ($row['selected_client_name'] ?? ''));
                                         $clientCui = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
                                         $clientLabel = $clientName !== '' ? $clientName : ($clientCui !== '' ? $clientCui : '—');
                                         $clientInvoice = trim((string) ($row['fgo_series'] ?? '') . ' ' . (string) ($row['fgo_number'] ?? ''));

@@ -899,11 +899,14 @@ class PaymentsController
             $params[$key] = $id;
         }
 
+        $hasPartners = Database::tableExists('partners');
         $rows = Database::fetchAll(
-            'SELECT a.*, i.invoice_number, i.customer_name, i.selected_client_cui, i.fgo_series, i.fgo_number
-             FROM ' . $table . ' a
-             LEFT JOIN invoices_in i ON i.id = a.' . $invoiceKey . '
-             WHERE a.' . $paymentKey . ' IN (' . implode(',', $placeholders) . ')
+            'SELECT a.*, i.invoice_number, i.selected_client_cui, i.fgo_series, i.fgo_number'
+                . ($hasPartners ? ', c.denumire AS selected_client_name' : '')
+                . ' FROM ' . $table . ' a
+             LEFT JOIN invoices_in i ON i.id = a.' . $invoiceKey
+                . ($hasPartners ? ' LEFT JOIN partners c ON c.cui = i.selected_client_cui' : '')
+                . ' WHERE a.' . $paymentKey . ' IN (' . implode(',', $placeholders) . ')
              ORDER BY a.' . $paymentKey . ' ASC, a.id ASC',
             $params
         );
