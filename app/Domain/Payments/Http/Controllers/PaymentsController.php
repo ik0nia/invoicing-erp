@@ -515,7 +515,7 @@ class PaymentsController
             $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
             $details = '';
             if (!empty($row['payment_codes'])) {
-                $details = 'Nr ordin de plata: ' . implode(', ', $row['payment_codes']);
+                $details = 'Nr OP: ' . implode(', ', $row['payment_codes']);
             }
             $line = [
                 $this->csvQuote($platformIban),
