@@ -214,6 +214,19 @@
                     }
                 ?>
             </div>
+            <?php if (!empty($isPlatform) && !empty($paymentInRows)): ?>
+                <div class="mt-3 space-y-1 text-xs text-slate-600">
+                    <?php foreach ($paymentInRows as $row): ?>
+                        <a
+                            href="<?= App\Support\Url::to('admin/incasari/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-in-<?= (int) $row['id'] ?>"
+                            class="block text-blue-700 hover:text-blue-800"
+                        >
+                            Incasare #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                            Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         <?php else: ?>
             <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
         <?php endif; ?>
@@ -236,6 +249,19 @@
                 }
             ?>
         </div>
+        <?php if (!empty($isPlatform) && !empty($paymentOutRows)): ?>
+            <div class="mt-3 space-y-1 text-xs text-slate-600">
+                <?php foreach ($paymentOutRows as $row): ?>
+                    <a
+                        href="<?= App\Support\Url::to('admin/plati/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-out-<?= (int) $row['id'] ?>"
+                        class="block text-blue-700 hover:text-blue-800"
+                    >
+                        Plata #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                        Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
     </div>
     <?php if (!empty($isPlatform)): ?>
         <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">

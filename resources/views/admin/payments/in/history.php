@@ -48,16 +48,21 @@
 </form>
 
 <div class="mt-6 space-y-4">
+    <?php $highlightId = isset($paymentId) ? (int) $paymentId : 0; ?>
     <?php if (empty($payments)): ?>
         <div class="rounded border border-slate-200 bg-white p-6 text-sm text-slate-500">
             Nu exista incasari in acest interval.
         </div>
     <?php else: ?>
         <?php foreach ($payments as $payment): ?>
-            <div class="rounded border border-slate-200 bg-white p-4 text-sm">
+            <?php $isHighlight = $highlightId > 0 && (int) $payment['id'] === $highlightId; ?>
+            <div
+                id="payment-in-<?= (int) $payment['id'] ?>"
+                class="rounded border <?= $isHighlight ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white' ?> p-4 text-sm"
+            >
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <div class="font-semibold text-slate-900">
-                        <?= htmlspecialchars($payment['client_name'] ?? $payment['client_cui']) ?>
+                        Incasare #<?= (int) $payment['id'] ?> · <?= htmlspecialchars($payment['client_name'] ?? $payment['client_cui']) ?>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <span><?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</span>

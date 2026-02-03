@@ -66,6 +66,7 @@ class PaymentsController
 
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+        $paymentId = isset($_GET['payment_id']) ? (int) $_GET['payment_id'] : 0;
 
         $where = [];
         $params = [];
@@ -77,6 +78,10 @@ class PaymentsController
         if ($dateTo !== '') {
             $where[] = 'p.paid_at <= :to';
             $params['to'] = $dateTo;
+        }
+        if ($paymentId) {
+            $where[] = 'p.id = :payment_id';
+            $params['payment_id'] = $paymentId;
         }
 
         $sql = 'SELECT p.* FROM payments_in p';
@@ -93,6 +98,7 @@ class PaymentsController
             'allocations' => $allocations,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'paymentId' => $paymentId,
         ]);
     }
 
@@ -258,6 +264,7 @@ class PaymentsController
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+        $paymentId = isset($_GET['payment_id']) ? (int) $_GET['payment_id'] : 0;
 
         $where = [];
         $params = [];
@@ -273,6 +280,10 @@ class PaymentsController
         if ($supplierCui !== '') {
             $where[] = 'p.supplier_cui = :supplier';
             $params['supplier'] = $supplierCui;
+        }
+        if ($paymentId) {
+            $where[] = 'p.id = :payment_id';
+            $params['payment_id'] = $paymentId;
         }
 
         $sql = 'SELECT p.* FROM payments_out p';
@@ -294,6 +305,7 @@ class PaymentsController
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'orderMarks' => $orderMarks,
+            'paymentId' => $paymentId,
         ]);
     }
 

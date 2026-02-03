@@ -96,6 +96,8 @@ class InvoiceController
             $collectedTotal = 0.0;
             $paidTotal = 0.0;
             $clientTotal = null;
+            $paymentInRows = [];
+            $paymentOutRows = [];
 
             if (Database::tableExists('payment_in_allocations')) {
                 $collectedTotal = (float) Database::fetchValue(
@@ -106,6 +108,30 @@ class InvoiceController
             if (Database::tableExists('payment_out_allocations')) {
                 $paidTotal = (float) Database::fetchValue(
                     'SELECT COALESCE(SUM(amount), 0) FROM payment_out_allocations WHERE invoice_in_id = :invoice',
+                    ['invoice' => $invoiceId]
+                );
+            }
+
+            if (Database::tableExists('payment_in_allocations') && Database::tableExists('payments_in')) {
+                $paymentInRows = Database::fetchAll(
+                    'SELECT p.id, p.paid_at, p.amount AS payment_amount, p.client_name, p.client_cui,
+                            a.amount AS alloc_amount
+                     FROM payment_in_allocations a
+                     JOIN payments_in p ON p.id = a.payment_in_id
+                     WHERE a.invoice_in_id = :invoice
+                     ORDER BY p.paid_at DESC, p.id DESC',
+                    ['invoice' => $invoiceId]
+                );
+            }
+
+            if (Database::tableExists('payment_out_allocations') && Database::tableExists('payments_out')) {
+                $paymentOutRows = Database::fetchAll(
+                    'SELECT p.id, p.paid_at, p.amount AS payment_amount, p.supplier_name, p.supplier_cui,
+                            a.amount AS alloc_amount
+                     FROM payment_out_allocations a
+                     JOIN payments_out p ON p.id = a.payment_out_id
+                     WHERE a.invoice_in_id = :invoice
+                     ORDER BY p.paid_at DESC, p.id DESC',
                     ['invoice' => $invoiceId]
                 );
             }
@@ -142,6 +168,8 @@ class InvoiceController
                 'collectedTotal' => $collectedTotal,
                 'paidTotal' => $paidTotal,
                 'clientTotal' => $clientTotal,
+                'paymentInRows' => $paymentInRows,
+                'paymentOutRows' => $paymentOutRows,
             ]);
         }
 
