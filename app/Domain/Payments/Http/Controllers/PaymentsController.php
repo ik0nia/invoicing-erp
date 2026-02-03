@@ -438,13 +438,25 @@ class PaymentsController
             Response::redirect('/admin/plati/istoric');
         }
 
+        $paymentIds = array_values(array_filter(array_map('intval', (array) ($_POST['payment_ids'] ?? []))));
         $supplierCuis = array_values(array_filter(array_map('strval', (array) ($_POST['supplier_cuis'] ?? []))));
         $dateFrom = trim((string) ($_POST['date_from'] ?? ''));
         $dateTo = trim((string) ($_POST['date_to'] ?? ''));
 
-        if (empty($supplierCuis)) {
-            Session::flash('error', 'Selecteaza cel putin un furnizor.');
+        if (empty($paymentIds) && empty($supplierCuis)) {
+            Session::flash('error', 'Selecteaza cel putin o plata.');
             Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+        }
+
+        if (!empty($paymentIds)) {
+            $orderData = $this->buildPaymentOrdersForPayments($paymentIds);
+            if (empty($orderData)) {
+                Session::flash('error', 'Nu exista plati alocate pentru selectia curenta.');
+                Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
+            }
+            $supplierCuis = array_keys($orderData);
+        } else {
+            $orderData = $this->buildPaymentOrders($supplierCuis, $dateFrom, $dateTo);
         }
 
         $settings = new SettingsService();
@@ -467,7 +479,6 @@ class PaymentsController
             Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
         }
 
-        $orderData = $this->buildPaymentOrders($supplierCuis, $dateFrom, $dateTo);
         if (empty($orderData)) {
             Session::flash('error', 'Nu exista plati alocate pentru furnizorii selectati.');
             Response::redirect('/admin/plati/istoric' . $this->historyQuery($dateFrom, $dateTo));
@@ -504,8 +515,7 @@ class PaymentsController
             $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
             $details = '';
             if (!empty($row['payment_codes'])) {
-                $codes = array_map(static fn (int $id): string => 'Nr ordin de plata: ' . $id, $row['payment_codes']);
-                $details = implode(', ', $codes);
+                $details = 'Nr ordin de plata: ' . implode(', ', $row['payment_codes']);
             }
             $line = [
                 $this->csvQuote($platformIban),
@@ -1069,6 +1079,65 @@ class PaymentsController
              JOIN payments_out o ON o.id = a.payment_out_id
              JOIN invoices_in i ON i.id = a.invoice_in_id
              WHERE ' . implode(' AND ', $where) . '
+             ORDER BY o.supplier_cui ASC, o.id ASC',
+            $params
+        );
+
+        $data = [];
+        foreach ($rows as $row) {
+            if ($this->hasStorno($row)) {
+                continue;
+            }
+            $cui = (string) $row['supplier_cui'];
+            if (!isset($data[$cui])) {
+                $data[$cui] = [
+                    'supplier_name' => (string) ($row['supplier_name'] ?? $cui),
+                    'total' => 0.0,
+                    'invoices' => [],
+                    'payments' => [],
+                ];
+            }
+            $data[$cui]['total'] += (float) $row['amount'];
+            if (!empty($row['invoice_number'])) {
+                $data[$cui]['invoices'][$row['invoice_number']] = true;
+            }
+            if (!empty($row['payment_id'])) {
+                $data[$cui]['payments'][(int) $row['payment_id']] = true;
+            }
+        }
+
+        foreach ($data as $cui => $row) {
+            $data[$cui]['total'] = round((float) $row['total'], 2);
+            $data[$cui]['invoices'] = implode(', ', array_keys($row['invoices']));
+            $paymentCodes = array_keys($row['payments']);
+            sort($paymentCodes);
+            $data[$cui]['payment_codes'] = $paymentCodes;
+        }
+
+        return $data;
+    }
+
+    private function buildPaymentOrdersForPayments(array $paymentIds): array
+    {
+        if (!Database::tableExists('payment_out_allocations') || empty($paymentIds)) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($paymentIds) as $index => $id) {
+            $key = 'p' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = (int) $id;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT o.id AS payment_id, o.supplier_cui, o.supplier_name, a.amount, i.invoice_number,
+                    i.fgo_storno_number, i.fgo_storno_series, i.fgo_storno_link
+             FROM payment_out_allocations a
+             JOIN payments_out o ON o.id = a.payment_out_id
+             JOIN invoices_in i ON i.id = a.invoice_in_id
+             WHERE o.id IN (' . implode(',', $placeholders) . ')
              ORDER BY o.supplier_cui ASC, o.id ASC',
             $params
         );

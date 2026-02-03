@@ -105,7 +105,13 @@
                         $mark = $orderMarks[$cui] ?? '';
                     ?>
                     <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
-                        <input type="checkbox" name="supplier_cuis[]" value="<?= htmlspecialchars($cui) ?>" form="payment-order-form" data-has-order="<?= $mark !== '' ? '1' : '0' ?>">
+                        <input
+                            type="checkbox"
+                            name="payment_ids[]"
+                            value="<?= (int) $payment['id'] ?>"
+                            form="payment-order-form"
+                            data-has-order="<?= $mark !== '' ? '1' : '0' ?>"
+                        >
                         <span>OP</span>
                         <?php if ($mark !== ''): ?>
                             <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
@@ -192,7 +198,7 @@
             return;
         }
         form.addEventListener('submit', (event) => {
-            const checks = Array.from(document.querySelectorAll('input[name="supplier_cuis[]"]:checked'));
+            const checks = Array.from(document.querySelectorAll('input[name="payment_ids[]"]:checked'));
             if (checks.length === 0) {
                 event.preventDefault();
                 alert('Selecteaza cel putin un furnizor.');
