@@ -900,7 +900,7 @@ class PaymentsController
         }
 
         $rows = Database::fetchAll(
-            'SELECT a.*, i.invoice_number
+            'SELECT a.*, i.invoice_number, i.customer_name, i.selected_client_cui, i.fgo_series, i.fgo_number
              FROM ' . $table . ' a
              LEFT JOIN invoices_in i ON i.id = a.' . $invoiceKey . '
              WHERE a.' . $paymentKey . ' IN (' . implode(',', $placeholders) . ')

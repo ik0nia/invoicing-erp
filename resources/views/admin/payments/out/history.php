@@ -134,14 +134,24 @@
                         <table class="w-full text-left text-xs">
                             <thead class="bg-slate-50 text-slate-600">
                                 <tr>
-                                    <th class="px-3 py-2">Factura</th>
+                                    <th class="px-3 py-2">Factura furnizor</th>
+                                    <th class="px-3 py-2">Client</th>
+                                    <th class="px-3 py-2">Factura client</th>
                                     <th class="px-3 py-2">Suma alocata</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php foreach ($rows as $row): ?>
+                                    <?php
+                                        $clientName = trim((string) ($row['customer_name'] ?? ''));
+                                        $clientCui = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
+                                        $clientLabel = $clientName !== '' ? $clientName : ($clientCui !== '' ? $clientCui : '—');
+                                        $clientInvoice = trim((string) ($row['fgo_series'] ?? '') . ' ' . (string) ($row['fgo_number'] ?? ''));
+                                    ?>
                                     <tr class="border-t border-slate-100">
                                         <td class="px-3 py-2"><?= htmlspecialchars($row['invoice_number'] ?? '') ?></td>
+                                        <td class="px-3 py-2"><?= htmlspecialchars($clientLabel) ?></td>
+                                        <td class="px-3 py-2"><?= htmlspecialchars($clientInvoice !== '' ? $clientInvoice : '—') ?></td>
                                         <td class="px-3 py-2"><?= number_format((float) $row['amount'], 2, '.', ' ') ?> RON</td>
                                     </tr>
                                 <?php endforeach; ?>
