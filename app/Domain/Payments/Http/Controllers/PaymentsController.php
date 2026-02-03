@@ -508,11 +508,11 @@ class PaymentsController
                 $details = implode(', ', $codes);
             }
             $line = [
-                $platformIban,
+                $this->csvQuote($platformIban),
                 $this->csvQuote($supplier['name']),
                 $this->csvQuote($supplierCui),
                 $this->csvQuote($iban),
-                number_format($row['total'], 2, '.', ''),
+                $this->csvQuote(number_format($row['total'], 2, '.', '')),
                 $this->csvQuote($details),
             ];
             fwrite($out, implode(',', $line) . "\n");
