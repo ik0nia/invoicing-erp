@@ -502,11 +502,10 @@ class PaymentsController
                 continue;
             }
             $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
-            $details = $row['invoices'];
+            $details = '';
             if (!empty($row['payment_codes'])) {
                 $codes = array_map(static fn (int $id): string => '#' . $id, $row['payment_codes']);
-                $details = trim($details);
-                $details = $details !== '' ? ($details . ' ' . implode(', ', $codes)) : implode(', ', $codes);
+                $details = implode(', ', $codes);
             }
             $line = [
                 $platformIban,
