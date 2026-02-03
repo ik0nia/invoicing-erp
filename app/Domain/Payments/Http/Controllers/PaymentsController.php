@@ -504,7 +504,7 @@ class PaymentsController
             $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
             $details = '';
             if (!empty($row['payment_codes'])) {
-                $codes = array_map(static fn (int $id): string => '#' . $id, $row['payment_codes']);
+                $codes = array_map(static fn (int $id): string => 'Nr ordin de plata: ' . $id, $row['payment_codes']);
                 $details = implode(', ', $codes);
             }
             $line = [
