@@ -142,13 +142,19 @@
                 <?php $rows = $allocations[$payment['id']] ?? []; ?>
                 <?php if (!empty($rows)): ?>
                     <div class="mt-3 overflow-x-auto rounded border border-slate-100">
-                        <table class="w-full text-left text-xs">
+                        <table class="w-full table-fixed text-left text-xs">
+                            <colgroup>
+                                <col class="w-1/4">
+                                <col class="w-5/12">
+                                <col class="w-1/5">
+                                <col class="w-1/5">
+                            </colgroup>
                             <thead class="bg-slate-50 text-slate-600">
                                 <tr>
                                     <th class="px-3 py-2">Factura furnizor</th>
                                     <th class="px-3 py-2">Client</th>
                                     <th class="px-3 py-2">Factura client</th>
-                                    <th class="px-3 py-2">Suma alocata</th>
+                                    <th class="px-3 py-2 text-right">Suma alocata</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -163,7 +169,7 @@
                                         <td class="px-3 py-2"><?= htmlspecialchars($row['invoice_number'] ?? '') ?></td>
                                         <td class="px-3 py-2"><?= htmlspecialchars($clientLabel) ?></td>
                                         <td class="px-3 py-2"><?= htmlspecialchars($clientInvoice !== '' ? $clientInvoice : '—') ?></td>
-                                        <td class="px-3 py-2"><?= number_format((float) $row['amount'], 2, '.', ' ') ?> RON</td>
+                                        <td class="px-3 py-2 text-right"><?= number_format((float) $row['amount'], 2, '.', ' ') ?> RON</td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
