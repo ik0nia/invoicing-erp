@@ -99,7 +99,7 @@
                     <div class="font-semibold text-slate-900">
                         Plata #<?= (int) $payment['id'] ?> · <?= htmlspecialchars($payment['supplier_name'] ?? $payment['supplier_cui']) ?>
                     </div>
-                <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                     <?php
                         $cui = (string) ($payment['supplier_cui'] ?? '');
                         $mark = $orderMarks[$cui] ?? '';
@@ -111,7 +111,18 @@
                             <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
                         <?php endif; ?>
                     </label>
-                        <span><?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</span>
+                        <span><?= htmlspecialchars($payment['paid_at']) ?></span>
+                        <span class="rounded bg-blue-50 px-2 py-1 text-sm font-semibold text-blue-700">
+                            <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON
+                        </span>
+                        <a
+                            href="<?= App\Support\Url::to('admin/plati/print') ?>?payment_id=<?= (int) $payment['id'] ?>"
+                            target="_blank"
+                            rel="noopener"
+                            class="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Printeaza
+                        </a>
                         <form method="POST" action="<?= App\Support\Url::to('admin/plati/sterge') ?>">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">

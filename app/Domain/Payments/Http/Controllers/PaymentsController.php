@@ -309,6 +309,53 @@ class PaymentsController
         ]);
     }
 
+    public function printOut(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $paymentId = isset($_GET['payment_id']) ? (int) $_GET['payment_id'] : 0;
+        if (!$paymentId) {
+            Response::redirect('/admin/plati/istoric');
+        }
+
+        $payment = Database::fetchOne(
+            'SELECT * FROM payments_out WHERE id = :id LIMIT 1',
+            ['id' => $paymentId]
+        );
+
+        if (!$payment) {
+            Session::flash('error', 'Plata nu a fost gasita.');
+            Response::redirect('/admin/plati/istoric');
+        }
+
+        $hasPartners = Database::tableExists('partners');
+        $rows = Database::fetchAll(
+            'SELECT a.amount, i.invoice_number, i.selected_client_cui, i.fgo_series, i.fgo_number'
+                . ($hasPartners ? ', c.denumire AS selected_client_name' : '')
+                . ' FROM payment_out_allocations a
+             LEFT JOIN invoices_in i ON i.id = a.invoice_in_id'
+                . ($hasPartners ? ' LEFT JOIN partners c ON c.cui = i.selected_client_cui' : '')
+                . ' WHERE a.payment_out_id = :payment
+             ORDER BY a.id ASC',
+            ['payment' => $paymentId]
+        );
+
+        $totalAllocated = 0.0;
+        foreach ($rows as $row) {
+            $totalAllocated += (float) $row['amount'];
+        }
+
+        Response::view('admin/payments/out/print', [
+            'payment' => $payment,
+            'allocations' => $rows,
+            'totalAllocated' => $totalAllocated,
+        ], 'layouts/print');
+    }
+
     public function exportOut(): void
     {
         Auth::requireAdmin();

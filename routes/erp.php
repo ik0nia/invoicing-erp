@@ -59,6 +59,7 @@ $router->get('/admin/plati', [PaymentsController::class, 'indexOut']);
 $router->get('/admin/plati/adauga', [PaymentsController::class, 'createOut']);
 $router->post('/admin/plati/adauga', [PaymentsController::class, 'storeOut']);
 $router->get('/admin/plati/istoric', [PaymentsController::class, 'historyOut']);
+$router->get('/admin/plati/print', [PaymentsController::class, 'printOut']);
 $router->get('/admin/plati/export', [PaymentsController::class, 'exportOut']);
 $router->post('/admin/plati/ordine-plata', [PaymentsController::class, 'exportPaymentOrder']);
 $router->post('/admin/plati/sterge', [PaymentsController::class, 'deleteOut']);
