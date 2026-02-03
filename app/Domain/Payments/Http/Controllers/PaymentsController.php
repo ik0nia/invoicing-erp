@@ -502,13 +502,19 @@ class PaymentsController
                 continue;
             }
             $iban = preg_replace('/\s+/', '', (string) ($supplier['iban'] ?? ''));
+            $details = $row['invoices'];
+            if (!empty($row['payment_codes'])) {
+                $codes = array_map(static fn (int $id): string => '#' . $id, $row['payment_codes']);
+                $details = trim($details);
+                $details = $details !== '' ? ($details . ' ' . implode(', ', $codes)) : implode(', ', $codes);
+            }
             $line = [
                 $platformIban,
                 $this->csvQuote($supplier['name']),
                 $this->csvQuote($supplierCui),
                 $this->csvQuote($iban),
                 number_format($row['total'], 2, '.', ''),
-                $this->csvQuote($row['invoices']),
+                $this->csvQuote($details),
             ];
             fwrite($out, implode(',', $line) . "\n");
         }
@@ -1058,7 +1064,7 @@ class PaymentsController
         }
 
         $rows = Database::fetchAll(
-            'SELECT o.supplier_cui, o.supplier_name, a.amount, i.invoice_number,
+            'SELECT o.id AS payment_id, o.supplier_cui, o.supplier_name, a.amount, i.invoice_number,
                     i.fgo_storno_number, i.fgo_storno_series, i.fgo_storno_link
              FROM payment_out_allocations a
              JOIN payments_out o ON o.id = a.payment_out_id
@@ -1079,17 +1085,24 @@ class PaymentsController
                     'supplier_name' => (string) ($row['supplier_name'] ?? $cui),
                     'total' => 0.0,
                     'invoices' => [],
+                    'payments' => [],
                 ];
             }
             $data[$cui]['total'] += (float) $row['amount'];
             if (!empty($row['invoice_number'])) {
                 $data[$cui]['invoices'][$row['invoice_number']] = true;
             }
+            if (!empty($row['payment_id'])) {
+                $data[$cui]['payments'][(int) $row['payment_id']] = true;
+            }
         }
 
         foreach ($data as $cui => $row) {
             $data[$cui]['total'] = round((float) $row['total'], 2);
             $data[$cui]['invoices'] = implode(', ', array_keys($row['invoices']));
+            $paymentCodes = array_keys($row['payments']);
+            sort($paymentCodes);
+            $data[$cui]['payment_codes'] = $paymentCodes;
         }
 
         return $data;
