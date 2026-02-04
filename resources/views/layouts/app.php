@@ -19,6 +19,7 @@ $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
 $isOperator = $user?->isOperator() ?? false;
+$canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
 ?>
 <?php
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -48,7 +49,7 @@ $menuSections['Facturare'] = [
     ],
 ];
 
-if ($isPlatformUser) {
+if ($isPlatformUser && $canAccessSaga) {
     $menuSections['Facturare'][] = [
         'label' => 'Pachete confirmate',
         'path' => '/admin/pachete-confirmate',

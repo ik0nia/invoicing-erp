@@ -4,6 +4,7 @@
     $isOperator = $isOperator ?? false;
     $canDeleteInvoice = $isPlatform && !$isOperator;
     $canDeletePackages = !$isOperator;
+    $canDownloadSaga = $canDownloadSaga ?? false;
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -388,11 +389,13 @@
                         <?= htmlspecialchars($packageLabel) ?>
                     </div>
                     <?php if (!empty($isConfirmed)): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                            <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
-                        </form>
+                        <?php if ($canDownloadSaga): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                                <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
+                            </form>
+                        <?php endif; ?>
                     <?php else: ?>
                         <?php if ($canDeletePackages): ?>
                             <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
@@ -612,15 +615,17 @@
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
-            <div class="flex justify-end">
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/factura') ?>">
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                        Descarca Saga (toate pachetele)
-                    </button>
-                </form>
-            </div>
+            <?php if ($canDownloadSaga): ?>
+                <div class="flex justify-end">
+                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/factura') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                        <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            Descarca Saga (toate pachetele)
+                        </button>
+                    </form>
+                </div>
+            <?php endif; ?>
             <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
                 <div class="flex justify-end">
                     <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>">
