@@ -20,6 +20,7 @@ class DashboardController
 
         $isPlatform = $user->isPlatformUser();
         $isSupplierUser = $user->isSupplierUser();
+        $canAccessSaga = $user->hasRole(['super_admin', 'contabil']);
         if (!$isPlatform && !$isSupplierUser) {
             Response::abort(403, 'Acces interzis.');
         }
@@ -250,7 +251,7 @@ class DashboardController
         $hasFgoNumber = $hasPackages && Database::columnExists('invoices_in', 'fgo_number');
         $hasConfirmedAt = $hasPackages && Database::columnExists('invoices_in', 'packages_confirmed_at');
 
-        if ($hasConfirmed && $hasFgoNumber) {
+        if ($canAccessSaga && $hasConfirmed && $hasFgoNumber) {
             $orderBy = $hasConfirmedAt ? 'i.packages_confirmed_at' : 'i.issue_date';
 
             try {
@@ -274,6 +275,7 @@ class DashboardController
             'user' => $user,
             'isPlatform' => $isPlatform,
             'isSupplierUser' => $isSupplierUser,
+            'canAccessSaga' => $canAccessSaga,
             'latestInvoices' => $latestInvoices,
             'supplierLatestInvoices' => $supplierLatestInvoices,
             'supplierMonthCount' => $supplierMonthCount,

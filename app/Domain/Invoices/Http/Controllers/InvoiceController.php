@@ -52,8 +52,9 @@ class InvoiceController
             $commissionPercent = null;
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
-            $canRenamePackages = $this->canRenamePackages($user);
+            $canRenamePackages = $this->canRenamePackages($user) && empty($invoice->packages_confirmed);
             $canUnconfirmPackages = $this->canUnconfirmPackages($user);
+            $canDownloadSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
             $hasFgoInvoice = $this->hasFgoInvoice($invoice);
             $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
@@ -161,6 +162,7 @@ class InvoiceController
                 'canUnconfirmPackages' => $canUnconfirmPackages,
                 'hasFgoInvoice' => $hasFgoInvoice,
                 'clientLocked' => $clientLocked,
+                'canDownloadSaga' => $canDownloadSaga,
                 'isPlatform' => $isPlatform,
                 'isOperator' => $isOperator,
                 'isSupplierUser' => $isSupplierUser,
@@ -598,6 +600,10 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
+        if (!empty($invoice->packages_confirmed)) {
+            Session::flash('error', 'Pachetele sunt confirmate si nu pot fi redenumite.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
         $package = Package::find($packageId);
         if (!$package || $package->invoice_in_id !== $invoice->id) {
             Response::abort(404, 'Pachet inexistent.');
@@ -699,7 +705,7 @@ class InvoiceController
 
     public function confirmedPackages(): void
     {
-        Auth::requireAdmin();
+        Auth::requireSagaRole();
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
@@ -1839,7 +1845,7 @@ class InvoiceController
 
     public function downloadPackageSaga(): void
     {
-        $this->requireInvoiceRole();
+        Auth::requireSagaRole();
 
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
         if (!$packageId) {
@@ -1871,7 +1877,7 @@ class InvoiceController
 
     public function downloadInvoiceSaga(): void
     {
-        $this->requireInvoiceRole();
+        Auth::requireSagaRole();
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         if (!$invoiceId) {
@@ -1904,7 +1910,7 @@ class InvoiceController
 
     public function downloadSelectedSaga(): void
     {
-        $this->requireInvoiceRole();
+        Auth::requireSagaRole();
 
         $packageIds = $_POST['package_ids'] ?? [];
         $packageIds = array_values(array_filter(array_map('intval', (array) $packageIds)));

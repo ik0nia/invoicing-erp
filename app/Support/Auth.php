@@ -77,6 +77,17 @@ class Auth
         }
     }
 
+    public static function requireSagaRole(): void
+    {
+        self::requireLogin();
+
+        $user = self::user();
+
+        if (!$user || !$user->hasRole(['super_admin', 'contabil'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+    }
+
     public static function requireSuperAdmin(): void
     {
         self::requireLogin();
