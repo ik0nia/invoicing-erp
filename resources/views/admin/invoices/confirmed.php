@@ -122,7 +122,9 @@
                             </td>
                             <td class="px-3 py-2 text-slate-700">
                                 <?php if ($hasSagaMatch): ?>
-                                    <span class="mr-1 text-emerald-600">✔</span>
+                                    <span class="mr-1 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                        BIFA VERDE
+                                    </span>
                                 <?php endif; ?>
                                 <?= htmlspecialchars($label) ?>
                             </td>

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.12
+
+- Matching SAGA dupa numar pachet / denumire normalizata.
+
 ## v1.0.11
 
 - Accepta CSV fara coloana TVA (foloseste TVA pachet).
