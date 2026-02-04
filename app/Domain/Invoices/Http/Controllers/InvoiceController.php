@@ -776,44 +776,43 @@ class InvoiceController
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        $handle = fopen($file['tmp_name'], 'r');
-        if ($handle === false) {
-            Session::flash('error', 'Nu pot citi fisierul CSV.');
+        $rows = $this->readSagaRows($file['tmp_name']);
+        if (empty($rows)) {
+            Session::flash('error', 'Fisierul nu contine date valide.');
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        $headerLine = fgets($handle);
-        if ($headerLine === false) {
-            fclose($handle);
-            Session::flash('error', 'Fisier CSV gol.');
+        $header = array_shift($rows);
+        if (empty($header)) {
+            Session::flash('error', 'Fisierul nu contine antet.');
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        $delimiter = $this->detectCsvDelimiter($headerLine);
-        $header = str_getcsv($headerLine, $delimiter);
         $columns = $this->mapSagaColumns($header);
-        if ($columns['denumire'] === null || $columns['pret_vanz'] === null || $columns['tva'] === null) {
-            fclose($handle);
-            Session::flash('error', 'CSV trebuie sa contina coloanele: denumire, pret_vanz, tva.');
+        if ($columns['denumire'] === null || $columns['pret_vanz'] === null) {
+            Session::flash('error', 'CSV trebuie sa contina coloanele: denumire, pret_vanz.');
             Response::redirect('/admin/pachete-confirmate');
         }
 
         $sagaMap = [];
-        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+        foreach ($rows as $row) {
             $name = trim((string) ($row[$columns['denumire']] ?? ''));
             if ($name === '') {
                 continue;
             }
             $pret = $this->parseSagaNumber((string) ($row[$columns['pret_vanz']] ?? ''));
-            $tva = $this->parseSagaNumber((string) ($row[$columns['tva']] ?? ''));
-            if ($pret === null || $tva === null) {
+            $tva = $columns['tva'] !== null
+                ? $this->parseSagaNumber((string) ($row[$columns['tva']] ?? ''))
+                : null;
+            if ($pret === null) {
                 continue;
             }
 
-            $value = round($pret * (1 + ($tva / 100)), 2);
-            $sagaMap[$this->normalizeSagaName($name)] = $value;
+            $sagaMap[$this->normalizeSagaName($name)] = [
+                'pret' => $pret,
+                'tva' => $tva,
+            ];
         }
-        fclose($handle);
 
         if (empty($sagaMap)) {
             Session::flash('error', 'Nu am gasit linii valide in CSV.');
@@ -821,7 +820,7 @@ class InvoiceController
         }
 
         $packages = Database::fetchAll(
-            'SELECT p.id, p.label
+            'SELECT p.id, p.label, p.vat_percent
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              WHERE i.packages_confirmed = 1'
@@ -844,11 +843,19 @@ class InvoiceController
             if (!array_key_exists($key, $sagaMap)) {
                 continue;
             }
-            Package::updateSagaValue((int) $package['id'], $sagaMap[$key]);
+            $entry = $sagaMap[$key];
+            $pret = (float) ($entry['pret'] ?? 0);
+            $tva = $entry['tva'];
+            if ($tva === null) {
+                $tva = (float) ($package['vat_percent'] ?? 0);
+            }
+            $value = round($pret * (1 + ($tva / 100)), 2);
+            Package::updateSagaValue((int) $package['id'], $value);
             $matched++;
         }
 
-        Session::flash('status', 'CSV procesat. Pachete actualizate: ' . $matched . '.');
+        $note = $columns['tva'] === null ? ' TVA preluat din pachet.' : '';
+        Session::flash('status', 'CSV procesat. Pachete actualizate: ' . $matched . '.' . $note);
         Response::redirect('/admin/pachete-confirmate');
     }
 
@@ -4117,7 +4124,7 @@ class InvoiceController
 
         foreach ($header as $index => $value) {
             $key = $this->normalizeSagaHeader((string) $value);
-            if ($key === 'denumire') {
+            if (str_contains($key, 'denumire')) {
                 $columns['denumire'] = $index;
                 continue;
             }
@@ -4137,7 +4144,11 @@ class InvoiceController
     {
         $value = trim($value);
         $value = preg_replace('/\x{FEFF}/u', '', $value);
-        $value = strtolower($value);
+        if (function_exists('mb_strtolower')) {
+            $value = mb_strtolower($value, 'UTF-8');
+        } else {
+            $value = strtolower($value);
+        }
         $value = str_replace([' ', '-'], '_', $value);
         return $value;
     }
@@ -4165,6 +4176,142 @@ class InvoiceController
             return null;
         }
         return (float) $raw;
+    }
+
+    private function readSagaRows(string $path): array
+    {
+        $signature = @file_get_contents($path, false, null, 0, 4);
+        if ($signature !== false && str_starts_with($signature, 'PK')) {
+            $rows = $this->readSagaRowsFromXlsx($path);
+            if (!empty($rows)) {
+                return $rows;
+            }
+        }
+
+        return $this->readSagaRowsFromCsv($path);
+    }
+
+    private function readSagaRowsFromCsv(string $path): array
+    {
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return [];
+        }
+
+        $headerLine = fgets($handle);
+        if ($headerLine === false) {
+            fclose($handle);
+            return [];
+        }
+
+        $delimiter = $this->detectCsvDelimiter($headerLine);
+        $rows = [str_getcsv($headerLine, $delimiter)];
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        return $rows;
+    }
+
+    private function readSagaRowsFromXlsx(string $path): array
+    {
+        if (!class_exists(\ZipArchive::class)) {
+            return [];
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            return [];
+        }
+
+        $sharedStrings = [];
+        $sharedXml = $zip->getFromName('xl/sharedStrings.xml');
+        if ($sharedXml !== false) {
+            $shared = simplexml_load_string($sharedXml);
+            if ($shared) {
+                $shared->registerXPathNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+                foreach ($shared->xpath('//a:si') as $node) {
+                    $texts = $node->xpath('.//a:t');
+                    $text = '';
+                    foreach ($texts as $textNode) {
+                        $text .= (string) $textNode;
+                    }
+                    $sharedStrings[] = $text;
+                }
+            }
+        }
+
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        if ($sheetXml === false) {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $stat = $zip->statIndex($i);
+                $name = $stat['name'] ?? '';
+                if (str_starts_with($name, 'xl/worksheets/sheet') && str_ends_with($name, '.xml')) {
+                    $sheetXml = $zip->getFromIndex($i);
+                    break;
+                }
+            }
+        }
+        $zip->close();
+
+        if ($sheetXml === false) {
+            return [];
+        }
+
+        $sheet = simplexml_load_string($sheetXml);
+        if (!$sheet) {
+            return [];
+        }
+        $sheet->registerXPathNamespace('a', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+
+        $rows = [];
+        foreach ($sheet->xpath('//a:sheetData/a:row') as $rowNode) {
+            $rowData = [];
+            $cells = $rowNode->xpath('a:c');
+            foreach ($cells as $cell) {
+                $ref = (string) ($cell['r'] ?? '');
+                if ($ref === '') {
+                    continue;
+                }
+                $colIndex = $this->columnIndexFromCell($ref);
+                $type = (string) ($cell['t'] ?? '');
+                $value = '';
+                if ($type === 's') {
+                    $v = (string) ($cell->v ?? '');
+                    $value = $sharedStrings[(int) $v] ?? '';
+                } elseif ($type === 'inlineStr') {
+                    $texts = $cell->xpath('a:is/a:t');
+                    foreach ($texts as $textNode) {
+                        $value .= (string) $textNode;
+                    }
+                } else {
+                    $value = (string) ($cell->v ?? '');
+                }
+                $rowData[$colIndex] = $value;
+            }
+            if (empty($rowData)) {
+                continue;
+            }
+            $maxIndex = max(array_keys($rowData));
+            $filled = [];
+            for ($i = 0; $i <= $maxIndex; $i++) {
+                $filled[] = $rowData[$i] ?? '';
+            }
+            $rows[] = $filled;
+        }
+
+        return $rows;
+    }
+
+    private function columnIndexFromCell(string $cellRef): int
+    {
+        $letters = preg_replace('/[^A-Z]/', '', strtoupper($cellRef));
+        $index = 0;
+        for ($i = 0, $len = strlen($letters); $i < $len; $i++) {
+            $index = $index * 26 + (ord($letters[$i]) - 64);
+        }
+        return max(0, $index - 1);
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.11
+
+- Accepta CSV fara coloana TVA (foloseste TVA pachet).
+
 ## v1.0.10
 
 - Fix afisare formular import CSV SAGA pentru contabil/super admin.
