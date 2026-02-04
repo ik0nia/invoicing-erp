@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.10
+
+- Fix afisare formular import CSV SAGA pentru contabil/super admin.
+
 ## v1.0.9
 
 - Import CSV SAGA pentru pachete confirmate cu comparare valori.
