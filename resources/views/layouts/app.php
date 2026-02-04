@@ -103,26 +103,30 @@ if ($isPlatformUser) {
         ],
     ];
 
-    $menuSections['Setari'] = [
-        [
+    $settingsItems = [];
+    if ($isSuperAdmin) {
+        $settingsItems[] = [
             'label' => 'Setari',
             'path' => '/admin/setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
-        ],
-        [
-            'label' => 'Manual',
-            'path' => '/admin/manual',
-            'active' => str_starts_with($currentPath, '/admin/manual'),
-        ],
-        [
-            'label' => 'Changelog',
-            'path' => '/admin/changelog',
-            'active' => str_starts_with($currentPath, '/admin/changelog'),
-        ],
+        ];
+    }
+    $settingsItems[] = [
+        'label' => 'Manual',
+        'path' => '/admin/manual',
+        'active' => str_starts_with($currentPath, '/admin/manual'),
     ];
+    $settingsItems[] = [
+        'label' => 'Changelog',
+        'path' => '/admin/changelog',
+        'active' => str_starts_with($currentPath, '/admin/changelog'),
+    ];
+    if (!empty($settingsItems)) {
+        $menuSections['Setari'] = $settingsItems;
+    }
 }
 
-if ($isSuperAdmin) {
+if ($isPlatformUser) {
     $menuSections['Administrare'] = [
         [
             'label' => 'Utilizatori',

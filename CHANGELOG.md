@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.7
+
+- Acces Setari doar pentru super admin.
+- Meniu Utilizatori vizibil pentru admin/contabil/operator.
+
 ## v1.0.6
 
 - Management utilizatori cu roluri limitate si acces personalizat.
