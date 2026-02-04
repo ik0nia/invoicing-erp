@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.4
+
+- Autoselect furnizor in factura manuala cand exista unul singur.
+
 ## v1.0.3
 
 - Blocare redenumire pachete dupa confirmare.
