@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.15
+
+- Debug comparare CSV SAGA in pachete confirmate.
+
 ## v1.0.14
 
 - Matching SAGA pe denumire completa + #numar pachet (uppercase).
