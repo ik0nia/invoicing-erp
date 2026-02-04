@@ -38,6 +38,7 @@ $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
+$router->post('/admin/facturi/split-linie', [InvoiceController::class, 'splitLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
 $router->post('/admin/facturi/incarca-fisier', [InvoiceController::class, 'uploadSupplierFile']);
 $router->post('/admin/facturi/deblocheaza-client', [InvoiceController::class, 'unlockClient']);

@@ -1988,6 +1988,128 @@ class InvoiceController
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
+    public function splitLine(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        $lineId = isset($_POST['line_id']) ? (int) $_POST['line_id'] : 0;
+        $splitQty = $this->parseNumber($_POST['split_qty'] ?? null);
+
+        if (!$invoiceId || !$lineId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        if ($this->isInvoiceConfirmed($invoiceId)) {
+            Session::flash('error', 'Pachetele sunt confirmate si nu pot fi modificate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $line = InvoiceInLine::find($lineId);
+        if (!$line || $line->invoice_in_id !== $invoiceId) {
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $currentQty = (float) $line->quantity;
+        if ($currentQty <= 1.0) {
+            Session::flash('error', 'Linia selectata nu poate fi separata.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if ($splitQty === null || $splitQty <= 0) {
+            Session::flash('error', 'Cantitatea de separat este invalida.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if ($splitQty >= $currentQty) {
+            Session::flash('error', 'Cantitatea de separat trebuie sa fie mai mica decat cantitatea initiala.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $splitQty = round($splitQty, 3);
+        $remainingQty = round($currentQty - $splitQty, 3);
+        if ($remainingQty <= 0) {
+            Session::flash('error', 'Cantitatea ramasa este invalida.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $unitPrice = (float) $line->unit_price;
+        $taxPercent = (float) $line->tax_percent;
+
+        $remainingTotal = round($remainingQty * $unitPrice, 2);
+        $remainingTotalVat = round($remainingTotal * (1 + $taxPercent / 100), 2);
+
+        $splitTotal = round($splitQty * $unitPrice, 2);
+        $splitTotalVat = round($splitTotal * (1 + $taxPercent / 100), 2);
+
+        Database::execute(
+            'UPDATE invoice_in_lines
+             SET quantity = :qty, line_total = :total, line_total_vat = :total_vat
+             WHERE id = :id',
+            [
+                'qty' => $remainingQty,
+                'total' => $remainingTotal,
+                'total_vat' => $remainingTotalVat,
+                'id' => $line->id,
+            ]
+        );
+
+        $newLineNo = trim((string) $line->line_no);
+        if ($newLineNo === '') {
+            $newLineNo = 'split';
+        } else {
+            $newLineNo .= 'S';
+        }
+        if (strlen($newLineNo) > 32) {
+            $newLineNo = substr($newLineNo, 0, 32);
+        }
+
+        Database::execute(
+            'INSERT INTO invoice_in_lines (
+                invoice_in_id,
+                line_no,
+                product_name,
+                quantity,
+                unit_code,
+                unit_price,
+                line_total,
+                tax_percent,
+                line_total_vat,
+                package_id,
+                created_at
+            ) VALUES (
+                :invoice_in_id,
+                :line_no,
+                :product_name,
+                :quantity,
+                :unit_code,
+                :unit_price,
+                :line_total,
+                :tax_percent,
+                :line_total_vat,
+                :package_id,
+                :created_at
+            )',
+            [
+                'invoice_in_id' => $invoiceId,
+                'line_no' => $newLineNo,
+                'product_name' => $line->product_name,
+                'quantity' => $splitQty,
+                'unit_code' => $line->unit_code,
+                'unit_price' => $unitPrice,
+                'line_total' => $splitTotal,
+                'tax_percent' => $taxPercent,
+                'line_total_vat' => $splitTotalVat,
+                'package_id' => $line->package_id,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+
+        Session::flash('status', 'Linia a fost separata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
     private function storeXml(string $tmpPath, string $invoiceNumber): ?string
     {
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $invoiceNumber ?: 'factura');
