@@ -200,43 +200,75 @@
                 </button>
             </div>
         </div>
-        <div class="min-w-[200px]">
+        <div class="relative min-w-[220px]" data-status-dropdown>
             <span class="block text-sm font-medium text-slate-700">Incasare client</span>
-            <div class="mt-2 space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-                <?php foreach ($clientStatusOptions as $option): ?>
-                    <label class="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                            type="checkbox"
-                            name="client_status[]"
-                            value="<?= htmlspecialchars($option) ?>"
-                            class="h-4 w-4 rounded border-slate-300 text-blue-600"
-                            data-status-filter="client"
-                            <?= in_array($option, $clientStatusFilter, true) ? 'checked' : '' ?>
-                        >
-                        <span><?= htmlspecialchars($option) ?></span>
-                    </label>
-                <?php endforeach; ?>
+            <button
+                type="button"
+                class="mt-1 flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:border-slate-400"
+                data-dropdown-toggle
+            >
+                <span class="truncate" data-dropdown-label>Toate</span>
+                <svg class="h-4 w-4 text-slate-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M5 7l5 6 5-6" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </button>
+            <div
+                class="absolute z-20 mt-2 hidden w-full rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
+                data-dropdown-panel
+            >
+                <div class="space-y-1">
+                    <?php foreach ($clientStatusOptions as $option): ?>
+                        <label class="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="client_status[]"
+                                value="<?= htmlspecialchars($option) ?>"
+                                data-label="<?= htmlspecialchars($option) ?>"
+                                class="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                data-status-filter="client"
+                                <?= in_array($option, $clientStatusFilter, true) ? 'checked' : '' ?>
+                            >
+                            <span><?= htmlspecialchars($option) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <p class="mt-2 text-[11px] text-slate-400">Nicio selectie = toate</p>
             </div>
-            <p class="mt-1 text-[11px] text-slate-400">Nicio selectie = toate</p>
         </div>
-        <div class="min-w-[200px]">
+        <div class="relative min-w-[220px]" data-status-dropdown>
             <span class="block text-sm font-medium text-slate-700">Plata furnizor</span>
-            <div class="mt-2 space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-                <?php foreach ($supplierStatusOptions as $option): ?>
-                    <label class="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                            type="checkbox"
-                            name="supplier_status[]"
-                            value="<?= htmlspecialchars($option) ?>"
-                            class="h-4 w-4 rounded border-slate-300 text-blue-600"
-                            data-status-filter="supplier"
-                            <?= in_array($option, $supplierStatusFilter, true) ? 'checked' : '' ?>
-                        >
-                        <span><?= htmlspecialchars($option) ?></span>
-                    </label>
-                <?php endforeach; ?>
+            <button
+                type="button"
+                class="mt-1 flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:border-slate-400"
+                data-dropdown-toggle
+            >
+                <span class="truncate" data-dropdown-label>Toate</span>
+                <svg class="h-4 w-4 text-slate-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M5 7l5 6 5-6" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+            </button>
+            <div
+                class="absolute z-20 mt-2 hidden w-full rounded-lg border border-slate-200 bg-white p-3 shadow-xl"
+                data-dropdown-panel
+            >
+                <div class="space-y-1">
+                    <?php foreach ($supplierStatusOptions as $option): ?>
+                        <label class="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="supplier_status[]"
+                                value="<?= htmlspecialchars($option) ?>"
+                                data-label="<?= htmlspecialchars($option) ?>"
+                                class="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                data-status-filter="supplier"
+                                <?= in_array($option, $supplierStatusFilter, true) ? 'checked' : '' ?>
+                            >
+                            <span><?= htmlspecialchars($option) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <p class="mt-2 text-[11px] text-slate-400">Nicio selectie = toate</p>
             </div>
-            <p class="mt-1 text-[11px] text-slate-400">Nicio selectie = toate</p>
         </div>
         <div class="ml-auto flex flex-wrap items-center gap-2">
             <div class="flex flex-col items-start">
@@ -630,6 +662,57 @@
             });
         };
 
+        const initStatusDropdowns = () => {
+            const dropdowns = Array.from(document.querySelectorAll('[data-status-dropdown]'));
+            if (!dropdowns.length) {
+                return;
+            }
+
+            dropdowns.forEach((root) => {
+                const toggle = root.querySelector('[data-dropdown-toggle]');
+                const panel = root.querySelector('[data-dropdown-panel]');
+                const label = root.querySelector('[data-dropdown-label]');
+                const checkboxes = Array.from(root.querySelectorAll('input[type="checkbox"]'));
+
+                if (!toggle || !panel || !label) {
+                    return;
+                }
+
+                const updateLabel = () => {
+                    const selected = checkboxes
+                        .filter((input) => input.checked)
+                        .map((input) => input.getAttribute('data-label') || input.value);
+
+                    if (!selected.length) {
+                        label.textContent = 'Toate';
+                        return;
+                    }
+                    if (selected.length === 1) {
+                        label.textContent = selected[0];
+                        return;
+                    }
+                    label.textContent = `${selected.length} selectate`;
+                };
+
+                updateLabel();
+
+                toggle.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    panel.classList.toggle('hidden');
+                });
+
+                checkboxes.forEach((input) => {
+                    input.addEventListener('change', updateLabel);
+                });
+
+                document.addEventListener('click', (event) => {
+                    if (!root.contains(event.target)) {
+                        panel.classList.add('hidden');
+                    }
+                });
+            });
+        };
+
         const wireRowClicks = () => {
             const rows = Array.from(document.querySelectorAll('.invoice-row'));
             rows.forEach((row) => {
@@ -749,5 +832,6 @@
 
         wireRowClicks();
         initAjaxSelects();
+        initStatusDropdowns();
     })();
 </script>
