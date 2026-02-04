@@ -802,6 +802,63 @@
     </div>
 <?php endif; ?>
 
+<div id="split-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+    <div id="split-overlay" class="absolute inset-0 bg-slate-900/50"></div>
+    <div class="relative z-10 w-full max-w-md rounded-lg bg-white p-4 shadow-lg">
+        <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-900">Separare produs</div>
+            <button
+                type="button"
+                id="split-close"
+                class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+                Inchide
+            </button>
+        </div>
+        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/split-linie') ?>" class="mt-4 space-y-3">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+            <input type="hidden" name="line_id" id="split-line-id" value="">
+
+            <div class="text-xs text-slate-600">
+                Produs: <strong id="split-line-name"></strong>
+            </div>
+            <div class="text-xs text-slate-600">
+                Cantitate curenta: <strong id="split-line-qty"></strong>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-600" for="split-qty">Cantitate separata</label>
+                <input
+                    id="split-qty"
+                    name="split_qty"
+                    type="number"
+                    step="0.001"
+                    min="0.001"
+                    class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    required
+                >
+                <div class="mt-1 text-xs text-slate-500">
+                    Ramane: <span id="split-remaining"></span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button
+                    type="button"
+                    class="rounded border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    onclick="document.getElementById('split-close').click()"
+                >
+                    Renunta
+                </button>
+                <button class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                    Split
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
     (function () {
         const searchInput = document.getElementById('client-search');
@@ -1086,60 +1143,3 @@
         });
     })();
 </script>
-
-<div id="split-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
-    <div id="split-overlay" class="absolute inset-0 bg-slate-900/50"></div>
-    <div class="relative z-10 w-full max-w-md rounded-lg bg-white p-4 shadow-lg">
-        <div class="flex items-center justify-between">
-            <div class="text-sm font-semibold text-slate-900">Separare produs</div>
-            <button
-                type="button"
-                id="split-close"
-                class="rounded border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
-                Inchide
-            </button>
-        </div>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/split-linie') ?>" class="mt-4 space-y-3">
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <input type="hidden" name="line_id" id="split-line-id" value="">
-
-            <div class="text-xs text-slate-600">
-                Produs: <strong id="split-line-name"></strong>
-            </div>
-            <div class="text-xs text-slate-600">
-                Cantitate curenta: <strong id="split-line-qty"></strong>
-            </div>
-
-            <div>
-                <label class="block text-xs font-semibold text-slate-600" for="split-qty">Cantitate separata</label>
-                <input
-                    id="split-qty"
-                    name="split_qty"
-                    type="number"
-                    step="0.001"
-                    min="0.001"
-                    class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    required
-                >
-                <div class="mt-1 text-xs text-slate-500">
-                    Ramane: <span id="split-remaining"></span>
-                </div>
-            </div>
-
-            <div class="flex justify-end gap-2">
-                <button
-                    type="button"
-                    class="rounded border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                    onclick="document.getElementById('split-close').click()"
-                >
-                    Renunta
-                </button>
-                <button class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
-                    Split
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
