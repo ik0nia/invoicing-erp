@@ -16,6 +16,54 @@
     </div>
 <?php endif; ?>
 
+<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/comision-default') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <?= App\Support\Csrf::input() ?>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <div class="text-sm font-semibold text-slate-700">Comision default furnizor</div>
+            <p class="mt-1 text-xs text-slate-500">Seteaza procentul care se completeaza automat la asocieri.</p>
+        </div>
+        <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+            Salveaza comision
+        </button>
+    </div>
+
+    <div class="mt-4 grid gap-4 md:grid-cols-3">
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="default_supplier_select">Furnizor</label>
+            <select
+                id="default_supplier_select"
+                name="supplier_cui"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+                <option value="">Alege furnizor</option>
+                <?php foreach ($partners as $partner): ?>
+                    <option
+                        value="<?= htmlspecialchars($partner->cui) ?>"
+                        data-default-commission="<?= htmlspecialchars(number_format((float) ($partner->default_commission ?? 0), 2, '.', '')) ?>"
+                    >
+                        <?= htmlspecialchars($partner->denumire) ?> (<?= htmlspecialchars($partner->cui) ?>)
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="default_commission">Comision default (%)</label>
+            <input
+                id="default_commission"
+                name="default_commission"
+                type="number"
+                step="0.01"
+                value=""
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+        </div>
+    </div>
+</form>
+
 <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/salveaza') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <?= App\Support\Csrf::input() ?>
 
@@ -25,7 +73,10 @@
             <select id="supplier_cui" name="supplier_cui" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm" required>
                 <option value="">Alege furnizor</option>
                 <?php foreach ($partners as $partner): ?>
-                    <option value="<?= htmlspecialchars($partner->cui) ?>">
+                    <option
+                        value="<?= htmlspecialchars($partner->cui) ?>"
+                        data-default-commission="<?= htmlspecialchars(number_format((float) ($partner->default_commission ?? 0), 2, '.', '')) ?>"
+                    >
                         <?= htmlspecialchars($partner->denumire) ?> (<?= htmlspecialchars($partner->cui) ?>)
                     </option>
                 <?php endforeach; ?>
@@ -109,3 +160,47 @@
         </tbody>
     </table>
 </div>
+
+<script>
+    (function () {
+        const supplierSelect = document.getElementById('supplier_cui');
+        const commissionInput = document.getElementById('commission');
+        const defaultSupplierSelect = document.getElementById('default_supplier_select');
+        const defaultCommissionInput = document.getElementById('default_commission');
+
+        const readDefaultCommission = (select) => {
+            if (!select) {
+                return '';
+            }
+            const option = select.selectedOptions[0];
+            return option ? (option.dataset.defaultCommission || '') : '';
+        };
+
+        const updateDefaultForm = () => {
+            if (!defaultSupplierSelect || !defaultCommissionInput) {
+                return;
+            }
+            const value = readDefaultCommission(defaultSupplierSelect);
+            defaultCommissionInput.value = value;
+        };
+
+        const updateAssociationCommission = () => {
+            if (!supplierSelect || !commissionInput) {
+                return;
+            }
+            const value = readDefaultCommission(supplierSelect);
+            if (value !== '') {
+                commissionInput.value = value;
+            }
+        };
+
+        if (defaultSupplierSelect) {
+            defaultSupplierSelect.addEventListener('change', updateDefaultForm);
+            updateDefaultForm();
+        }
+
+        if (supplierSelect && commissionInput) {
+            supplierSelect.addEventListener('change', updateAssociationCommission);
+        }
+    })();
+</script>

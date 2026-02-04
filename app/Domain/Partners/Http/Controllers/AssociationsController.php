@@ -29,13 +29,36 @@ class AssociationsController
         ]);
     }
 
+    public function saveDefaultCommission(): void
+    {
+        Auth::requireAdmin();
+
+        $supplier = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
+        $commissionInput = str_replace(',', '.', (string) ($_POST['default_commission'] ?? ''));
+
+        if ($supplier === '') {
+            Session::flash('error', 'Selecteaza furnizorul.');
+            Response::redirect('/admin/asocieri');
+        }
+
+        if ($commissionInput === '' || !is_numeric($commissionInput)) {
+            Session::flash('error', 'Comision default invalid.');
+            Response::redirect('/admin/asocieri');
+        }
+
+        Partner::updateDefaultCommission($supplier, (float) $commissionInput);
+
+        Session::flash('status', 'Comisionul default a fost salvat.');
+        Response::redirect('/admin/asocieri');
+    }
+
     public function save(): void
     {
         Auth::requireAdmin();
 
         $supplier = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $client = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
-        $commission = str_replace(',', '.', (string) ($_POST['commission'] ?? '0'));
+        $commissionInput = str_replace(',', '.', (string) ($_POST['commission'] ?? ''));
 
         if ($supplier === '' || $client === '') {
             Session::flash('error', 'Selecteaza furnizorul si clientul.');
@@ -47,12 +70,16 @@ class AssociationsController
             Response::redirect('/admin/asocieri');
         }
 
-        if (!is_numeric($commission)) {
+        if ($commissionInput === '') {
+            $commission = Partner::defaultCommissionFor($supplier);
+        } elseif (!is_numeric($commissionInput)) {
             Session::flash('error', 'Comision invalid.');
             Response::redirect('/admin/asocieri');
+        } else {
+            $commission = (float) $commissionInput;
         }
 
-        Commission::createOrUpdate($supplier, $client, (float) $commission);
+        Commission::createOrUpdate($supplier, $client, $commission);
 
         Session::flash('status', 'Asocierea a fost salvata.');
         Response::redirect('/admin/asocieri');

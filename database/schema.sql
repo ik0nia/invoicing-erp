@@ -67,6 +67,7 @@ CREATE TABLE partners (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     cui VARCHAR(32) NOT NULL UNIQUE,
     denumire VARCHAR(255) NOT NULL,
+    default_commission DECIMAL(6,2) NOT NULL DEFAULT 0,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
