@@ -3620,8 +3620,14 @@ class InvoiceController
         } else {
             $clientCui = preg_replace('/\D+/', '', $clientRaw);
         }
-        $clientStatus = trim((string) ($_GET['client_status'] ?? ''));
-        $supplierStatus = trim((string) ($_GET['supplier_status'] ?? ''));
+        $clientStatus = $this->normalizeStatusFilters(
+            $_GET['client_status'] ?? [],
+            $this->clientStatusOptions()
+        );
+        $supplierStatus = $this->normalizeStatusFilters(
+            $_GET['supplier_status'] ?? [],
+            $this->supplierStatusOptions()
+        );
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
         $perPage = (int) ($_GET['per_page'] ?? 25);
@@ -3694,23 +3700,54 @@ class InvoiceController
             });
         }
 
-        if ($filters['client_status'] !== '') {
-            $clientStatus = $filters['client_status'];
-            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $clientStatus): bool {
+        $clientStatuses = $filters['client_status'] ?? [];
+        if (!is_array($clientStatuses)) {
+            $clientStatuses = $clientStatuses !== '' ? [(string) $clientStatuses] : [];
+        }
+        if (!empty($clientStatuses)) {
+            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $clientStatuses): bool {
                 $status = $invoiceStatuses[$invoice->id] ?? null;
-                return $status && $status['client_label'] === $clientStatus;
+                return $status && in_array($status['client_label'], $clientStatuses, true);
             });
         }
 
-        if ($filters['supplier_status'] !== '') {
-            $supplierStatus = $filters['supplier_status'];
-            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $supplierStatus): bool {
+        $supplierStatuses = $filters['supplier_status'] ?? [];
+        if (!is_array($supplierStatuses)) {
+            $supplierStatuses = $supplierStatuses !== '' ? [(string) $supplierStatuses] : [];
+        }
+        if (!empty($supplierStatuses)) {
+            $filtered = array_filter($filtered, static function (InvoiceIn $invoice) use ($invoiceStatuses, $supplierStatuses): bool {
                 $status = $invoiceStatuses[$invoice->id] ?? null;
-                return $status && $status['supplier_label'] === $supplierStatus;
+                return $status && in_array($status['supplier_label'], $supplierStatuses, true);
             });
         }
 
         return array_values($filtered);
+    }
+
+    private function normalizeStatusFilters($raw, array $allowedOptions): array
+    {
+        if (is_string($raw)) {
+            $raw = trim($raw);
+            $values = $raw === '' ? [] : [$raw];
+        } elseif (is_array($raw)) {
+            $values = $raw;
+        } else {
+            return [];
+        }
+
+        $values = array_map(static fn ($value) => trim((string) $value), $values);
+        $values = array_values(array_filter($values, static fn ($value) => $value !== ''));
+        $values = array_values(array_unique($values));
+
+        if (empty($allowedOptions)) {
+            return $values;
+        }
+
+        $allowed = array_flip($allowedOptions);
+        $values = array_values(array_filter($values, static fn ($value) => isset($allowed[$value])));
+
+        return $values;
     }
 
     private function parseDateFilter(?string $value, bool $endOfDay = false): ?int

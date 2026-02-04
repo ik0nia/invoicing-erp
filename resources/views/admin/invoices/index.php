@@ -5,8 +5,8 @@
         'query' => '',
         'supplier_cui' => '',
         'client_cui' => '',
-        'client_status' => '',
-        'supplier_status' => '',
+        'client_status' => [],
+        'supplier_status' => [],
         'per_page' => 25,
         'page' => 1,
     ];
@@ -23,17 +23,31 @@
     $hasEmptyClients = $hasEmptyClients ?? false;
     $clientStatusOptions = $clientStatusOptions ?? [];
     $supplierStatusOptions = $supplierStatusOptions ?? [];
+    $normalizeStatusFilter = static function ($value): array {
+        if (!is_array($value)) {
+            $value = $value !== '' && $value !== null ? [(string) $value] : [];
+        }
+        $value = array_values(array_filter($value, static fn ($item) => $item !== '' && $item !== null));
+        return $value;
+    };
+    $clientStatusFilter = $normalizeStatusFilter($filters['client_status'] ?? []);
+    $supplierStatusFilter = $normalizeStatusFilter($filters['supplier_status'] ?? []);
 
     $filterParams = [
         'q' => $filters['query'] ?? '',
         'supplier_cui' => $filters['supplier_cui'] ?? '',
         'client_cui' => $filters['client_cui'] ?? '',
-        'client_status' => $filters['client_status'] ?? '',
-        'supplier_status' => $filters['supplier_status'] ?? '',
+        'client_status' => $clientStatusFilter,
+        'supplier_status' => $supplierStatusFilter,
         'date_from' => $filters['date_from'] ?? '',
         'date_to' => $filters['date_to'] ?? '',
     ];
-    $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
+    $filterParams = array_filter($filterParams, static function ($value) {
+        if (is_array($value)) {
+            return count($value) > 0;
+        }
+        return $value !== '' && $value !== null;
+    });
     $exportUrl = App\Support\Url::to('admin/facturi/export');
     $printUrl = App\Support\Url::to('admin/facturi/print-situatie');
     if (!empty($filterParams)) {
@@ -186,41 +200,43 @@
                 </button>
             </div>
         </div>
-        <div class="min-w-[180px]">
-            <label class="block text-sm font-medium text-slate-700" for="filter-client-status">Incasare client</label>
-            <select
-                id="filter-client-status"
-                name="client_status"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-                <option value="">Toate</option>
+        <div class="min-w-[200px]">
+            <span class="block text-sm font-medium text-slate-700">Incasare client</span>
+            <div class="mt-2 space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2">
                 <?php foreach ($clientStatusOptions as $option): ?>
-                    <option
-                        value="<?= htmlspecialchars($option) ?>"
-                        <?= (string) ($filters['client_status'] ?? '') === (string) $option ? 'selected' : '' ?>
-                    >
-                        <?= htmlspecialchars($option) ?>
-                    </option>
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            name="client_status[]"
+                            value="<?= htmlspecialchars($option) ?>"
+                            class="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            data-status-filter="client"
+                            <?= in_array($option, $clientStatusFilter, true) ? 'checked' : '' ?>
+                        >
+                        <span><?= htmlspecialchars($option) ?></span>
+                    </label>
                 <?php endforeach; ?>
-            </select>
+            </div>
+            <p class="mt-1 text-[11px] text-slate-400">Nicio selectie = toate</p>
         </div>
-        <div class="min-w-[180px]">
-            <label class="block text-sm font-medium text-slate-700" for="filter-supplier-status">Plata furnizor</label>
-            <select
-                id="filter-supplier-status"
-                name="supplier_status"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-                <option value="">Toate</option>
+        <div class="min-w-[200px]">
+            <span class="block text-sm font-medium text-slate-700">Plata furnizor</span>
+            <div class="mt-2 space-y-1 rounded border border-slate-200 bg-slate-50 px-3 py-2">
                 <?php foreach ($supplierStatusOptions as $option): ?>
-                    <option
-                        value="<?= htmlspecialchars($option) ?>"
-                        <?= (string) ($filters['supplier_status'] ?? '') === (string) $option ? 'selected' : '' ?>
-                    >
-                        <?= htmlspecialchars($option) ?>
-                    </option>
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            name="supplier_status[]"
+                            value="<?= htmlspecialchars($option) ?>"
+                            class="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            data-status-filter="supplier"
+                            <?= in_array($option, $supplierStatusFilter, true) ? 'checked' : '' ?>
+                        >
+                        <span><?= htmlspecialchars($option) ?></span>
+                    </label>
                 <?php endforeach; ?>
-            </select>
+            </div>
+            <p class="mt-1 text-[11px] text-slate-400">Nicio selectie = toate</p>
         </div>
         <div class="ml-auto flex flex-wrap items-center gap-2">
             <div class="flex flex-col items-start">
@@ -492,14 +508,18 @@
                     if (clientValue) {
                         fetchUrl.searchParams.set('client_cui', clientValue);
                     }
-                    const clientStatus = form.querySelector('#filter-client-status')?.value ?? '';
-                    if (clientStatus) {
-                        fetchUrl.searchParams.set('client_status', clientStatus);
-                    }
-                    const supplierStatus = form.querySelector('#filter-supplier-status')?.value ?? '';
-                    if (supplierStatus) {
-                        fetchUrl.searchParams.set('supplier_status', supplierStatus);
-                    }
+                    const clientStatusValues = Array.from(
+                        form.querySelectorAll('input[name="client_status[]"]:checked')
+                    ).map((input) => input.value);
+                    clientStatusValues.forEach((value) => {
+                        fetchUrl.searchParams.append('client_status[]', value);
+                    });
+                    const supplierStatusValues = Array.from(
+                        form.querySelectorAll('input[name="supplier_status[]"]:checked')
+                    ).map((input) => input.value);
+                    supplierStatusValues.forEach((value) => {
+                        fetchUrl.searchParams.append('supplier_status[]', value);
+                    });
                     const dateFrom = form.querySelector('#filter-date-from')?.value ?? '';
                     if (dateFrom) {
                         fetchUrl.searchParams.set('date_from', dateFrom);
@@ -660,9 +680,13 @@
                 });
             }
 
-            const selectInputs = form.querySelectorAll('#filter-client-status, #filter-supplier-status, #filter-per-page');
+            const selectInputs = form.querySelectorAll('#filter-per-page');
             selectInputs.forEach((select) => {
                 select.addEventListener('change', () => submitForm());
+            });
+            const statusInputs = form.querySelectorAll('input[name="client_status[]"], input[name="supplier_status[]"]');
+            statusInputs.forEach((input) => {
+                input.addEventListener('change', () => submitForm());
             });
 
             const dateInputs = form.querySelectorAll('#filter-date-from, #filter-date-to');
