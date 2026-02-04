@@ -641,6 +641,16 @@ class SettingsController
         ]);
     }
 
+    public function changelog(): void
+    {
+        Auth::requireAdmin();
+
+        Response::view('admin/changelog', [
+            'version' => self::APP_VERSION,
+            'releases' => $this->readChangelog(),
+        ]);
+    }
+
     private function readChangelog(): array
     {
         $path = BASE_PATH . '/CHANGELOG.md';

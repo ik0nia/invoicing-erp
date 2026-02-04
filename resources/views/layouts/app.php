@@ -99,6 +99,11 @@ if ($isPlatformUser) {
             'path' => '/admin/manual',
             'active' => str_starts_with($currentPath, '/admin/manual'),
         ],
+        [
+            'label' => 'Changelog',
+            'path' => '/admin/changelog',
+            'active' => str_starts_with($currentPath, '/admin/changelog'),
+        ],
     ];
 }
 

@@ -1,5 +1,5 @@
 <?php
-    $title = 'Manual';
+    $title = 'Changelog';
     $version = $version ?? '';
     $releases = $releases ?? [];
 ?>
@@ -7,17 +7,17 @@
 <div class="mx-auto w-full max-w-5xl">
     <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-semibold text-slate-900">Manual</h1>
+            <h1 class="text-2xl font-semibold text-slate-900">Changelog</h1>
             <p class="mt-1 text-sm text-slate-600">
-                Istoric versiuni si schimbari pe aplicatie.
+                Istoric complet de versiuni si schimbari.
             </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <a
-                href="<?= App\Support\Url::to('admin/changelog') ?>"
+                href="<?= App\Support\Url::to('admin/manual') ?>"
                 class="rounded border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
-                Changelog
+                Manual
             </a>
             <?php if ($version !== ''): ?>
                 <div class="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
