@@ -1,4 +1,8 @@
-<?php $title = 'Istoric plati'; ?>
+<?php
+    $title = 'Istoric plati';
+    $canManagePayments = $canManagePayments ?? false;
+    $backUrl = $canManagePayments ? App\Support\Url::to('admin/plati') : App\Support\Url::to('admin/dashboard');
+?>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
@@ -6,7 +10,7 @@
         <p class="mt-1 text-sm text-slate-500">Filtreaza platile dupa data si furnizor.</p>
     </div>
     <a
-        href="<?= App\Support\Url::to('admin/plati') ?>"
+        href="<?= htmlspecialchars($backUrl) ?>"
         class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
     >
         Inapoi
@@ -63,17 +67,19 @@
 </form>
 
 <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
-    <form method="POST" action="<?= App\Support\Url::to('admin/plati/ordine-plata') ?>" id="payment-order-form">
-        <?= App\Support\Csrf::input() ?>
-        <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom ?? '') ?>">
-        <input type="hidden" name="date_to" value="<?= htmlspecialchars($dateTo ?? '') ?>">
-        <button
-            type="submit"
-            class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-        >
-            Genereaza OP CSV
-        </button>
-    </form>
+    <?php if ($canManagePayments): ?>
+        <form method="POST" action="<?= App\Support\Url::to('admin/plati/ordine-plata') ?>" id="payment-order-form">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="date_from" value="<?= htmlspecialchars($dateFrom ?? '') ?>">
+            <input type="hidden" name="date_to" value="<?= htmlspecialchars($dateTo ?? '') ?>">
+            <button
+                type="submit"
+                class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+                Genereaza OP CSV
+            </button>
+        </form>
+    <?php endif; ?>
     <a
         href="<?= App\Support\Url::to('admin/plati/export?' . http_build_query(['supplier_cui' => $supplierCui, 'date_from' => $dateFrom, 'date_to' => $dateTo])) ?>"
         class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -100,23 +106,25 @@
                         Plata #<?= (int) $payment['id'] ?> · <?= htmlspecialchars($payment['supplier_name'] ?? $payment['supplier_cui']) ?>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                    <?php
-                        $cui = (string) ($payment['supplier_cui'] ?? '');
-                        $mark = $orderMarks[$cui] ?? '';
-                    ?>
-                    <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
-                        <input
-                            type="checkbox"
-                            name="payment_ids[]"
-                            value="<?= (int) $payment['id'] ?>"
-                            form="payment-order-form"
-                            data-has-order="<?= $mark !== '' ? '1' : '0' ?>"
-                        >
-                        <span>OP</span>
-                        <?php if ($mark !== ''): ?>
-                            <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
-                        <?php endif; ?>
-                    </label>
+                    <?php if ($canManagePayments): ?>
+                        <?php
+                            $cui = (string) ($payment['supplier_cui'] ?? '');
+                            $mark = $orderMarks[$cui] ?? '';
+                        ?>
+                        <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="payment_ids[]"
+                                value="<?= (int) $payment['id'] ?>"
+                                form="payment-order-form"
+                                data-has-order="<?= $mark !== '' ? '1' : '0' ?>"
+                            >
+                            <span>OP</span>
+                            <?php if ($mark !== ''): ?>
+                                <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
+                            <?php endif; ?>
+                        </label>
+                    <?php endif; ?>
                         <span><?= htmlspecialchars($payment['paid_at']) ?></span>
                         <span class="rounded bg-blue-50 px-2 py-1 text-sm font-semibold text-blue-700">
                             <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON
@@ -129,16 +137,18 @@
                         >
                             Printeaza
                         </a>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/plati/sterge') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
-                            <button
-                                class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
-                                onclick="return confirm('Stergi plata selectata?')"
-                            >
-                                Sterge
-                            </button>
-                        </form>
+                        <?php if ($canManagePayments): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/plati/sterge') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
+                                <button
+                                    class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                                    onclick="return confirm('Stergi plata selectata?')"
+                                >
+                                    Sterge
+                                </button>
+                            </form>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php if (!empty($payment['notes'])): ?>

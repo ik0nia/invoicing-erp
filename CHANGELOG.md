@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.2
+
+- Rol Operator (Deon) cu acces similar admin/contabil, fara stergere.
+- Acces doar la istoric pentru incasari si plati.
+
 ## v1.0.1
 
 - Hotfix plati furnizori: suma editabila si auto-alocare dupa incasari nete.

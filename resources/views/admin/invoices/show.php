@@ -1,6 +1,9 @@
 <?php
     $title = 'Factura ' . htmlspecialchars($invoice->invoice_number);
     $isPlatform = $isPlatform ?? false;
+    $isOperator = $isOperator ?? false;
+    $canDeleteInvoice = $isPlatform && !$isOperator;
+    $canDeletePackages = !$isOperator;
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -391,13 +394,15 @@
                             <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
                         </form>
                     <?php else: ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                            <button class="text-xs font-semibold text-red-600 hover:text-red-700">Sterge</button>
-                        </form>
+                        <?php if ($canDeletePackages): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                                <button class="text-xs font-semibold text-red-600 hover:text-red-700">Sterge</button>
+                            </form>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($canRenamePackages)): ?>
@@ -745,7 +750,7 @@
     </form>
 </div>
 
-<?php if (!empty($isPlatform)): ?>
+<?php if (!empty($canDeleteInvoice)): ?>
     <div class="mt-8 flex flex-wrap items-center gap-3">
         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
             <?= App\Support\Csrf::input() ?>

@@ -1,4 +1,7 @@
-<?php $title = 'Asocieri clienti - furnizori'; ?>
+<?php
+    $title = 'Asocieri clienti - furnizori';
+    $canDeleteAssociations = $canDeleteAssociations ?? false;
+?>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
@@ -92,11 +95,13 @@
                             <?= number_format((float) $association['commission'], 2, '.', ' ') ?>%
                         </td>
                         <td class="px-4 py-3 text-right">
-                            <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/sterge') ?>">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="id" value="<?= (int) $association['id'] ?>">
-                                <button class="text-red-600 hover:text-red-700">Sterge</button>
-                            </form>
+                            <?php if ($canDeleteAssociations): ?>
+                                <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/sterge') ?>">
+                                    <?= App\Support\Csrf::input() ?>
+                                    <input type="hidden" name="id" value="<?= (int) $association['id'] ?>">
+                                    <button class="text-red-600 hover:text-red-700">Sterge</button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

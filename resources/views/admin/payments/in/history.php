@@ -1,4 +1,8 @@
-<?php $title = 'Istoric incasari'; ?>
+<?php
+    $title = 'Istoric incasari';
+    $canManagePayments = $canManagePayments ?? false;
+    $backUrl = $canManagePayments ? App\Support\Url::to('admin/incasari') : App\Support\Url::to('admin/dashboard');
+?>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div>
@@ -6,7 +10,7 @@
         <p class="mt-1 text-sm text-slate-500">Filtreaza incasarile dupa data.</p>
     </div>
     <a
-        href="<?= App\Support\Url::to('admin/incasari') ?>"
+        href="<?= htmlspecialchars($backUrl) ?>"
         class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
     >
         Inapoi
@@ -66,16 +70,18 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <span><?= htmlspecialchars($payment['paid_at']) ?> · <?= number_format((float) $payment['amount'], 2, '.', ' ') ?> RON</span>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/incasari/sterge') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
-                            <button
-                                class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
-                                onclick="return confirm('Stergi incasarea selectata?')"
-                            >
-                                Sterge
-                            </button>
-                        </form>
+                        <?php if ($canManagePayments): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/incasari/sterge') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="payment_id" value="<?= (int) $payment['id'] ?>">
+                                <button
+                                    class="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                                    onclick="return confirm('Stergi incasarea selectata?')"
+                                >
+                                    Sterge
+                                </button>
+                            </form>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php if (!empty($payment['notes'])): ?>
