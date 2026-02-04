@@ -38,6 +38,8 @@ class UsersController
         $supplierMap = UserSupplierAccess::supplierMapForUsers($userIds);
         $supplierNames = $this->supplierNameMap($supplierMap);
 
+        $currentUser = Auth::user();
+        $assignableRoles = $this->assignableRoles($currentUser);
         $users = [];
         foreach ($rows as $row) {
             $roles = array_filter(array_map('trim', explode(',', (string) $row['roles'])));
@@ -49,12 +51,15 @@ class UsersController
                 $supplierList[] = $supplierNames[$cui] ?? $cui;
             }
 
+            $primaryRole = $this->resolvePrimaryRoleFromKeys($roles);
             $users[] = [
                 'id' => $id,
                 'name' => (string) $row['name'],
                 'email' => (string) $row['email'],
                 'roles' => $roles,
                 'role_labels' => $labels,
+                'primary_role' => $primaryRole,
+                'can_edit' => $this->canEditTargetUser($currentUser, $id, $primaryRole, $assignableRoles),
                 'supplier_cuis' => $supplierCuis,
                 'supplier_names' => $supplierList,
             ];
@@ -63,13 +68,19 @@ class UsersController
         Response::view('admin/users/index', [
             'users' => $users,
             'currentUserId' => Auth::user()?->id ?? 0,
-            'canEditUsers' => Auth::user()?->isSuperAdmin() ?? false,
+            'canEditUsers' => $this->canManageUsers($currentUser),
+            'canDeleteUsers' => $currentUser?->isSuperAdmin() ?? false,
         ]);
     }
 
     public function create(): void
     {
-        Auth::requireSuperAdmin();
+        Auth::requireAdmin();
+
+        $currentUser = Auth::user();
+        if (!$this->canManageUsers($currentUser)) {
+            Response::abort(403, 'Acces interzis.');
+        }
 
         if (!$this->ensureUserTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -77,17 +88,25 @@ class UsersController
 
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
+        User::ensureShowPaymentDetailsColumn();
 
         Response::view('admin/users/create', [
-            'roles' => $this->roleOptions(),
+            'roles' => $this->roleOptions($currentUser),
             'suppliers' => $this->supplierOptions(),
             'canManagePackagePermission' => $this->canManagePackagePermission(Auth::user()),
+            'canEditUsers' => $this->canManageUsers($currentUser),
+            'canDeleteUsers' => $currentUser?->isSuperAdmin() ?? false,
         ]);
     }
 
     public function store(): void
     {
-        Auth::requireSuperAdmin();
+        Auth::requireAdmin();
+
+        $currentUser = Auth::user();
+        if (!$this->canManageUsers($currentUser)) {
+            Response::abort(403, 'Acces interzis.');
+        }
 
         if (!$this->ensureUserTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru utilizatori.');
@@ -96,6 +115,7 @@ class UsersController
 
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
+        User::ensureShowPaymentDetailsColumn();
 
         $payload = $_POST;
         $name = trim((string) ($payload['name'] ?? ''));
@@ -105,6 +125,7 @@ class UsersController
         $role = trim((string) ($payload['role'] ?? ''));
         $supplierCuis = array_map('strval', (array) ($payload['supplier_cuis'] ?? []));
         $canRenamePackages = !empty($payload['can_rename_packages']);
+        $showPaymentDetails = !empty($payload['show_payment_details']);
 
         $errors = [];
 
@@ -118,7 +139,7 @@ class UsersController
             $errors[] = 'Parolele nu coincid.';
         }
 
-        $allowedRoles = array_column($this->roleOptions(), 'key');
+        $allowedRoles = array_column($this->roleOptions($currentUser), 'key');
         if (!in_array($role, $allowedRoles, true)) {
             $errors[] = 'Rol invalid.';
         }
@@ -155,6 +176,7 @@ class UsersController
         if ($this->canManagePackagePermission(Auth::user())) {
             UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
         }
+        User::setShowPaymentDetails($user->id, $showPaymentDetails);
 
         Session::flash('status', 'Utilizatorul a fost creat.');
         Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
@@ -171,6 +193,7 @@ class UsersController
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
         UserPermission::ensureTable();
+        User::ensureShowPaymentDetailsColumn();
 
         $userId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         $user = $userId ? User::find($userId) : null;
@@ -178,8 +201,16 @@ class UsersController
             Response::redirect('/admin/utilizatori');
         }
 
+        $currentUser = Auth::user();
+        if (!$this->canManageUsers($currentUser)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
         $roles = Role::forUser($user->id);
         $selectedRole = $this->resolvePrimaryRole($roles);
+        if (!$this->canEditTargetUser($currentUser, $user->id, $selectedRole, $this->assignableRoles($currentUser))) {
+            Response::abort(403, 'Acces interzis.');
+        }
         $supplierCuis = UserSupplierAccess::suppliersForUser($user->id);
         $form = Session::pull('user_form', [
             'name' => $user->name,
@@ -190,17 +221,21 @@ class UsersController
         $form['can_rename_packages'] = isset($form['can_rename_packages'])
             ? (bool) $form['can_rename_packages']
             : UserPermission::userHas($user->id, UserPermission::RENAME_PACKAGES);
+        $form['show_payment_details'] = isset($form['show_payment_details'])
+            ? (bool) $form['show_payment_details']
+            : $user->canViewPaymentDetails();
 
         Response::view('admin/users/edit', [
             'user' => $user,
             'form' => $form,
-            'roles' => $this->roleOptions(),
+            'roles' => $this->roleOptions($currentUser, $selectedRole),
             'suppliers' => $this->supplierOptions(),
             'selectedRole' => $selectedRole,
             'selectedSuppliers' => $supplierCuis,
             'currentUserId' => Auth::user()?->id ?? 0,
             'canManagePackagePermission' => $this->canManagePackagePermission(Auth::user()),
-            'canEditUsers' => Auth::user()?->isSuperAdmin() ?? false,
+            'canEditUsers' => $this->canManageUsers($currentUser),
+            'canDeleteUsers' => $currentUser?->isSuperAdmin() ?? false,
         ]);
     }
 
@@ -216,6 +251,7 @@ class UsersController
         Role::ensureDefaults();
         UserSupplierAccess::ensureTable();
         UserPermission::ensureTable();
+        User::ensureShowPaymentDetailsColumn();
 
         $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
         $user = $userId ? User::find($userId) : null;
@@ -224,17 +260,20 @@ class UsersController
         }
 
         $currentUser = Auth::user();
-        $canEditUsers = $currentUser?->isSuperAdmin() ?? false;
-        $canRenamePackages = !empty($_POST['can_rename_packages']);
-
-        if (!$canEditUsers) {
-            if ($this->canManagePackagePermission($currentUser)) {
-                UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
-                Session::flash('status', 'Permisiunea a fost actualizata.');
-                Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
-            }
+        if (!$this->canManageUsers($currentUser)) {
             Response::abort(403, 'Acces interzis.');
         }
+        $assignableRoles = $this->assignableRoles($currentUser);
+        $currentRole = $this->resolvePrimaryRole(Role::forUser($user->id));
+        if (!$this->canEditTargetUser($currentUser, $user->id, $currentRole, $assignableRoles)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+        $allowedRoles = $assignableRoles;
+        if ($currentUser && $currentUser->id === $user->id && !in_array($currentRole, $allowedRoles, true)) {
+            $allowedRoles[] = $currentRole;
+        }
+        $canRenamePackages = !empty($_POST['can_rename_packages']);
+        $showPaymentDetails = !empty($_POST['show_payment_details']);
 
         $name = trim((string) ($_POST['name'] ?? ''));
         $email = trim((string) ($_POST['email'] ?? ''));
@@ -256,7 +295,6 @@ class UsersController
             $errors[] = 'Parolele nu coincid.';
         }
 
-        $allowedRoles = array_column($this->roleOptions(), 'key');
         if (!in_array($role, $allowedRoles, true)) {
             $errors[] = 'Rol invalid.';
         }
@@ -306,6 +344,7 @@ class UsersController
         if ($this->canManagePackagePermission(Auth::user())) {
             UserPermission::setForUser($user->id, UserPermission::RENAME_PACKAGES, $canRenamePackages);
         }
+        User::setShowPaymentDetails($user->id, $showPaymentDetails);
 
         Session::flash('status', 'Utilizatorul a fost actualizat.');
         Response::redirect('/admin/utilizatori/edit?id=' . $user->id);
@@ -347,9 +386,15 @@ class UsersController
         return true;
     }
 
-    private function roleOptions(): array
+    private function roleOptions(?User $currentUser = null, ?string $includeRole = null): array
     {
-        $allowed = ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
+        $allowed = $this->assignableRoles($currentUser);
+        if ($currentUser && $currentUser->isSuperAdmin()) {
+            $allowed = ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
+        }
+        if ($includeRole && !in_array($includeRole, $allowed, true)) {
+            $allowed[] = $includeRole;
+        }
         $map = [];
         foreach (Role::all() as $role) {
             if (in_array($role->key, $allowed, true)) {
@@ -490,6 +535,19 @@ class UsersController
         return $priority[1] ?? 'admin';
     }
 
+    private function resolvePrimaryRoleFromKeys(array $roles): string
+    {
+        $priority = ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
+
+        foreach ($priority as $key) {
+            if (in_array($key, $roles, true)) {
+                return $key;
+            }
+        }
+
+        return $priority[1] ?? 'admin';
+    }
+
     private function canManagePackagePermission(?User $user): bool
     {
         if (!$user) {
@@ -497,5 +555,49 @@ class UsersController
         }
 
         return $user->hasRole(['super_admin', 'admin', 'contabil', 'operator']);
+    }
+
+    private function canManageUsers(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        return $user->hasRole(['super_admin', 'admin', 'contabil', 'operator']);
+    }
+
+    private function assignableRoles(?User $user): array
+    {
+        if (!$user) {
+            return [];
+        }
+        if ($user->isSuperAdmin()) {
+            return ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
+        }
+        if ($user->hasRole('admin')) {
+            return ['contabil', 'operator', 'supplier_user'];
+        }
+        if ($user->hasRole('contabil')) {
+            return ['operator', 'supplier_user'];
+        }
+        if ($user->hasRole('operator')) {
+            return ['supplier_user'];
+        }
+
+        return [];
+    }
+
+    private function canEditTargetUser(?User $currentUser, int $targetUserId, string $targetRole, array $assignableRoles): bool
+    {
+        if (!$currentUser) {
+            return false;
+        }
+        if ($currentUser->isSuperAdmin()) {
+            return true;
+        }
+        if ($currentUser->id === $targetUserId) {
+            return true;
+        }
+        return in_array($targetRole, $assignableRoles, true);
     }
 }

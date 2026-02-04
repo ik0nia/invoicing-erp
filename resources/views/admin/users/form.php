@@ -5,6 +5,7 @@
     $selectedSuppliers = array_map('strval', (array) $selectedSuppliers);
     $currentUserId = $currentUserId ?? 0;
     $canEditUsers = $canEditUsers ?? true;
+    $canDeleteUsers = $canDeleteUsers ?? false;
     $fieldDisabled = $canEditUsers ? '' : 'disabled';
 ?>
 
@@ -114,6 +115,20 @@
             </div>
         <?php endif; ?>
 
+        <div class="rounded border border-slate-200 bg-slate-50 p-4 <?= $canEditUsers ? '' : 'opacity-60' ?>">
+            <div class="text-sm font-semibold text-slate-700">Detalii incasari / plati</div>
+            <label class="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
+                <input
+                    type="checkbox"
+                    name="show_payment_details"
+                    value="1"
+                    <?= !empty($form['show_payment_details']) ? 'checked' : '' ?>
+                    <?= $fieldDisabled ?>
+                >
+                Afiseaza detalii despre incasari si plati
+            </label>
+        </div>
+
         <div class="rounded border border-slate-200 bg-slate-50 p-4 <?= $canEditUsers ? '' : 'opacity-60' ?>" data-supplier-section>
             <div class="text-sm font-semibold text-slate-700">Acces furnizori</div>
             <p class="mt-1 text-xs text-slate-500">Selecteaza furnizorii pe care ii poate gestiona utilizatorul.</p>
@@ -170,7 +185,7 @@
             >
                 Renunta
             </a>
-            <?php if (!empty($user?->id) && (int) $currentUserId !== (int) $user->id): ?>
+            <?php if (!empty($user?->id) && (int) $currentUserId !== (int) $user->id && $canDeleteUsers): ?>
                 <form method="POST" action="<?= App\Support\Url::to('admin/utilizatori/sterge') ?>">
                     <?= App\Support\Csrf::input() ?>
                     <input type="hidden" name="user_id" value="<?= (int) $user->id ?>">

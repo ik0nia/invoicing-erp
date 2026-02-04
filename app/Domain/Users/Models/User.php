@@ -15,6 +15,7 @@ class User
     public ?string $remember_token;
     public ?string $created_at;
     public ?string $updated_at;
+    public bool $show_payment_details = true;
 
     public static function fromArray(array $row): self
     {
@@ -27,6 +28,9 @@ class User
         $user->remember_token = $row['remember_token'] ?? null;
         $user->created_at = $row['created_at'] ?? null;
         $user->updated_at = $row['updated_at'] ?? null;
+        $user->show_payment_details = array_key_exists('show_payment_details', $row)
+            ? (bool) $row['show_payment_details']
+            : true;
 
         return $user;
     }
@@ -127,6 +131,11 @@ class User
         return $this->hasRole('supplier_user');
     }
 
+    public function canViewPaymentDetails(): bool
+    {
+        return $this->show_payment_details;
+    }
+
     public function assignRole(string $roleKey): void
     {
         Role::assignToUser($this->id, $roleKey);
@@ -139,5 +148,32 @@ class User
         }
 
         return Company::find($this->company_id);
+    }
+
+    public static function ensureShowPaymentDetailsColumn(): void
+    {
+        if (!Database::tableExists('users')) {
+            return;
+        }
+
+        if (!Database::columnExists('users', 'show_payment_details')) {
+            Database::execute(
+                'ALTER TABLE users ADD COLUMN show_payment_details TINYINT(1) NOT NULL DEFAULT 1'
+            );
+        }
+    }
+
+    public static function setShowPaymentDetails(int $userId, bool $enabled): void
+    {
+        self::ensureShowPaymentDetailsColumn();
+
+        Database::execute(
+            'UPDATE users SET show_payment_details = :enabled, updated_at = :updated_at WHERE id = :id',
+            [
+                'enabled' => $enabled ? 1 : 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $userId,
+            ]
+        );
     }
 }

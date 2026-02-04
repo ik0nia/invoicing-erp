@@ -28,6 +28,7 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     remember_token VARCHAR(100) NULL,
+    show_payment_details TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NULL,
     updated_at DATETIME NULL,
     CONSTRAINT fk_users_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL

@@ -2,6 +2,7 @@
     $title = 'Utilizatori';
     $currentUserId = $currentUserId ?? 0;
     $canEditUsers = $canEditUsers ?? false;
+    $canDeleteUsers = $canDeleteUsers ?? false;
 ?>
 
 <div class="flex flex-wrap items-center justify-between gap-4">
@@ -76,13 +77,15 @@
                             <?php endif; ?>
                         </td>
                         <td class="px-4 py-3 text-right block md:table-cell" data-label="Actiuni">
-                            <a
-                                href="<?= App\Support\Url::to('admin/utilizatori/edit') ?>?id=<?= (int) $user['id'] ?>"
-                                class="text-blue-700 hover:text-blue-800"
-                            >
-                                Editeaza
-                            </a>
-                            <?php if ($canEditUsers && (int) $currentUserId !== (int) $user['id']): ?>
+                            <?php if (!empty($user['can_edit'])): ?>
+                                <a
+                                    href="<?= App\Support\Url::to('admin/utilizatori/edit') ?>?id=<?= (int) $user['id'] ?>"
+                                    class="text-blue-700 hover:text-blue-800"
+                                >
+                                    Editeaza
+                                </a>
+                            <?php endif; ?>
+                            <?php if ($canDeleteUsers && (int) $currentUserId !== (int) $user['id']): ?>
                                 <form method="POST" action="<?= App\Support\Url::to('admin/utilizatori/sterge') ?>" class="inline">
                                     <?= App\Support\Csrf::input() ?>
                                     <input type="hidden" name="user_id" value="<?= (int) $user['id'] ?>">
