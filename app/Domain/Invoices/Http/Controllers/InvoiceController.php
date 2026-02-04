@@ -839,11 +839,13 @@ class InvoiceController
 
         $matched = 0;
         foreach ($packages as $package) {
-            $label = trim((string) ($package['label'] ?? ''));
-            if ($label === '') {
-                $label = 'Pachet de produse';
+            $labelText = trim((string) ($package['label'] ?? ''));
+            if ($labelText === '') {
+                $labelText = 'Pachet de produse';
             }
-            $labelKey = $this->normalizeSagaName($label);
+            $packageNo = isset($package['package_no']) ? (int) $package['package_no'] : 0;
+            $matchName = $packageNo > 0 ? ($labelText . ' #' . $packageNo) : $labelText;
+            $labelKey = $this->normalizeSagaName($matchName);
             if ($labelKey === '' || !array_key_exists($labelKey, $sagaByName)) {
                 continue;
             }
