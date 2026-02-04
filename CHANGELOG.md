@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.9
+
+- Import CSV SAGA pentru pachete confirmate cu comparare valori.
+
 ## v1.0.8
 
 - Comision default furnizor in editare companie + salvare partiala.
