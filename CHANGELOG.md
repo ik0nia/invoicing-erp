@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.6
+
+- Management utilizatori cu roluri limitate si acces personalizat.
+- Permisiune pentru detalii incasari/plati + filtrare istorice pe furnizor/client.
+
 ## v1.0.5
 
 - Comision default pe furnizor + auto-completare la asocieri.
