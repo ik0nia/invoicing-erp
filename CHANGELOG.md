@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.3
+
+- Blocare redenumire pachete dupa confirmare.
+- Acces Saga doar pentru super admin si contabil (download si pagina).
+
 ## v1.0.2
 
 - Rol Operator (Deon) cu acces similar admin/contabil, fara stergere.
