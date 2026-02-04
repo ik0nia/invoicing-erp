@@ -717,6 +717,7 @@ class InvoiceController
 
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $params = [];
         $whereSupplier = '';
 
