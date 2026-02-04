@@ -33,6 +33,7 @@ class InvoiceController
 
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
+        $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $isOperator = $user ? $user->isOperator() : false;
         $canViewPaymentDetails = $user ? $user->canViewPaymentDetails() : false;
@@ -751,7 +752,103 @@ class InvoiceController
         Response::view('admin/invoices/confirmed', [
             'packages' => $rows,
             'totals' => $totals,
+            'canImportSaga' => $canImportSaga,
         ]);
+    }
+
+    public function importSagaCsv(): void
+    {
+        Auth::requireSagaRole();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        if (!isset($_FILES['saga_csv']) || $_FILES['saga_csv']['error'] !== UPLOAD_ERR_OK) {
+            Session::flash('error', 'Incarca un fisier CSV valid.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $file = $_FILES['saga_csv'];
+        if (!isset($file['tmp_name']) || !is_readable($file['tmp_name'])) {
+            Session::flash('error', 'Fisier CSV indisponibil.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $handle = fopen($file['tmp_name'], 'r');
+        if ($handle === false) {
+            Session::flash('error', 'Nu pot citi fisierul CSV.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $headerLine = fgets($handle);
+        if ($headerLine === false) {
+            fclose($handle);
+            Session::flash('error', 'Fisier CSV gol.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $delimiter = $this->detectCsvDelimiter($headerLine);
+        $header = str_getcsv($headerLine, $delimiter);
+        $columns = $this->mapSagaColumns($header);
+        if ($columns['denumire'] === null || $columns['pret_vanz'] === null || $columns['tva'] === null) {
+            fclose($handle);
+            Session::flash('error', 'CSV trebuie sa contina coloanele: denumire, pret_vanz, tva.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $sagaMap = [];
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $name = trim((string) ($row[$columns['denumire']] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $pret = $this->parseSagaNumber((string) ($row[$columns['pret_vanz']] ?? ''));
+            $tva = $this->parseSagaNumber((string) ($row[$columns['tva']] ?? ''));
+            if ($pret === null || $tva === null) {
+                continue;
+            }
+
+            $value = round($pret * (1 + ($tva / 100)), 2);
+            $sagaMap[$this->normalizeSagaName($name)] = $value;
+        }
+        fclose($handle);
+
+        if (empty($sagaMap)) {
+            Session::flash('error', 'Nu am gasit linii valide in CSV.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $packages = Database::fetchAll(
+            'SELECT p.id, p.label
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE i.packages_confirmed = 1'
+        );
+
+        Database::execute(
+            'UPDATE packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             SET p.saga_value = NULL
+             WHERE i.packages_confirmed = 1'
+        );
+
+        $matched = 0;
+        foreach ($packages as $package) {
+            $label = trim((string) ($package['label'] ?? ''));
+            if ($label === '') {
+                $label = 'Pachet de produse';
+            }
+            $key = $this->normalizeSagaName($label);
+            if (!array_key_exists($key, $sagaMap)) {
+                continue;
+            }
+            Package::updateSagaValue((int) $package['id'], $sagaMap[$key]);
+            $matched++;
+        }
+
+        Session::flash('status', 'CSV procesat. Pachete actualizate: ' . $matched . '.');
+        Response::redirect('/admin/pachete-confirmate');
     }
 
     public function showImport(): void
@@ -2768,6 +2865,7 @@ class InvoiceController
                     package_no INT NOT NULL DEFAULT 0,
                     label VARCHAR(64) NULL,
                     vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
+                    saga_value DECIMAL(12,2) NULL,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000'
             );
@@ -2794,6 +2892,9 @@ class InvoiceController
 
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'vat_percent')) {
             Database::execute('ALTER TABLE packages ADD COLUMN vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0 AFTER label');
+        }
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
         }
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'package_no')) {
             Database::execute('ALTER TABLE packages ADD COLUMN package_no INT NOT NULL DEFAULT 0 AFTER invoice_in_id');
@@ -3992,6 +4093,77 @@ class InvoiceController
     private function packageLabel(Package $package): string
     {
         return $this->packageLabelText($package) . ' #' . $package->package_no;
+    }
+
+    private function detectCsvDelimiter(string $line): string
+    {
+        $delimiters = [';' => 0, ',' => 0, "\t" => 0, '|' => 0];
+        foreach ($delimiters as $delimiter => $count) {
+            $delimiters[$delimiter] = substr_count($line, $delimiter);
+        }
+        arsort($delimiters);
+        $best = array_key_first($delimiters);
+        return $best ?? ';';
+    }
+
+    private function mapSagaColumns(array $header): array
+    {
+        $columns = [
+            'denumire' => null,
+            'pret_vanz' => null,
+            'tva' => null,
+        ];
+
+        foreach ($header as $index => $value) {
+            $key = $this->normalizeSagaHeader((string) $value);
+            if ($key === 'denumire') {
+                $columns['denumire'] = $index;
+                continue;
+            }
+            if (str_contains($key, 'pret') && str_contains($key, 'vanz')) {
+                $columns['pret_vanz'] = $index;
+                continue;
+            }
+            if ($key === 'tva' || str_contains($key, 'tva')) {
+                $columns['tva'] = $index;
+            }
+        }
+
+        return $columns;
+    }
+
+    private function normalizeSagaHeader(string $value): string
+    {
+        $value = trim($value);
+        $value = preg_replace('/\x{FEFF}/u', '', $value);
+        $value = strtolower($value);
+        $value = str_replace([' ', '-'], '_', $value);
+        return $value;
+    }
+
+    private function normalizeSagaName(string $value): string
+    {
+        $value = trim($value);
+        $value = preg_replace('/\s+/', ' ', $value);
+        if (function_exists('mb_strtoupper')) {
+            return mb_strtoupper($value, 'UTF-8');
+        }
+        return strtoupper($value);
+    }
+
+    private function parseSagaNumber(string $value): ?float
+    {
+        $raw = trim($value);
+        if ($raw === '') {
+            return null;
+        }
+        $raw = str_replace(["\xc2\xa0", ' '], '', $raw);
+        $raw = str_replace(',', '.', $raw);
+        $raw = preg_replace('/[^0-9\.\-]/', '', $raw);
+        if ($raw === '' || $raw === '-' || $raw === '.') {
+            return null;
+        }
+        return (float) $raw;
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array

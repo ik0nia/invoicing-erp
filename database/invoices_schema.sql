@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS packages (
     package_no INT NOT NULL DEFAULT 0,
     label VARCHAR(64) NULL,
     vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
+    saga_value DECIMAL(12,2) NULL,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000;
 

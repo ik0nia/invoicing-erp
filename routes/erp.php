@@ -23,6 +23,7 @@ $router->get('/admin/facturi/print-situatie', [InvoiceController::class, 'printS
 $router->get('/admin/facturi/lookup-suppliers', [InvoiceController::class, 'lookupSuppliers']);
 $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookupClients']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
+$router->post('/admin/pachete-confirmate/import-saga', [InvoiceController::class, 'importSagaCsv']);
 $router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);
 $router->post('/admin/facturi/adauga', [InvoiceController::class, 'storeManual']);
 $router->post('/admin/facturi/calc-totals', [InvoiceController::class, 'calcManualTotals']);

@@ -11,6 +11,7 @@ class Package
     public int $package_no;
     public ?string $label;
     public float $vat_percent;
+    public ?float $saga_value = null;
 
     public static function create(int $invoiceId, int $packageNo, float $vatPercent, ?string $label = null): self
     {
@@ -96,6 +97,14 @@ class Package
         );
     }
 
+    public static function updateSagaValue(int $packageId, ?float $value): void
+    {
+        Database::execute(
+            'UPDATE packages SET saga_value = :value WHERE id = :id',
+            ['value' => $value, 'id' => $packageId]
+        );
+    }
+
     public static function fromArray(array $row): self
     {
         $package = new self();
@@ -104,6 +113,7 @@ class Package
         $package->package_no = isset($row['package_no']) ? (int) $row['package_no'] : (int) $row['id'];
         $package->label = $row['label'];
         $package->vat_percent = isset($row['vat_percent']) ? (float) $row['vat_percent'] : 0.0;
+        $package->saga_value = array_key_exists('saga_value', $row) ? (float) $row['saga_value'] : null;
 
         return $package;
     }
