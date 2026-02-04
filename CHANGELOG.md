@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.13
+
+- Matching SAGA strict pe denumire (uppercase).
+
 ## v1.0.12
 
 - Matching SAGA dupa numar pachet / denumire normalizata.

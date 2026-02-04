@@ -795,7 +795,6 @@ class InvoiceController
         }
 
         $sagaByName = [];
-        $sagaByNo = [];
         foreach ($rows as $row) {
             $name = trim((string) ($row[$columns['denumire']] ?? ''));
             if ($name === '') {
@@ -808,22 +807,18 @@ class InvoiceController
             if ($pret === null) {
                 continue;
             }
-            $normalized = $this->normalizeSagaComparableName($name);
+            $normalized = $this->normalizeSagaName($name);
             if ($normalized === '') {
                 continue;
             }
-            $packageNo = $this->extractSagaPackageNo($name);
             $entry = [
                 'pret' => $pret,
                 'tva' => $tva,
             ];
             $sagaByName[$normalized] = $entry;
-            if ($packageNo !== null) {
-                $sagaByNo[$packageNo] = $entry;
-            }
         }
 
-        if (empty($sagaByName) && empty($sagaByNo)) {
+        if (empty($sagaByName)) {
             Session::flash('error', 'Nu am gasit linii valide in CSV.');
             Response::redirect('/admin/pachete-confirmate');
         }
@@ -848,19 +843,11 @@ class InvoiceController
             if ($label === '') {
                 $label = 'Pachet de produse';
             }
-            $labelKey = $this->normalizeSagaComparableName($label);
-            $entry = null;
-            $packageNo = isset($package['package_no']) ? (int) $package['package_no'] : null;
-            if ($packageNo && array_key_exists($packageNo, $sagaByNo)) {
-                $entry = $sagaByNo[$packageNo];
-            } elseif ($labelKey !== '' && array_key_exists($labelKey, $sagaByName)) {
-                $entry = $sagaByName[$labelKey];
-            } else {
-                $entry = $this->matchSagaEntryByContains($labelKey, $sagaByName);
-            }
-            if ($entry === null) {
+            $labelKey = $this->normalizeSagaName($label);
+            if ($labelKey === '' || !array_key_exists($labelKey, $sagaByName)) {
                 continue;
             }
+            $entry = $sagaByName[$labelKey];
             $pret = (float) ($entry['pret'] ?? 0);
             $tva = $entry['tva'];
             if ($tva === null) {
@@ -4193,43 +4180,6 @@ class InvoiceController
             return null;
         }
         return (float) $raw;
-    }
-
-    private function normalizeSagaComparableName(string $value): string
-    {
-        $value = $this->normalizeSagaName($value);
-        $value = preg_replace('/^PACHET\\s+/', '', $value);
-        $value = preg_replace('/\\s*#\\s*\\d+\\s*$/', '', $value);
-        $value = trim((string) $value);
-        return $value;
-    }
-
-    private function extractSagaPackageNo(string $value): ?int
-    {
-        if (preg_match('/#\\s*(\\d+)/', $value, $match)) {
-            return (int) $match[1];
-        }
-        return null;
-    }
-
-    private function matchSagaEntryByContains(string $labelKey, array $sagaByName): ?array
-    {
-        if ($labelKey === '') {
-            return null;
-        }
-        $matches = [];
-        foreach ($sagaByName as $name => $entry) {
-            if ($name === $labelKey) {
-                return $entry;
-            }
-            if (str_contains($name, $labelKey) || str_contains($labelKey, $name)) {
-                $matches[] = $entry;
-            }
-        }
-        if (count($matches) === 1) {
-            return $matches[0];
-        }
-        return null;
     }
 
     private function readSagaRows(string $path): array
