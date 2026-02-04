@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.8
+
+- Comision default furnizor in editare companie + salvare partiala.
+- Status Detalii complete/lipsa bazat pe campuri obligatorii.
+
 ## v1.0.7
 
 - Acces Setari doar pentru super admin.
