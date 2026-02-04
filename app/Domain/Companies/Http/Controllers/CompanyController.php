@@ -30,14 +30,16 @@ class CompanyController
 
         if ($hasPartners) {
             $companies = Database::fetchAll(
-                'SELECT p.cui, p.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban
+                'SELECT p.cui, p.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban,
+                        c.nr_reg_comertului, c.adresa, c.localitate, c.judet, c.tara, c.email, c.telefon
                  FROM partners p
                  LEFT JOIN companies c ON c.cui = p.cui
                  ORDER BY p.denumire ASC'
             );
         } elseif (Database::tableExists('companies')) {
             $companies = Database::fetchAll(
-                'SELECT c.cui, c.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban
+                'SELECT c.cui, c.denumire, c.id AS company_id, c.tip_firma, c.tip_companie, c.activ, c.banca, c.iban,
+                        c.nr_reg_comertului, c.adresa, c.localitate, c.judet, c.tara, c.email, c.telefon
                  FROM companies c
                  ORDER BY c.denumire ASC'
             );
@@ -45,6 +47,7 @@ class CompanyController
 
         foreach ($companies as &$company) {
             $company['denumire'] = CompanyName::normalize((string) ($company['denumire'] ?? ''));
+            $company['details_complete'] = $this->isCompanyComplete($company);
         }
         unset($company);
 
@@ -94,21 +97,24 @@ class CompanyController
             'iban' => trim($_POST['iban'] ?? ''),
             'activ' => !empty($_POST['activ']) ? 1 : 0,
         ];
+        $defaultCommissionInput = str_replace(',', '.', (string) ($_POST['default_commission'] ?? ''));
         $existing = $data['cui'] !== '' ? Company::findByCui($data['cui']) : null;
         $data['tip_firma'] = $existing?->tip_firma ?? 'SRL';
         $data['tip_companie'] = $existing?->tip_companie ?? 'client';
 
-        $errors = $this->validate($data);
+        $errors = $this->validate($data, $defaultCommissionInput);
         if (!empty($errors)) {
             Session::flash('error', $errors[0]);
             Response::view('admin/companies/edit', [
-                'form' => $data,
-                'isNew' => true,
+                'form' => array_merge($data, ['default_commission' => $defaultCommissionInput]),
+                'isNew' => $existing === null,
             ]);
         }
 
         Company::save($data);
         Partner::upsert($data['cui'], $data['denumire']);
+        $defaultCommission = $defaultCommissionInput === '' ? 0.0 : (float) $defaultCommissionInput;
+        Partner::updateDefaultCommission($data['cui'], $defaultCommission);
 
         Session::flash('status', 'Compania a fost salvata.');
         Response::redirect('/admin/companii/edit?cui=' . urlencode($data['cui']));
@@ -163,28 +169,19 @@ class CompanyController
         $this->json(['success' => true, 'data' => $payload]);
     }
 
-    private function validate(array $data): array
+    private function validate(array $data, string $defaultCommissionInput): array
     {
-        $required = [
-            'denumire' => 'Denumire',
-            'cui' => 'CUI',
-            'nr_reg_comertului' => 'Nr. Reg. Comertului',
-            'adresa' => 'Adresa',
-            'localitate' => 'Localitate',
-            'judet' => 'Judet',
-            'tara' => 'Tara',
-            'email' => 'Email',
-            'telefon' => 'Telefon',
-        ];
-
-        foreach ($required as $field => $label) {
-            if (empty($data[$field])) {
-                return ['Campul "' . $label . '" este obligatoriu.'];
-            }
+        if ($data['denumire'] === '') {
+            return ['Campul "Denumire" este obligatoriu.'];
         }
-
-        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        if ($data['cui'] === '') {
+            return ['Campul "CUI" este obligatoriu.'];
+        }
+        if ($data['email'] !== '' && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             return ['Email invalid.'];
+        }
+        if ($defaultCommissionInput !== '' && !is_numeric($defaultCommissionInput)) {
+            return ['Comision default invalid.'];
         }
 
         return [];
@@ -192,6 +189,9 @@ class CompanyController
 
     private function buildFormData(?Company $company, ?Partner $partner): array
     {
+        $defaultCommission = (float) ($partner?->default_commission ?? 0);
+        $defaultCommissionValue = $defaultCommission > 0 ? number_format($defaultCommission, 2, '.', '') : '';
+
         return [
             'denumire' => CompanyName::normalize((string) ($company?->denumire ?? $partner?->denumire ?? '')),
             'cui' => $company?->cui ?? $partner?->cui ?? '',
@@ -206,7 +206,35 @@ class CompanyController
             'banca' => $company?->banca ?? '',
             'iban' => $company?->iban ?? '',
             'activ' => $company?->activ ?? true,
+            'default_commission' => $defaultCommissionValue,
         ];
+    }
+
+    private function isCompanyComplete(array $company): bool
+    {
+        if (empty($company['company_id'])) {
+            return false;
+        }
+
+        $required = [
+            'denumire',
+            'cui',
+            'nr_reg_comertului',
+            'adresa',
+            'localitate',
+            'judet',
+            'tara',
+            'email',
+            'telefon',
+        ];
+
+        foreach ($required as $field) {
+            if (trim((string) ($company[$field] ?? '')) === '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function ensureCompaniesTable(): bool

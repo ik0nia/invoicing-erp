@@ -38,7 +38,7 @@
                             <?= htmlspecialchars($company['cui'] ?? '') ?>
                         </td>
                         <td class="px-4 py-3 text-slate-700">
-                            <?php if (!empty($company['company_id'])): ?>
+                            <?php if (!empty($company['details_complete'])): ?>
                                 <span class="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
                                     Detalii complete
                                 </span>

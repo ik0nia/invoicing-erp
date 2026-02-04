@@ -62,7 +62,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['nr_reg_comertului'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -74,7 +73,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['adresa'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -86,7 +84,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['localitate'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -98,7 +95,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['judet'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -110,7 +106,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['tara'] ?? 'România') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -122,7 +117,6 @@
                 type="email"
                 value="<?= htmlspecialchars($form['email'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -134,7 +128,6 @@
                 type="text"
                 value="<?= htmlspecialchars($form['telefon'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
             >
         </div>
 
@@ -158,6 +151,22 @@
                 value="<?= htmlspecialchars($form['iban'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="default_commission">
+                Comision default furnizor (%)
+            </label>
+            <input
+                id="default_commission"
+                name="default_commission"
+                type="number"
+                step="0.01"
+                value="<?= htmlspecialchars($form['default_commission'] ?? '') ?>"
+                placeholder="Optional"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+            <p class="mt-1 text-xs text-slate-500">Se completeaza automat la asocierea clientilor.</p>
         </div>
 
     </div>
