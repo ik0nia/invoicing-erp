@@ -1994,7 +1994,8 @@ class InvoiceController
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         $lineId = isset($_POST['line_id']) ? (int) $_POST['line_id'] : 0;
-        $splitQty = $this->parseNumber($_POST['split_qty'] ?? null);
+        $splitQtyRaw = trim((string) ($_POST['split_qty'] ?? ''));
+        $splitQty = $this->parseNumber($splitQtyRaw);
 
         if (!$invoiceId || !$lineId) {
             Response::redirect('/admin/facturi');
@@ -2017,7 +2018,7 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        if ($splitQty === null || $splitQty <= 0) {
+        if ($splitQty === null || $splitQty <= 0 || !ctype_digit(str_replace(' ', '', $splitQtyRaw))) {
             Session::flash('error', 'Cantitatea de separat este invalida.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
@@ -2027,8 +2028,8 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        $splitQty = round($splitQty, 3);
-        $remainingQty = round($currentQty - $splitQty, 3);
+        $splitQty = (int) round($splitQty);
+        $remainingQty = (int) round($currentQty - $splitQty);
         if ($remainingQty <= 0) {
             Session::flash('error', 'Cantitatea ramasa este invalida.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');

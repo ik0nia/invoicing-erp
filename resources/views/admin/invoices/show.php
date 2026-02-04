@@ -475,7 +475,7 @@
                                             class="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
                                             data-split-line
                                             data-line-id="<?= (int) $line->id ?>"
-                                            data-line-qty="<?= htmlspecialchars(number_format($line->quantity, 3, '.', '')) ?>"
+                                            data-line-qty="<?= (int) round($line->quantity) ?>"
                                             data-line-name="<?= htmlspecialchars($line->product_name) ?>"
                                             draggable="false"
                                         >
@@ -534,7 +534,7 @@
                                     class="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100"
                                     data-split-line
                                     data-line-id="<?= (int) $line->id ?>"
-                                    data-line-qty="<?= htmlspecialchars(number_format($line->quantity, 3, '.', '')) ?>"
+                                    data-line-qty="<?= (int) round($line->quantity) ?>"
                                     data-line-name="<?= htmlspecialchars($line->product_name) ?>"
                                     draggable="false"
                                 >
@@ -833,8 +833,8 @@
                     id="split-qty"
                     name="split_qty"
                     type="number"
-                    step="0.001"
-                    min="0.001"
+                    step="1"
+                    min="1"
                     class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     required
                 >
@@ -1012,7 +1012,7 @@
                 return;
             }
             const remaining = Math.max(0, total - value);
-            splitRemaining.textContent = remaining.toFixed(3).replace(/\.?0+$/, '');
+            splitRemaining.textContent = String(Math.max(0, Math.round(remaining)));
         };
 
         const openSplit = (button) => {
@@ -1026,15 +1026,15 @@
                 return;
             }
 
-            const maxQty = Math.max(0.001, qty - 0.001);
-            const defaultQty = Math.round((qty / 2) * 1000) / 1000;
+            const maxQty = Math.max(1, qty - 1);
+            const defaultQty = Math.round(qty / 2);
             const initial = Math.min(defaultQty, maxQty);
 
             splitLineId.value = lineId;
             splitLineName.textContent = name;
-            splitLineQty.textContent = qty.toFixed(3).replace(/\.?0+$/, '');
-            splitQtyInput.value = initial.toFixed(3).replace(/\.?0+$/, '');
-            splitQtyInput.max = maxQty.toFixed(3);
+            splitLineQty.textContent = String(qty);
+            splitQtyInput.value = String(initial);
+            splitQtyInput.max = String(maxQty);
             updateRemaining(qty, initial);
 
             splitModal.classList.remove('hidden');
@@ -1062,10 +1062,10 @@
                 if (!Number.isFinite(value)) {
                     value = 0;
                 }
-                const maxQty = Math.max(0.001, total - 0.001);
+            const maxQty = Math.max(1, total - 1);
                 if (value > maxQty) {
                     value = maxQty;
-                    splitQtyInput.value = value.toFixed(3).replace(/\.?0+$/, '');
+                splitQtyInput.value = String(value);
                 }
                 if (value < 0) {
                     value = 0;
