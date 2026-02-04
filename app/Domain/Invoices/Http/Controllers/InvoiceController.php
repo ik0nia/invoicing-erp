@@ -754,6 +754,7 @@ class InvoiceController
             'packages' => $rows,
             'totals' => $totals,
             'canImportSaga' => $canImportSaga,
+            'sagaDebug' => Session::pull('saga_debug'),
         ]);
     }
 
@@ -824,11 +825,34 @@ class InvoiceController
         }
 
         $packages = Database::fetchAll(
-            'SELECT p.id, p.label, p.vat_percent
+            'SELECT p.id, p.label, p.vat_percent, p.package_no
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              WHERE i.packages_confirmed = 1'
         );
+
+        $debugPackages = [];
+        foreach ($packages as $package) {
+            $labelText = trim((string) ($package['label'] ?? ''));
+            if ($labelText === '') {
+                $labelText = 'Pachet de produse';
+            }
+            $packageNo = isset($package['package_no']) ? (int) $package['package_no'] : 0;
+            $matchName = $packageNo > 0 ? ($labelText . ' #' . $packageNo) : $labelText;
+            $matchKey = $this->normalizeSagaName($matchName);
+            $debugPackages[] = [
+                'label' => $labelText,
+                'package_no' => $packageNo,
+                'match_key' => $matchKey,
+                'matched' => $matchKey !== '' && array_key_exists($matchKey, $sagaByName),
+            ];
+        }
+        Session::flash('saga_debug', [
+            'header' => $header,
+            'saga_keys_count' => count($sagaByName),
+            'saga_keys' => array_slice(array_keys($sagaByName), 0, 50),
+            'packages' => array_slice($debugPackages, 0, 200),
+        ]);
 
         Database::execute(
             'UPDATE packages p
