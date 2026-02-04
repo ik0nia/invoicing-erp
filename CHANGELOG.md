@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.5
+
+- Comision default pe furnizor + auto-completare la asocieri.
+
 ## v1.0.4
 
 - Autoselect furnizor in factura manuala cand exista unul singur.
