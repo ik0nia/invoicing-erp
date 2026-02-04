@@ -66,6 +66,17 @@ class Auth
         }
     }
 
+    public static function requireAdminWithoutOperator(): void
+    {
+        self::requireLogin();
+
+        $user = self::user();
+
+        if (!$user || !$user->hasRole(['super_admin', 'admin', 'contabil'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+    }
+
     public static function requireSuperAdmin(): void
     {
         self::requireLogin();

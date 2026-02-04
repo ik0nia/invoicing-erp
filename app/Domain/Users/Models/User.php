@@ -112,9 +112,14 @@ class User
         return $this->hasRole('super_admin');
     }
 
+    public function isOperator(): bool
+    {
+        return $this->hasRole('operator');
+    }
+
     public function isPlatformUser(): bool
     {
-        return $this->hasRole(['super_admin', 'admin', 'contabil']);
+        return $this->hasRole(['super_admin', 'admin', 'contabil', 'operator']);
     }
 
     public function isSupplierUser(): bool

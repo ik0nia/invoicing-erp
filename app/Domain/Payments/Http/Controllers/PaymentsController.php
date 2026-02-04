@@ -16,7 +16,7 @@ class PaymentsController
 {
     public function indexIn(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -37,7 +37,7 @@ class PaymentsController
 
     public function deleteIn(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru incasari.');
@@ -63,6 +63,9 @@ class PaymentsController
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
         }
+
+        $user = Auth::user();
+        $canManagePayments = $user ? !$user->isOperator() : false;
 
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
@@ -99,12 +102,13 @@ class PaymentsController
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'paymentId' => $paymentId,
+            'canManagePayments' => $canManagePayments,
         ]);
     }
 
     public function createIn(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -127,7 +131,7 @@ class PaymentsController
 
     public function storeIn(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru incasari.');
@@ -219,7 +223,7 @@ class PaymentsController
 
     public function indexOut(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -234,7 +238,7 @@ class PaymentsController
 
     public function deleteOut(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru plati.');
@@ -260,6 +264,9 @@ class PaymentsController
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
         }
+
+        $user = Auth::user();
+        $canManagePayments = $user ? !$user->isOperator() : false;
 
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
@@ -306,6 +313,7 @@ class PaymentsController
             'dateTo' => $dateTo,
             'orderMarks' => $orderMarks,
             'paymentId' => $paymentId,
+            'canManagePayments' => $canManagePayments,
         ]);
     }
 
@@ -431,7 +439,7 @@ class PaymentsController
 
     public function exportPaymentOrder(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru plati.');
@@ -533,7 +541,7 @@ class PaymentsController
 
     public function createOut(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
@@ -567,7 +575,7 @@ class PaymentsController
 
     public function storeOut(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru plati.');
@@ -685,7 +693,7 @@ class PaymentsController
 
     public function sendDailyEmails(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot crea tabelele pentru plati.');

@@ -15,6 +15,9 @@ class AssociationsController
     {
         Auth::requireAdmin();
 
+        $user = Auth::user();
+        $canDeleteAssociations = $user ? !$user->isOperator() : false;
+
         $partners = Partner::all();
         $associations = Commission::allWithPartners();
 
@@ -22,6 +25,7 @@ class AssociationsController
             'partners' => $partners,
             'associations' => $associations,
             'hasPartners' => Database::tableExists('partners'),
+            'canDeleteAssociations' => $canDeleteAssociations,
         ]);
     }
 
@@ -56,7 +60,7 @@ class AssociationsController
 
     public function delete(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         if ($id > 0) {

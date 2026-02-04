@@ -34,7 +34,8 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
-        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
+        $isOperator = $user ? $user->isOperator() : false;
+        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff', 'supplier_user']) : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
         $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
 
@@ -161,6 +162,7 @@ class InvoiceController
                 'hasFgoInvoice' => $hasFgoInvoice,
                 'clientLocked' => $clientLocked,
                 'isPlatform' => $isPlatform,
+                'isOperator' => $isOperator,
                 'isSupplierUser' => $isSupplierUser,
                 'canShowRequestAlert' => $canShowRequestAlert,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
@@ -231,7 +233,7 @@ class InvoiceController
         $query = trim((string) ($_GET['q'] ?? ''));
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
-        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
+        $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff', 'supplier_user']) : false;
         if ($isPlatform) {
             $invoices = InvoiceIn::all();
         } else {
@@ -1275,6 +1277,10 @@ class InvoiceController
         }
 
         if ($action === 'delete') {
+            $user = Auth::user();
+            if ($user && $user->isOperator()) {
+                Response::abort(403, 'Acces interzis.');
+            }
             if ($this->isInvoiceConfirmed($invoiceId)) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu pot fi sterse.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
@@ -1335,7 +1341,7 @@ class InvoiceController
 
     public function delete(): void
     {
-        Auth::requireAdmin();
+        Auth::requireAdminWithoutOperator();
 
         $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
         if (!$invoiceId) {
@@ -3934,7 +3940,7 @@ class InvoiceController
         if (!$user) {
             return false;
         }
-        if ($user->hasRole(['super_admin', 'admin', 'contabil', 'staff'])) {
+        if ($user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff'])) {
             return true;
         }
 
@@ -3948,7 +3954,7 @@ class InvoiceController
             return false;
         }
 
-        return $user->hasRole(['super_admin', 'admin', 'contabil', 'staff']);
+        return $user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff']);
     }
 
     private function hasFgoInvoice(InvoiceIn $invoice): bool

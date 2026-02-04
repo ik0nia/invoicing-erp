@@ -63,6 +63,7 @@ class Role
             ['key' => 'super_admin', 'label' => 'Super admin'],
             ['key' => 'admin', 'label' => 'Administrator'],
             ['key' => 'contabil', 'label' => 'Contabil'],
+            ['key' => 'operator', 'label' => 'Operator'],
             ['key' => 'supplier_user', 'label' => 'Utilizator furnizor'],
             ['key' => 'staff', 'label' => 'Angajat firma'],
             ['key' => 'client_user', 'label' => 'Utilizator client'],

@@ -349,7 +349,7 @@ class UsersController
 
     private function roleOptions(): array
     {
-        $allowed = ['super_admin', 'admin', 'contabil', 'supplier_user'];
+        $allowed = ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
         $map = [];
         foreach (Role::all() as $role) {
             if (in_array($role->key, $allowed, true)) {
@@ -477,7 +477,7 @@ class UsersController
 
     private function resolvePrimaryRole(array $roles): string
     {
-        $priority = ['super_admin', 'admin', 'contabil', 'supplier_user'];
+        $priority = ['super_admin', 'admin', 'contabil', 'operator', 'supplier_user'];
 
         foreach ($priority as $key) {
             foreach ($roles as $role) {
@@ -496,6 +496,6 @@ class UsersController
             return false;
         }
 
-        return $user->hasRole(['super_admin', 'admin', 'contabil']);
+        return $user->hasRole(['super_admin', 'admin', 'contabil', 'operator']);
     }
 }
