@@ -63,6 +63,28 @@ class Commission
         );
     }
 
+    public static function clientCuisForSuppliers(array $supplierCuis): array
+    {
+        if (!Database::tableExists('commissions') || empty($supplierCuis)) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($supplierCuis) as $index => $cui) {
+            $key = 's' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT DISTINCT client_cui FROM commissions WHERE supplier_cui IN (' . implode(',', $placeholders) . ')',
+            $params
+        );
+
+        return array_values(array_filter(array_map(static fn (array $row) => (string) $row['client_cui'], $rows)));
+    }
+
     public static function createOrUpdate(string $supplierCui, string $clientCui, float $commission): void
     {
         Database::execute(

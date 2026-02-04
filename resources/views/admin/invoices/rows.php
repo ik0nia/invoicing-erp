@@ -1,6 +1,9 @@
+<?php
+    $invoiceColspan = !empty($canViewPaymentDetails) ? 11 : 9;
+?>
 <?php if (empty($invoices)): ?>
     <tr>
-        <td colspan="11" class="px-3 py-6 text-center text-slate-500">
+        <td colspan="<?= (int) $invoiceColspan ?>" class="px-3 py-6 text-center text-slate-500">
             Nu exista facturi importate.
         </td>
     </tr>
@@ -106,30 +109,32 @@
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Total factura client">
                 <?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Incasare client">
-                <?php if ($status && $status['client_total'] !== null): ?>
-                    <div class="font-medium text-slate-900">
-                        <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
-                    </div>
-                    <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['client_class'] ?>">
-                        <?= htmlspecialchars($status['client_label']) ?>
-                    </div>
-                <?php else: ?>
-                    <div class="text-xs text-slate-500">Client nesetat</div>
-                <?php endif; ?>
-            </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Plata furnizor">
-                <?php if ($status): ?>
-                    <div class="font-medium text-slate-900">
-                        <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
-                    </div>
-                    <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['supplier_class'] ?>">
-                        <?= htmlspecialchars($status['supplier_label']) ?>
-                    </div>
-                <?php else: ?>
-                    <div class="text-xs text-slate-500">—</div>
-                <?php endif; ?>
-            </td>
+            <?php if (!empty($canViewPaymentDetails)): ?>
+                <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Incasare client">
+                    <?php if ($status && $status['client_total'] !== null): ?>
+                        <div class="font-medium text-slate-900">
+                            <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
+                        </div>
+                        <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['client_class'] ?>">
+                            <?= htmlspecialchars($status['client_label']) ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="text-xs text-slate-500">Client nesetat</div>
+                    <?php endif; ?>
+                </td>
+                <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Plata furnizor">
+                    <?php if ($status): ?>
+                        <div class="font-medium text-slate-900">
+                            <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
+                        </div>
+                        <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['supplier_class'] ?>">
+                            <?= htmlspecialchars($status['supplier_label']) ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="text-xs text-slate-500">—</div>
+                    <?php endif; ?>
+                </td>
+            <?php endif; ?>
         </tr>
     <?php endforeach; ?>
 <?php endif; ?>

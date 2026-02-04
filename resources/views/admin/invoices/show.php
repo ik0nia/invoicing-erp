@@ -5,6 +5,7 @@
     $canDeleteInvoice = $isPlatform && !$isOperator;
     $canDeletePackages = !$isOperator;
     $canDownloadSaga = $canDownloadSaga ?? false;
+    $canViewPaymentDetails = $canViewPaymentDetails ?? false;
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -199,94 +200,96 @@
     </div>
 </div>
 
-<div class="mt-4 grid gap-4 md:grid-cols-3">
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <div class="text-slate-500">Incasat client</div>
-        <?php if ($clientTotal !== null): ?>
+<?php if (!empty($canViewPaymentDetails)): ?>
+    <div class="mt-4 grid gap-4 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+            <div class="text-slate-500">Incasat client</div>
+            <?php if ($clientTotal !== null): ?>
+                <div class="mt-1 font-semibold text-slate-900">
+                    <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
+                </div>
+                <div class="text-xs text-slate-600">
+                    <?php
+                        $collectedValue = (float) ($collectedTotal ?? 0);
+                        if ($collectedValue <= 0.009) {
+                            echo 'Neincasat';
+                        } elseif ($collectedValue + 0.01 < $clientTotal) {
+                            echo 'Incasat partial';
+                        } else {
+                            echo 'Incasat integral';
+                        }
+                    ?>
+                </div>
+                <?php if (!empty($paymentInRows)): ?>
+                    <div class="mt-3 space-y-1 text-xs text-slate-600">
+                        <?php foreach ($paymentInRows as $row): ?>
+                            <a
+                                href="<?= App\Support\Url::to('admin/incasari/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-in-<?= (int) $row['id'] ?>"
+                                class="block text-blue-700 hover:text-blue-800"
+                            >
+                                Incasare #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                                Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            <?php else: ?>
+                <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
+            <?php endif; ?>
+        </div>
+        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+            <div class="text-slate-500">Platit furnizor</div>
             <div class="mt-1 font-semibold text-slate-900">
-                <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
+                <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
             </div>
             <div class="text-xs text-slate-600">
                 <?php
-                    $collectedValue = (float) ($collectedTotal ?? 0);
-                    if ($collectedValue <= 0.009) {
-                        echo 'Neincasat';
-                    } elseif ($collectedValue + 0.01 < $clientTotal) {
-                        echo 'Incasat partial';
+                    $paidValue = (float) ($paidTotal ?? 0);
+                    $supplierTotal = (float) $invoice->total_with_vat;
+                    if ($paidValue <= 0.009) {
+                        echo 'Neplatit';
+                    } elseif ($paidValue + 0.01 < $supplierTotal) {
+                        echo 'Platit partial';
                     } else {
-                        echo 'Incasat integral';
+                        echo 'Platit integral';
                     }
                 ?>
             </div>
-            <?php if (!empty($isPlatform) && !empty($paymentInRows)): ?>
+            <?php if (!empty($paymentOutRows)): ?>
                 <div class="mt-3 space-y-1 text-xs text-slate-600">
-                    <?php foreach ($paymentInRows as $row): ?>
+                    <?php foreach ($paymentOutRows as $row): ?>
                         <a
-                            href="<?= App\Support\Url::to('admin/incasari/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-in-<?= (int) $row['id'] ?>"
+                            href="<?= App\Support\Url::to('admin/plati/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-out-<?= (int) $row['id'] ?>"
                             class="block text-blue-700 hover:text-blue-800"
                         >
-                            Incasare #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                            Plata #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
                             Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
                         </a>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
-        <?php else: ?>
-            <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
-        <?php endif; ?>
-    </div>
-    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-        <div class="text-slate-500">Platit furnizor</div>
-        <div class="mt-1 font-semibold text-slate-900">
-            <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
         </div>
-        <div class="text-xs text-slate-600">
-            <?php
-                $paidValue = (float) ($paidTotal ?? 0);
-                $supplierTotal = (float) $invoice->total_with_vat;
-                if ($paidValue <= 0.009) {
-                    echo 'Neplatit';
-                } elseif ($paidValue + 0.01 < $supplierTotal) {
-                    echo 'Platit partial';
-                } else {
-                    echo 'Platit integral';
-                }
-            ?>
-        </div>
-        <?php if (!empty($isPlatform) && !empty($paymentOutRows)): ?>
-            <div class="mt-3 space-y-1 text-xs text-slate-600">
-                <?php foreach ($paymentOutRows as $row): ?>
+        <?php if (!empty($isPlatform)): ?>
+            <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+                <div class="text-slate-500">Actiuni rapide</div>
+                <div class="mt-2 flex flex-wrap gap-2">
                     <a
-                        href="<?= App\Support\Url::to('admin/plati/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-out-<?= (int) $row['id'] ?>"
-                        class="block text-blue-700 hover:text-blue-800"
+                        href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                     >
-                        Plata #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
-                        Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
+                        Adauga incasare
                     </a>
-                <?php endforeach; ?>
+                    <a
+                        href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        Adauga plata
+                    </a>
+                </div>
             </div>
         <?php endif; ?>
     </div>
-    <?php if (!empty($isPlatform)): ?>
-        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <div class="text-slate-500">Actiuni rapide</div>
-            <div class="mt-2 flex flex-wrap gap-2">
-                <a
-                    href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
-                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                    Adauga incasare
-                </a>
-                <a
-                    href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
-                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                    Adauga plata
-                </a>
-            </div>
-        </div>
-    <?php endif; ?>
-</div>
+<?php endif; ?>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>

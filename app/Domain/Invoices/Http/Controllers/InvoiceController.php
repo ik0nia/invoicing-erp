@@ -35,6 +35,7 @@ class InvoiceController
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $isOperator = $user ? $user->isOperator() : false;
+        $canViewPaymentDetails = $user ? $user->canViewPaymentDetails() : false;
         $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff', 'supplier_user']) : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
         $selectedClientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
@@ -174,6 +175,7 @@ class InvoiceController
                 'clientTotal' => $clientTotal,
                 'paymentInRows' => $paymentInRows,
                 'paymentOutRows' => $paymentOutRows,
+                'canViewPaymentDetails' => $canViewPaymentDetails,
             ]);
         }
 
@@ -220,6 +222,7 @@ class InvoiceController
             'hasEmptyClients' => $hasEmptyClients,
             'clientStatusOptions' => $this->clientStatusOptions(),
             'supplierStatusOptions' => $this->supplierStatusOptions(),
+            'canViewPaymentDetails' => $canViewPaymentDetails,
         ]);
     }
 

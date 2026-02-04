@@ -7,6 +7,7 @@ use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Settings\Services\SettingsService;
+use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -58,14 +59,27 @@ class PaymentsController
 
     public function historyIn(): void
     {
-        Auth::requireAdmin();
+        Auth::requireLogin();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
         }
 
         $user = Auth::user();
-        $canManagePayments = $user ? !$user->isOperator() : false;
+        if (!$user || (!$user->isPlatformUser() && !$user->isSupplierUser())) {
+            Response::abort(403, 'Acces interzis.');
+        }
+        if (!$user->canViewPaymentDetails()) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $canManagePayments = $user->isPlatformUser() && !$user->isOperator();
+        $supplierClients = [];
+        if ($user->isSupplierUser()) {
+            UserSupplierAccess::ensureTable();
+            $suppliers = UserSupplierAccess::suppliersForUser($user->id);
+            $supplierClients = Commission::clientCuisForSuppliers($suppliers);
+        }
 
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
@@ -85,6 +99,29 @@ class PaymentsController
         if ($paymentId) {
             $where[] = 'p.id = :payment_id';
             $params['payment_id'] = $paymentId;
+        }
+
+        if ($user->isSupplierUser()) {
+            if (empty($supplierClients)) {
+                $payments = [];
+                $allocations = [];
+                Response::view('admin/payments/in/history', [
+                    'payments' => $payments,
+                    'allocations' => $allocations,
+                    'dateFrom' => $dateFrom,
+                    'dateTo' => $dateTo,
+                    'paymentId' => $paymentId,
+                    'canManagePayments' => $canManagePayments,
+                ]);
+                return;
+            }
+            $placeholders = [];
+            foreach (array_values($supplierClients) as $index => $clientCui) {
+                $key = 'client' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $clientCui;
+            }
+            $where[] = 'p.client_cui IN (' . implode(',', $placeholders) . ')';
         }
 
         $sql = 'SELECT p.* FROM payments_in p';
@@ -259,14 +296,26 @@ class PaymentsController
 
     public function historyOut(): void
     {
-        Auth::requireAdmin();
+        Auth::requireLogin();
 
         if (!$this->ensurePaymentTables()) {
             Response::view('errors/schema', [], 'layouts/app');
         }
 
         $user = Auth::user();
-        $canManagePayments = $user ? !$user->isOperator() : false;
+        if (!$user || (!$user->isPlatformUser() && !$user->isSupplierUser())) {
+            Response::abort(403, 'Acces interzis.');
+        }
+        if (!$user->canViewPaymentDetails()) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $canManagePayments = $user->isPlatformUser() && !$user->isOperator();
+        $allowedSuppliers = [];
+        if ($user->isSupplierUser()) {
+            UserSupplierAccess::ensureTable();
+            $allowedSuppliers = UserSupplierAccess::suppliersForUser($user->id);
+        }
 
         $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
         $dateTo = trim((string) ($_GET['date_to'] ?? ''));
@@ -293,6 +342,34 @@ class PaymentsController
             $params['payment_id'] = $paymentId;
         }
 
+        if ($user->isSupplierUser()) {
+            if (empty($allowedSuppliers)) {
+                $payments = [];
+                $allocations = [];
+                $suppliers = [];
+                $orderMarks = [];
+                Response::view('admin/payments/out/history', [
+                    'payments' => $payments,
+                    'allocations' => $allocations,
+                    'suppliers' => $suppliers,
+                    'supplierCui' => $supplierCui,
+                    'dateFrom' => $dateFrom,
+                    'dateTo' => $dateTo,
+                    'orderMarks' => $orderMarks,
+                    'paymentId' => $paymentId,
+                    'canManagePayments' => $canManagePayments,
+                ]);
+                return;
+            }
+            $placeholders = [];
+            foreach (array_values($allowedSuppliers) as $index => $cui) {
+                $key = 'supp' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $where[] = 'p.supplier_cui IN (' . implode(',', $placeholders) . ')';
+        }
+
         $sql = 'SELECT p.* FROM payments_out p';
         if (!empty($where)) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -302,6 +379,12 @@ class PaymentsController
         $payments = Database::fetchAll($sql, $params);
         $allocations = $this->fetchAllocations('payment_out_allocations', 'payment_out_id', $payments, 'invoice_in_id');
         $suppliers = $this->paymentSuppliers();
+        if ($user->isSupplierUser() && !empty($allowedSuppliers)) {
+            $suppliers = array_values(array_filter(
+                $suppliers,
+                static fn (array $row) => in_array((string) $row['supplier_cui'], $allowedSuppliers, true)
+            ));
+        }
         $orderMarks = $this->paymentOrderMarks();
 
         Response::view('admin/payments/out/history', [

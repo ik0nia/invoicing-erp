@@ -23,6 +23,7 @@
     $hasEmptyClients = $hasEmptyClients ?? false;
     $clientStatusOptions = $clientStatusOptions ?? [];
     $supplierStatusOptions = $supplierStatusOptions ?? [];
+    $canViewPaymentDetails = $canViewPaymentDetails ?? false;
     $normalizeStatusFilter = static function ($value): array {
         if (!is_array($value)) {
             $value = $value !== '' && $value !== null ? [(string) $value] : [];
@@ -318,8 +319,10 @@
                 <th class="px-3 py-3">Factura client</th>
                 <th class="px-3 py-3">Data factura client</th>
                 <th class="px-3 py-3">Total factura client</th>
-                <th class="px-3 py-3">Incasare client</th>
-                <th class="px-3 py-3">Plata furnizor</th>
+                <?php if (!empty($canViewPaymentDetails)): ?>
+                    <th class="px-3 py-3">Incasare client</th>
+                    <th class="px-3 py-3">Plata furnizor</th>
+                <?php endif; ?>
             </tr>
         </thead>
         <tbody id="invoice-table-body">
