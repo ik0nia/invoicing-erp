@@ -932,6 +932,12 @@ class InvoiceController
             }
         }
 
+        if (($form['supplier_cui'] ?? '') === '' && count($partners) === 1) {
+            $supplier = $partners[0];
+            $form['supplier_cui'] = (string) ($supplier->cui ?? '');
+            $form['supplier_name'] = (string) ($supplier->denumire ?? '');
+        }
+
         Response::view('admin/invoices/manual', [
             'form' => $form,
             'partners' => $partners,
