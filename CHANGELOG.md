@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.33
+
+- pret_vanz din JSON SAGA calculat din total client fara TVA.
+
 ## v1.0.32
 
 - pret_vanz calculat cu comision (fara TVA) in JSON SAGA.

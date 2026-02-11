@@ -4377,7 +4377,7 @@ class InvoiceController
         }
 
         $lines = Database::fetchAll(
-            'SELECT id, product_name, quantity, unit_price, line_total, cod_saga
+            'SELECT id, product_name, quantity, unit_price, line_total, line_total_vat, cod_saga
              FROM invoice_in_lines
              WHERE package_id = :id
              ORDER BY id ASC',
@@ -4390,6 +4390,7 @@ class InvoiceController
 
         $products = [];
         $sumValues = 0.0;
+        $sumGross = 0.0;
         foreach ($lines as $line) {
             $code = trim((string) ($line['cod_saga'] ?? ''));
             if ($code === '') {
@@ -4399,7 +4400,9 @@ class InvoiceController
             $quantity = (float) ($line['quantity'] ?? 0);
             $unitPrice = (float) ($line['unit_price'] ?? 0);
             $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
+            $lineTotalVat = (float) ($line['line_total_vat'] ?? 0);
             $sumValues += $lineTotal;
+            $sumGross += $lineTotalVat;
             $products[] = [
                 'cod_articol' => $code,
                 'cantitate' => $quantity,
@@ -4446,11 +4449,13 @@ class InvoiceController
                 }
             }
         }
-        $sellTotal = $sumValues;
+        $sellGross = $sumGross > 0 ? $sumGross : ($sumValues * (1 + ((float) ($packageRow['vat_percent'] ?? 0) / 100)));
         if ($commissionPercent !== null) {
-            $factor = 1 + (abs($commissionPercent) / 100);
-            $sellTotal = $commissionPercent >= 0 ? ($sumValues * $factor) : ($sumValues / $factor);
+            $sellGross = $this->applyCommission((float) $sellGross, $commissionPercent);
         }
+        $vatPercent = (float) ($packageRow['vat_percent'] ?? 0);
+        $vatFactor = $vatPercent > 0 ? (1 + ($vatPercent / 100)) : 1;
+        $sellTotal = $vatFactor > 0 ? ($sellGross / $vatFactor) : $sellGross;
 
         $payload = [
             'pachet' => [
@@ -4460,7 +4465,7 @@ class InvoiceController
                     : '',
                 'denumire' => $this->normalizeSagaName($label),
                 'pret_vanz' => round($sellTotal, 4),
-                'cota_tva' => round((float) ($packageRow['vat_percent'] ?? 0), 2),
+                'cota_tva' => round($vatPercent, 2),
                 'cost_total' => round($sumValues, 2),
                 'gestiune' => '0001',
                 'cantitate_produsa' => 1.0,
