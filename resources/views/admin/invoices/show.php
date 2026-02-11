@@ -384,13 +384,7 @@
                     <div class="text-sm font-semibold text-slate-900">
                         <?= htmlspecialchars($packageLabel) ?>
                     </div>
-                    <?php if (!empty($isConfirmed)): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                            <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
-                        </form>
-                    <?php else: ?>
+                    <?php if (empty($isConfirmed)): ?>
                         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
@@ -631,15 +625,6 @@
                     <?php endif; ?>
                 </div>
             <?php endif; ?>
-            <div class="flex justify-end">
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/factura') ?>">
-                    <?= App\Support\Csrf::input() ?>
-                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                    <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                        Descarca Saga (toate pachetele)
-                    </button>
-                </form>
-            </div>
             <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
                 <div class="flex justify-end">
                     <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>">

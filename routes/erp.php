@@ -51,9 +51,6 @@ $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateIn
 $router->post('/admin/facturi/incarca-fisier', [InvoiceController::class, 'uploadSupplierFile']);
 $router->post('/admin/facturi/deblocheaza-client', [InvoiceController::class, 'unlockClient']);
 $router->post('/admin/facturi/redenumeste-pachet', [InvoiceController::class, 'renamePackage']);
-$router->post('/admin/facturi/saga/pachet', [InvoiceController::class, 'downloadPackageSaga']);
-$router->post('/admin/facturi/saga/factura', [InvoiceController::class, 'downloadInvoiceSaga']);
-$router->post('/admin/pachete-confirmate/descarca', [InvoiceController::class, 'downloadSelectedSaga']);
 $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']);
 $router->post('/admin/facturi/print-storno', [InvoiceController::class, 'printStornoInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.23
+
+- Eliminare generare AHK Saga din interfata.
+- Fix eroare 500 la pachete confirmate.
+
 ## v1.0.22
 
 - Buton Genereaza SAGA pentru pachete cu produse asociate.
