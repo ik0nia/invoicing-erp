@@ -752,6 +752,7 @@ class InvoiceController
             }
         }
         $packageQtyMap = [];
+        $packageSagaMap = [];
         if (!empty($packageIds) && Database::tableExists('invoice_in_lines')) {
             $placeholders = [];
             $params = [];
@@ -770,6 +771,22 @@ class InvoiceController
             foreach ($qtyRows as $row) {
                 $packageQtyMap[(int) $row['package_id']] = (float) ($row['qty'] ?? 0);
             }
+
+            $sagaRows = Database::fetchAll(
+                'SELECT package_id,
+                        COUNT(*) AS line_count,
+                        SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> "" THEN 1 ELSE 0 END) AS saga_count
+                 FROM invoice_in_lines
+                 WHERE package_id IN (' . implode(',', $placeholders) . ')
+                 GROUP BY package_id',
+                $params
+            );
+            foreach ($sagaRows as $row) {
+                $packageSagaMap[(int) $row['package_id']] = [
+                    'line_count' => (int) ($row['line_count'] ?? 0),
+                    'saga_count' => (int) ($row['saga_count'] ?? 0),
+                ];
+            }
         }
         foreach ($rows as &$row) {
             $labelText = trim((string) ($row['label'] ?? ''));
@@ -781,6 +798,10 @@ class InvoiceController
             $saga = $sagaProducts[$key] ?? null;
             $qty = $packageQtyMap[(int) ($row['id'] ?? 0)] ?? 0.0;
             $row['stock_ok'] = $saga && $saga['cod_saga'] !== '' && $saga['stock_qty'] > $qty;
+            $sagaStats = $packageSagaMap[(int) ($row['id'] ?? 0)] ?? null;
+            $row['all_saga'] = $sagaStats
+                ? ($sagaStats['line_count'] > 0 && $sagaStats['saga_count'] >= $sagaStats['line_count'])
+                : false;
         }
         unset($row);
 

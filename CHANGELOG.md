@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.21
+
+- Evidentiere pachete cu toate produsele asociate SAGA.
+
 ## v1.0.20
 
 - Fix import CSV SAGA pentru pachete confirmate.

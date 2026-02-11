@@ -145,7 +145,8 @@
                             $sagaMismatch = $hasSagaMatch && abs($sagaValueNumeric - $totalValue) > 0.01;
                             $sagaClass = $sagaMismatch ? 'text-rose-600 font-semibold' : 'text-slate-600';
                         ?>
-                        <tr class="border-b border-slate-100">
+                        <?php $rowClass = !empty($row['all_saga']) ? 'border-b border-slate-100 bg-violet-50' : 'border-b border-slate-100'; ?>
+                        <tr class="<?= $rowClass ?>">
                             <td class="px-3 py-2">
                                 <input
                                     type="checkbox"
