@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.28
+
+- Citire fallback din .env pentru token SAGA.
+
 ## v1.0.27
 
 - Auto-creare coloana saga_status la generare SAGA.
