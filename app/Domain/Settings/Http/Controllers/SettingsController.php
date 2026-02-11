@@ -15,7 +15,7 @@ use App\Support\Session;
 
 class SettingsController
 {
-    private const APP_VERSION = 'v1.0.1';
+    private const APP_VERSION = 'v1.0.19';
     private SettingsService $settings;
 
     public function __construct()
@@ -25,7 +25,7 @@ class SettingsController
 
     public function edit(): void
     {
-        Auth::requireAdmin();
+        Auth::requireSuperAdmin();
 
         $logoPath = $this->settings->get('branding.logo_path');
         $logoUrl = null;
@@ -77,7 +77,7 @@ class SettingsController
 
     public function update(): void
     {
-        Auth::requireAdmin();
+        Auth::requireSuperAdmin();
 
         $logoUpdated = false;
         if (isset($_FILES['logo']) && $_FILES['logo']['error'] !== UPLOAD_ERR_NO_FILE) {
@@ -227,7 +227,7 @@ class SettingsController
 
     public function generateDemo(): void
     {
-        Auth::requireAdmin();
+        Auth::requireSuperAdmin();
 
         if (!$this->ensureDemoTables()) {
             Session::flash('error', 'Importa schema SQL inainte de generare.');
@@ -371,7 +371,7 @@ class SettingsController
 
     public function resetDemo(): void
     {
-        Auth::requireAdmin();
+        Auth::requireSuperAdmin();
 
         if (!$this->ensureDemoTables()) {
             Session::flash('error', 'Importa schema SQL inainte de reset.');
@@ -636,6 +636,16 @@ class SettingsController
         Auth::requireAdmin();
 
         Response::view('admin/manual', [
+            'version' => self::APP_VERSION,
+            'releases' => $this->readChangelog(),
+        ]);
+    }
+
+    public function changelog(): void
+    {
+        Auth::requireAdmin();
+
+        Response::view('admin/changelog', [
             'version' => self::APP_VERSION,
             'releases' => $this->readChangelog(),
         ]);

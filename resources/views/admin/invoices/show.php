@@ -460,6 +460,11 @@
                         <div class="text-xs font-semibold text-slate-500">Fara produse</div>
                     <?php else: ?>
                         <?php foreach ($packageLines as $line): ?>
+                            <?php
+                                $hasSagaStock = !empty($line->cod_saga)
+                                    && $line->stock_saga !== null
+                                    && (float) $line->stock_saga > (float) $line->quantity;
+                            ?>
                             <div
                                 class="cursor-move rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                                 draggable="true"
@@ -468,7 +473,14 @@
                                 data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
                             >
                                 <div class="flex items-start justify-between gap-2">
-                                    <div><?= htmlspecialchars($line->product_name) ?></div>
+                                    <div class="flex items-start gap-2">
+                                        <?php if ($hasSagaStock): ?>
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                ✔
+                                            </span>
+                                        <?php endif; ?>
+                                        <div><?= htmlspecialchars($line->product_name) ?></div>
+                                    </div>
                                     <?php if (empty($isConfirmed) && $line->quantity > 1): ?>
                                         <button
                                             type="button"
@@ -519,6 +531,11 @@
                 <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php foreach ($unassigned as $line): ?>
+                    <?php
+                        $hasSagaStock = !empty($line->cod_saga)
+                            && $line->stock_saga !== null
+                            && (float) $line->stock_saga > (float) $line->quantity;
+                    ?>
                     <div
                         class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                         draggable="true"
@@ -527,7 +544,14 @@
                         data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
                     >
                         <div class="flex items-start justify-between gap-2">
-                            <div><?= htmlspecialchars($line->product_name) ?></div>
+                            <div class="flex items-start gap-2">
+                                <?php if ($hasSagaStock): ?>
+                                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                        ✔
+                                    </span>
+                                <?php endif; ?>
+                                <div><?= htmlspecialchars($line->product_name) ?></div>
+                            </div>
                             <?php if (empty($isConfirmed) && $line->quantity > 1): ?>
                                 <button
                                     type="button"

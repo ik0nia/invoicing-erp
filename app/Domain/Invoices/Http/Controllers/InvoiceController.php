@@ -736,6 +736,52 @@ class InvoiceController
 
         $packageIds = array_map(static fn ($row) => (int) $row['id'], $rows);
         $totals = $this->packageTotalsForIds($packageIds);
+        $sagaProducts = [];
+        if (Database::tableExists('saga_products')) {
+            $sagaRows = Database::fetchAll('SELECT name_key, cod_saga, stock_qty FROM saga_products');
+            foreach ($sagaRows as $row) {
+                $key = (string) ($row['name_key'] ?? '');
+                if ($key === '') {
+                    continue;
+                }
+                $sagaProducts[$key] = [
+                    'cod_saga' => (string) ($row['cod_saga'] ?? ''),
+                    'stock_qty' => (float) ($row['stock_qty'] ?? 0),
+                ];
+            }
+        }
+        $packageQtyMap = [];
+        if (!empty($packageIds) && Database::tableExists('invoice_in_lines')) {
+            $placeholders = [];
+            $params = [];
+            foreach ($packageIds as $index => $id) {
+                $key = 'p' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $id;
+            }
+            $qtyRows = Database::fetchAll(
+                'SELECT package_id, COALESCE(SUM(quantity), 0) AS qty
+                 FROM invoice_in_lines
+                 WHERE package_id IN (' . implode(',', $placeholders) . ')
+                 GROUP BY package_id',
+                $params
+            );
+            foreach ($qtyRows as $row) {
+                $packageQtyMap[(int) $row['package_id']] = (float) ($row['qty'] ?? 0);
+            }
+        }
+        foreach ($rows as &$row) {
+            $labelText = trim((string) ($row['label'] ?? ''));
+            if ($labelText === '') {
+                $labelText = 'Pachet de produse';
+            }
+            $label = $labelText . ' #' . (int) ($row['package_no'] ?? 0);
+            $key = $this->normalizeSagaName($label);
+            $saga = $sagaProducts[$key] ?? null;
+            $qty = $packageQtyMap[(int) ($row['id'] ?? 0)] ?? 0.0;
+            $row['stock_ok'] = $saga && $saga['cod_saga'] !== '' && $saga['stock_qty'] > $qty;
+        }
+        unset($row);
 
         Response::view('admin/invoices/confirmed', [
             'packages' => $rows,
