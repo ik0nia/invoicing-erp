@@ -2991,6 +2991,24 @@ class InvoiceController
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'supplier_request_at')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN supplier_request_at DATETIME NULL AFTER commission_percent');
         }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cod_saga')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cod_saga VARCHAR(64) NULL AFTER product_name');
+        }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'stock_saga')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN stock_saga DECIMAL(12,3) NULL AFTER cod_saga');
+        }
+        if (!Database::tableExists('saga_products')) {
+            Database::execute(
+                'CREATE TABLE IF NOT EXISTS saga_products (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    name_key VARCHAR(255) NOT NULL UNIQUE,
+                    name VARCHAR(255) NOT NULL,
+                    cod_saga VARCHAR(64) NOT NULL,
+                    stock_qty DECIMAL(12,3) NOT NULL DEFAULT 0,
+                    updated_at DATETIME NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
+        }
 
         $this->ensurePackageAutoIncrement();
 

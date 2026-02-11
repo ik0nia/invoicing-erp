@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS invoice_in_lines (
     package_id BIGINT UNSIGNED NULL,
     line_no VARCHAR(32) NOT NULL,
     product_name VARCHAR(255) NOT NULL,
+    cod_saga VARCHAR(64) NULL,
+    stock_saga DECIMAL(12,3) NULL,
     quantity DECIMAL(12,3) NOT NULL DEFAULT 0,
     unit_code VARCHAR(16) NOT NULL,
     unit_price DECIMAL(12,4) NOT NULL DEFAULT 0,
@@ -57,4 +59,13 @@ CREATE TABLE IF NOT EXISTS invoice_in_lines (
     tax_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
     line_total_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
     created_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS saga_products (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name_key VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    cod_saga VARCHAR(64) NOT NULL,
+    stock_qty DECIMAL(12,3) NOT NULL DEFAULT 0,
+    updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
