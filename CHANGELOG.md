@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.36
+
+- pret_vanz in JSON SAGA rotunjit la 2 zecimale.
+
 ## v1.0.35
 
 - pret_vanz bazat pe total cu TVA + comision, fara TVA.

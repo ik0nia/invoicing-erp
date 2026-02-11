@@ -4466,7 +4466,7 @@ class InvoiceController
                     ? date('Y-m-d', strtotime((string) $packageRow['issue_date']))
                     : '',
                 'denumire' => $this->normalizeSagaName($label),
-                'pret_vanz' => round($sellTotal, 4),
+                'pret_vanz' => round($sellTotal, 2),
                 'cota_tva' => round($vatPercent, 2),
                 'cost_total' => round($sumValues, 2),
                 'gestiune' => '0001',
@@ -4487,7 +4487,7 @@ class InvoiceController
                 'sum_gross' => round($sumGross, 4),
                 'sell_gross' => round($sellGross, 4),
                 'vat_percent' => $vatPercent,
-                'pret_vanz_calc' => round($sellTotal, 4),
+                'pret_vanz_calc' => round($sellTotal, 2),
             ];
         }
 
