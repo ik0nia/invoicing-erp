@@ -4,7 +4,6 @@
 
 - Bifa verde pe produse cu cod SAGA si stoc suficient.
 - Verificare stoc SAGA pentru pachete in lista confirmata.
-
 ## v1.0.18
 
 - Endpoint GET pentru import stoc (instructiuni).
