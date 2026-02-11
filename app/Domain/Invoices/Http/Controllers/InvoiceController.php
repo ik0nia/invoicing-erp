@@ -4438,15 +4438,15 @@ class InvoiceController
         }
 
         $commissionPercent = null;
-        $clientCui = (string) ($packageRow['selected_client_cui'] ?? '');
-        if ($clientCui !== '') {
-            if ($packageRow['commission_percent'] !== null) {
-                $commissionPercent = (float) $packageRow['commission_percent'];
-            } else {
-                $commission = Commission::forSupplierClient((string) ($packageRow['supplier_cui'] ?? ''), $clientCui);
-                if ($commission) {
-                    $commissionPercent = (float) $commission->commission;
-                }
+        if ($packageRow['commission_percent'] !== null) {
+            $commissionPercent = (float) $packageRow['commission_percent'];
+        }
+        $clientCui = preg_replace('/\D+/', '', (string) ($packageRow['selected_client_cui'] ?? ''));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
+        if ($commissionPercent === null && $clientCui !== '' && $supplierCui !== '') {
+            $commission = Commission::forSupplierClient($supplierCui, $clientCui);
+            if ($commission) {
+                $commissionPercent = (float) $commission->commission;
             }
         }
         $sellGross = $sumGross > 0 ? $sumGross : ($sumValues * (1 + ((float) ($packageRow['vat_percent'] ?? 0) / 100)));
