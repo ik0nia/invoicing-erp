@@ -1017,7 +1017,7 @@ class InvoiceController
              WHERE i.packages_confirmed = 1
                AND l.line_count > 0
                AND l.saga_count = l.line_count
-               AND (p.saga_status IS NULL OR p.saga_status <> "executed")
+               AND (p.saga_status IS NULL OR p.saga_status <> 'executed')
              ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC'
         );
 
