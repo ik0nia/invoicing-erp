@@ -15,7 +15,7 @@ use App\Support\Session;
 
 class SettingsController
 {
-    private const APP_VERSION = 'v1.0.31';
+    private const APP_VERSION = 'v1.0.32';
     private SettingsService $settings;
 
     public function __construct()

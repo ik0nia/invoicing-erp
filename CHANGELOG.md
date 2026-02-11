@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.32
+
+- pret_vanz calculat cu comision (fara TVA) in JSON SAGA.
+
 ## v1.0.31
 
 - JSON SAGA foloseste valori nete (fara TVA) din produse.

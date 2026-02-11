@@ -4362,7 +4362,8 @@ class InvoiceController
             $hasSagaStatus = Database::columnExists('packages', 'saga_status');
             $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
             $packageRow = Database::fetchOne(
-                'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ', i.issue_date
+                'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ',
+                        i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
                  FROM packages p
                  JOIN invoices_in i ON i.id = p.invoice_in_id
                  WHERE p.id = :id
@@ -4433,6 +4434,24 @@ class InvoiceController
             }
         }
 
+        $commissionPercent = null;
+        $clientCui = (string) ($packageRow['selected_client_cui'] ?? '');
+        if ($clientCui !== '') {
+            if ($packageRow['commission_percent'] !== null) {
+                $commissionPercent = (float) $packageRow['commission_percent'];
+            } else {
+                $commission = Commission::forSupplierClient((string) ($packageRow['supplier_cui'] ?? ''), $clientCui);
+                if ($commission) {
+                    $commissionPercent = (float) $commission->commission;
+                }
+            }
+        }
+        $sellTotal = $sumValues;
+        if ($commissionPercent !== null) {
+            $factor = 1 + (abs($commissionPercent) / 100);
+            $sellTotal = $commissionPercent >= 0 ? ($sumValues * $factor) : ($sumValues / $factor);
+        }
+
         $payload = [
             'pachet' => [
                 'id_doc' => $packageNo,
@@ -4440,7 +4459,7 @@ class InvoiceController
                     ? date('Y-m-d', strtotime((string) $packageRow['issue_date']))
                     : '',
                 'denumire' => $this->normalizeSagaName($label),
-                'pret_vanz' => round($sumValues, 4),
+                'pret_vanz' => round($sellTotal, 4),
                 'cota_tva' => round((float) ($packageRow['vat_percent'] ?? 0), 2),
                 'cost_total' => round($sumValues, 2),
                 'gestiune' => '0001',
