@@ -25,6 +25,7 @@ $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookup
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->post('/admin/pachete-confirmate/import-saga', [InvoiceController::class, 'importSagaCsv']);
 $router->get('/admin/pachete-confirmate/saga-json', [InvoiceController::class, 'sagaPackageJson']);
+$router->post('/admin/pachete-confirmate/saga-pending', [InvoiceController::class, 'markSagaPending']);
 $router->get('/api/saga/pachet', [InvoiceController::class, 'apiSagaPackage']);
 $router->get('/api/saga/pachete', [InvoiceController::class, 'apiSagaPending']);
 $router->post('/api/saga/pachet/executed', [InvoiceController::class, 'apiSagaExecuted']);

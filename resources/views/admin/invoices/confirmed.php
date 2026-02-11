@@ -176,19 +176,24 @@
                                 <?php if ($status === 'executed'): ?>
                                     <div class="text-[11px] font-semibold text-emerald-700">Executat</div>
                                 <?php elseif ($status === 'pending'): ?>
-                                    <a
-                                        href="<?= App\Support\Url::to('admin/pachete-confirmate/saga-json?package_id=' . $packageId) ?>"
-                                        class="inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800"
-                                    >
-                                        Json SAGA
-                                    </a>
+                                    <?php if (!empty($sagaToken)): ?>
+                                        <a
+                                            href="<?= App\Support\Url::to('api/saga/pachet?package_id=' . $packageId . '&token=' . urlencode($sagaToken)) ?>"
+                                            class="inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800"
+                                        >
+                                            Json SAGA
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="text-[11px] font-semibold text-rose-600">Token lipsa</div>
+                                    <?php endif; ?>
                                 <?php else: ?>
-                                    <a
-                                        href="<?= App\Support\Url::to('admin/pachete-confirmate/saga-json?package_id=' . $packageId) ?>"
-                                        class="inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800"
-                                    >
-                                        Genereaza SAGA
-                                    </a>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/pachete-confirmate/saga-pending') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="package_id" value="<?= $packageId ?>">
+                                        <button class="inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800">
+                                            Genereaza SAGA
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                             <?php endif; ?>
                         </td>

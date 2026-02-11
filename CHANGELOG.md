@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.25
+
+- Genereaza SAGA seteaza pending fara download.
+- Buton Json SAGA foloseste API cu token.
+
 ## v1.0.24
 
 - API SAGA afiseaza doar pachetele cu status pending.

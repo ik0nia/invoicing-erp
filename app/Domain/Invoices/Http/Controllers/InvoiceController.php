@@ -34,6 +34,7 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
+        $sagaToken = (string) Env::get('SAGA_EXPORT_TOKEN', '');
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
@@ -813,6 +814,7 @@ class InvoiceController
             'totals' => $totals,
             'canImportSaga' => $canImportSaga,
             'sagaDebug' => Session::pull('saga_debug'),
+            'sagaToken' => $sagaToken,
         ]);
     }
 
@@ -969,6 +971,64 @@ class InvoiceController
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
+    }
+
+    public function markSagaPending(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
+        if (!$packageId) {
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        if (!Database::columnExists('packages', 'saga_status')) {
+            Session::flash('error', 'Lipseste coloana saga_status.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $row = Database::fetchOne(
+            'SELECT p.id, p.package_no, i.packages_confirmed
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE p.id = :id
+             LIMIT 1',
+            ['id' => $packageId]
+        );
+        if (!$row || empty($row['packages_confirmed'])) {
+            Session::flash('error', 'Pachetul nu este confirmat.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        if (!Database::tableExists('invoice_in_lines') || !Database::columnExists('invoice_in_lines', 'cod_saga')) {
+            Session::flash('error', 'Nu exista produse cu cod SAGA.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $stats = Database::fetchOne(
+            'SELECT COUNT(*) AS line_count,
+                    SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> \'\' THEN 1 ELSE 0 END) AS saga_count
+             FROM invoice_in_lines
+             WHERE package_id = :id',
+            ['id' => $packageId]
+        );
+        $lineCount = (int) ($stats['line_count'] ?? 0);
+        $sagaCount = (int) ($stats['saga_count'] ?? 0);
+        if ($lineCount === 0 || $sagaCount < $lineCount) {
+            Session::flash('error', 'Nu toate produsele au cod SAGA asociat.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        Database::execute(
+            'UPDATE packages SET saga_status = :status WHERE id = :id',
+            ['status' => 'pending', 'id' => $packageId]
+        );
+        Session::flash('status', 'Pachet marcat ca pending pentru SAGA.');
+        Response::redirect('/admin/pachete-confirmate');
     }
 
     public function apiSagaPackage(): void
