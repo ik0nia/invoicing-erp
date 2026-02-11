@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.17
+
+- Endpoint import stoc CSV cu token (cod/denumire/stoc).
+
 ## v1.0.16
 
 - Afisare debug pentru comparare SAGA la import.
