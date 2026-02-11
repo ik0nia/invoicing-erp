@@ -35,7 +35,11 @@ class Router
             Response::abort(404);
         }
 
-        if ($method === 'POST' && !Csrf::validate($_POST['_token'] ?? null)) {
+        if ($method === 'POST' && $this->isStockImportRoute($path)) {
+            if (!$this->hasValidStockToken()) {
+                Response::abort(403, 'Token invalid.');
+            }
+        } elseif ($method === 'POST' && !Csrf::validate($_POST['_token'] ?? null)) {
             Response::abort(419, 'Token CSRF invalid.');
         }
 
@@ -65,5 +69,24 @@ class Router
         $path = rtrim($path, '/');
 
         return $path === '' ? '/' : $path;
+    }
+
+    private function isStockImportRoute(string $path): bool
+    {
+        return $path === '/api/stock/import';
+    }
+
+    private function hasValidStockToken(): bool
+    {
+        $token = Env::get('STOCK_IMPORT_TOKEN', '');
+        if ($token === '') {
+            return false;
+        }
+        $provided = $_SERVER['HTTP_X_ERP_TOKEN'] ?? ($_GET['token'] ?? '');
+        if ($provided === '') {
+            return false;
+        }
+
+        return hash_equals($token, (string) $provided);
     }
 }

@@ -10,6 +10,8 @@ class InvoiceInLine
     public int $invoice_in_id;
     public string $line_no;
     public string $product_name;
+    public ?string $cod_saga = null;
+    public ?float $stock_saga = null;
     public float $quantity;
     public string $unit_code;
     public float $unit_price;
@@ -121,6 +123,8 @@ class InvoiceInLine
         $line->invoice_in_id = (int) $row['invoice_in_id'];
         $line->line_no = $row['line_no'];
         $line->product_name = $row['product_name'];
+        $line->cod_saga = $row['cod_saga'] ?? null;
+        $line->stock_saga = isset($row['stock_saga']) ? (float) $row['stock_saga'] : null;
         $line->quantity = (float) $row['quantity'];
         $line->unit_code = $row['unit_code'];
         $line->unit_price = (float) $row['unit_price'];
