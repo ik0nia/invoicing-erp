@@ -1007,10 +1007,13 @@ class InvoiceController
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             $this->json(['success' => true, 'count' => 0, 'data' => []]);
         }
+        if (!Database::columnExists('packages', 'saga_status')) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
+        }
 
-        $hasSagaStatus = Database::columnExists('packages', 'saga_status');
-        $statusSelect = $hasSagaStatus ? ', p.saga_status' : ', NULL AS saga_status';
-        $statusFilter = $hasSagaStatus ? " AND (p.saga_status IS NULL OR p.saga_status <> 'executed')" : '';
+        $hasSagaStatus = true;
+        $statusSelect = ', p.saga_status';
+        $statusFilter = " AND p.saga_status = 'pending'";
 
         $packages = Database::fetchAll(
             "SELECT p.id, p.package_no, p.label, p.vat_percent{$statusSelect}, i.issue_date

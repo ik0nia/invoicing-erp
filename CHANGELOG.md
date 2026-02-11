@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.24
+
+- API SAGA afiseaza doar pachetele cu status pending.
+- Buton Genereaza devine Json dupa setare pending.
+
 ## v1.0.23
 
 - Eliminare generare AHK Saga din interfata.

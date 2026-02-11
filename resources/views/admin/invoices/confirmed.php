@@ -172,8 +172,16 @@
                         </td>
                         <td class="px-3 py-2 text-right">
                             <?php if (!empty($row['all_saga'])): ?>
-                                <?php if (($row['saga_status'] ?? '') === 'executed'): ?>
+                                <?php $status = (string) ($row['saga_status'] ?? ''); ?>
+                                <?php if ($status === 'executed'): ?>
                                     <div class="text-[11px] font-semibold text-emerald-700">Executat</div>
+                                <?php elseif ($status === 'pending'): ?>
+                                    <a
+                                        href="<?= App\Support\Url::to('admin/pachete-confirmate/saga-json?package_id=' . $packageId) ?>"
+                                        class="inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800"
+                                    >
+                                        Json SAGA
+                                    </a>
                                 <?php else: ?>
                                     <a
                                         href="<?= App\Support\Url::to('admin/pachete-confirmate/saga-json?package_id=' . $packageId) ?>"
