@@ -35,6 +35,9 @@ class InvoiceController
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $sagaToken = (string) Env::get('SAGA_EXPORT_TOKEN', '');
+        if ($sagaToken === '') {
+            $sagaToken = (string) Env::get('STOCK_IMPORT_TOKEN', '');
+        }
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
