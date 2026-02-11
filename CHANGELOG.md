@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.34
+
+- pret_vanz = cost_total + comision (fara TVA).
+
 ## v1.0.33
 
 - pret_vanz din JSON SAGA calculat din total client fara TVA.

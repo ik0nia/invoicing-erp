@@ -4390,7 +4390,6 @@ class InvoiceController
 
         $products = [];
         $sumValues = 0.0;
-        $sumGross = 0.0;
         foreach ($lines as $line) {
             $code = trim((string) ($line['cod_saga'] ?? ''));
             if ($code === '') {
@@ -4400,9 +4399,7 @@ class InvoiceController
             $quantity = (float) ($line['quantity'] ?? 0);
             $unitPrice = (float) ($line['unit_price'] ?? 0);
             $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
-            $lineTotalVat = (float) ($line['line_total_vat'] ?? 0);
             $sumValues += $lineTotal;
-            $sumGross += $lineTotalVat;
             $products[] = [
                 'cod_articol' => $code,
                 'cantitate' => $quantity,
@@ -4449,13 +4446,11 @@ class InvoiceController
                 $commissionPercent = (float) $commission->commission;
             }
         }
-        $sellGross = $sumGross > 0 ? $sumGross : ($sumValues * (1 + ((float) ($packageRow['vat_percent'] ?? 0) / 100)));
-        if ($commissionPercent !== null) {
-            $sellGross = $this->applyCommission((float) $sellGross, $commissionPercent);
-        }
         $vatPercent = (float) ($packageRow['vat_percent'] ?? 0);
-        $vatFactor = $vatPercent > 0 ? (1 + ($vatPercent / 100)) : 1;
-        $sellTotal = $vatFactor > 0 ? ($sellGross / $vatFactor) : $sellGross;
+        $sellTotal = $sumValues;
+        if ($commissionPercent !== null) {
+            $sellTotal = $sumValues * (1 + ($commissionPercent / 100));
+        }
 
         $payload = [
             'pachet' => [
