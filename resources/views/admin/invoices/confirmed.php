@@ -175,6 +175,8 @@
                                 <?php $status = (string) ($row['saga_status'] ?? ''); ?>
                                 <?php if ($status === 'executed'): ?>
                                     <div class="text-[11px] font-semibold text-emerald-700">Executat</div>
+                                <?php elseif ($status === 'imported'): ?>
+                                    <div class="text-[11px] font-semibold text-emerald-700">Importat</div>
                                 <?php elseif ($status === 'pending' || $status === 'processing'): ?>
                                     <?php if (!empty($sagaToken)): ?>
                                         <a

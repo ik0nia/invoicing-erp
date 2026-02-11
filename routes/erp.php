@@ -29,6 +29,7 @@ $router->post('/admin/pachete-confirmate/saga-pending', [InvoiceController::clas
 $router->get('/api/saga/pachet', [InvoiceController::class, 'apiSagaPackage']);
 $router->get('/api/saga/pachete', [InvoiceController::class, 'apiSagaPending']);
 $router->post('/api/saga/pachet/executed', [InvoiceController::class, 'apiSagaExecuted']);
+$router->post('/api/saga/pachet/imported', [InvoiceController::class, 'apiSagaImported']);
 $router->get('/api/stock/import', [StockImportController::class, 'status']);
 $router->post('/api/stock/import', [StockImportController::class, 'import']);
 $router->get('/admin/facturi/adauga', [InvoiceController::class, 'showManual']);

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.29
+
+- API pentru marcarea importului SAGA (processing -> imported).
+
 ## v1.0.28
 
 - Citire fallback din .env pentru token SAGA.

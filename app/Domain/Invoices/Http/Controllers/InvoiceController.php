@@ -1146,6 +1146,40 @@ class InvoiceController
         $this->json(['success' => true, 'status' => 'executed']);
     }
 
+    public function apiSagaImported(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $payload = $this->readJsonBody();
+        $packageNo = isset($_POST['id_pachet']) ? (int) $_POST['id_pachet'] : (int) ($payload['id_pachet'] ?? 0);
+        if (!$packageNo) {
+            $packageNo = isset($_POST['id_doc']) ? (int) $_POST['id_doc'] : (int) ($payload['id_doc'] ?? 0);
+        }
+
+        if (!$packageNo) {
+            $this->json(['success' => false, 'message' => 'Lipseste id_pachet.'], 400);
+        }
+
+        if (!$this->ensureSagaStatusColumn()) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
+        }
+
+        $updated = Database::execute(
+            'UPDATE packages SET saga_status = :status WHERE package_no = :no AND saga_status = :current',
+            ['status' => 'imported', 'no' => $packageNo, 'current' => 'processing']
+        );
+
+        $this->json([
+            'success' => true,
+            'status' => 'imported',
+            'updated' => $updated ? 1 : 0,
+        ]);
+    }
+
     public function showImport(): void
     {
         $this->requireInvoiceRole();
