@@ -1025,9 +1025,9 @@ class InvoiceController
 
         Database::execute(
             'UPDATE packages SET saga_status = :status WHERE id = :id',
-            ['status' => 'pending', 'id' => $packageId]
+            ['status' => 'processing', 'id' => $packageId]
         );
-        Session::flash('status', 'Pachet marcat ca pending pentru SAGA.');
+        Session::flash('status', 'Pachet marcat ca processing pentru SAGA.');
         Response::redirect('/admin/pachete-confirmate');
     }
 
@@ -1073,7 +1073,7 @@ class InvoiceController
 
         $hasSagaStatus = true;
         $statusSelect = ', p.saga_status';
-        $statusFilter = " AND p.saga_status = 'pending'";
+        $statusFilter = " AND p.saga_status IN ('processing', 'pending')";
 
         $packages = Database::fetchAll(
             "SELECT p.id, p.package_no, p.label, p.vat_percent{$statusSelect}, i.issue_date
@@ -4376,8 +4376,8 @@ class InvoiceController
         $label = $labelText . ' #' . $packageNo;
 
         $status = (string) ($packageRow['saga_status'] ?? '');
-        if ($status === '') {
-            $status = 'pending';
+        if ($status === '' || $status === 'pending') {
+            $status = 'processing';
             if (Database::columnExists('packages', 'saga_status')) {
                 Database::execute(
                     'UPDATE packages SET saga_status = :status WHERE id = :id',

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.26
+
+- Status JSON SAGA setat la processing dupa generare.
+
 ## v1.0.25
 
 - Genereaza SAGA seteaza pending fara download.
