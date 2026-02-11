@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.16
+
+- Afisare debug pentru comparare SAGA la import.
+
 ## v1.0.15
 
 - Debug comparare CSV SAGA in pachete confirmate.
