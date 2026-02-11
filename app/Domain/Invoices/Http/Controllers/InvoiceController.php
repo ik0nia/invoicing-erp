@@ -4255,8 +4255,10 @@ class InvoiceController
         }
 
         if ($packageRow === null) {
+            $hasSagaStatus = Database::columnExists('packages', 'saga_status');
+            $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
             $packageRow = Database::fetchOne(
-                'SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
+                'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ', i.issue_date
                  FROM packages p
                  JOIN invoices_in i ON i.id = p.invoice_in_id
                  WHERE p.id = :id
