@@ -17,6 +17,7 @@ use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\CompanyName;
 use App\Support\Database;
+use App\Support\Env;
 use App\Support\Response;
 use App\Support\Session;
 
@@ -873,6 +874,9 @@ class InvoiceController
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
             Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
         }
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_status')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
+        }
 
         $packages = Database::fetchAll(
             'SELECT p.id, p.label, p.package_no, p.vat_percent
@@ -937,6 +941,131 @@ class InvoiceController
         }
         Session::flash('status', $status);
         Response::redirect('/admin/pachete-confirmate');
+    }
+
+    public function sagaPackageJson(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
+        if (!$packageId) {
+            Response::abort(400, 'Pachet invalid.');
+        }
+
+        try {
+            $payload = $this->buildSagaPackagePayload($packageId);
+        } catch (\Throwable $exception) {
+            Response::abort(400, $exception->getMessage());
+        }
+
+        $filename = 'pachet_' . (int) ($payload['pachet']['id_doc'] ?? $packageId) . '.json';
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    public function apiSagaPackage(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
+        if (!$packageId) {
+            $this->json(['success' => false, 'message' => 'Pachet invalid.'], 400);
+        }
+
+        try {
+            $payload = $this->buildSagaPackagePayload($packageId);
+        } catch (\Throwable $exception) {
+            $this->json(['success' => false, 'message' => $exception->getMessage()], 400);
+        }
+
+        $this->json(['success' => true, 'data' => $payload]);
+    }
+
+    public function apiSagaPending(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        if (!Database::tableExists('invoice_in_lines')) {
+            $this->json(['success' => true, 'count' => 0, 'data' => []]);
+        }
+
+        $packages = Database::fetchAll(
+            'SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             JOIN (
+                SELECT package_id,
+                       COUNT(*) AS line_count,
+                       SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> "" THEN 1 ELSE 0 END) AS saga_count
+                FROM invoice_in_lines
+                GROUP BY package_id
+             ) l ON l.package_id = p.id
+             WHERE i.packages_confirmed = 1
+               AND l.line_count > 0
+               AND l.saga_count = l.line_count
+               AND (p.saga_status IS NULL OR p.saga_status <> "executed")
+             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC'
+        );
+
+        $payloads = [];
+        foreach ($packages as $package) {
+            try {
+                $payloads[] = $this->buildSagaPackagePayload((int) $package['id'], $package);
+            } catch (\Throwable $exception) {
+                continue;
+            }
+        }
+
+        $this->json([
+            'success' => true,
+            'count' => count($payloads),
+            'data' => $payloads,
+        ]);
+    }
+
+    public function apiSagaExecuted(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $payload = $this->readJsonBody();
+        $packageNo = isset($_POST['id_doc']) ? (int) $_POST['id_doc'] : (int) ($payload['id_doc'] ?? 0);
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : (int) ($payload['package_id'] ?? 0);
+
+        if (!$packageNo && !$packageId) {
+            $this->json(['success' => false, 'message' => 'Lipseste id_doc sau package_id.'], 400);
+        }
+
+        if ($packageId) {
+            Database::execute(
+                'UPDATE packages SET saga_status = :status WHERE id = :id',
+                ['status' => 'executed', 'id' => $packageId]
+            );
+        } else {
+            Database::execute(
+                'UPDATE packages SET saga_status = :status WHERE package_no = :no',
+                ['status' => 'executed', 'no' => $packageNo]
+            );
+        }
+
+        $this->json(['success' => true, 'status' => 'executed']);
     }
 
     public function showImport(): void
@@ -4331,6 +4460,123 @@ class InvoiceController
         if (!UserSupplierAccess::userHasSupplier($user->id, $supplierCui)) {
             Response::abort(403, 'Nu ai acces la acest furnizor.');
         }
+    }
+
+    private function buildSagaPackagePayload(int $packageId, ?array $packageRow = null): array
+    {
+        if ($packageRow === null) {
+            $packageRow = Database::fetchOne(
+                'SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
+                 FROM packages p
+                 JOIN invoices_in i ON i.id = p.invoice_in_id
+                 WHERE p.id = :id
+                 LIMIT 1',
+                ['id' => $packageId]
+            );
+        }
+
+        if (!$packageRow) {
+            throw new \RuntimeException('Pachetul nu a fost gasit.');
+        }
+
+        $lines = Database::fetchAll(
+            'SELECT id, product_name, quantity, line_total, cod_saga
+             FROM invoice_in_lines
+             WHERE package_id = :id
+             ORDER BY id ASC',
+            ['id' => $packageId]
+        );
+
+        if (empty($lines)) {
+            throw new \RuntimeException('Pachetul nu are produse.');
+        }
+
+        $products = [];
+        $sumValues = 0.0;
+        foreach ($lines as $line) {
+            $code = trim((string) ($line['cod_saga'] ?? ''));
+            if ($code === '') {
+                throw new \RuntimeException('Exista produse fara cod SAGA asociat.');
+            }
+
+            $lineTotal = (float) ($line['line_total'] ?? 0);
+            $sumValues += $lineTotal;
+            $products[] = [
+                'cod_articol' => $code,
+                'cantitate' => (float) ($line['quantity'] ?? 0),
+                'val_produse' => round($lineTotal, 2),
+            ];
+        }
+
+        $dbTotal = (float) Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total), 0) FROM invoice_in_lines WHERE package_id = :id',
+            ['id' => $packageId]
+        );
+        if (abs($dbTotal - $sumValues) > 0.01) {
+            throw new \RuntimeException('Totalul produselor nu corespunde costului pachetului.');
+        }
+
+        $labelText = trim((string) ($packageRow['label'] ?? ''));
+        if ($labelText === '') {
+            $labelText = 'Pachet de produse';
+        }
+        $packageNo = (int) ($packageRow['package_no'] ?? $packageId);
+        $label = $labelText . ' #' . $packageNo;
+
+        $status = (string) ($packageRow['saga_status'] ?? '');
+        if ($status === '') {
+            $status = 'pending';
+            Database::execute(
+                'UPDATE packages SET saga_status = :status WHERE id = :id',
+                ['status' => $status, 'id' => $packageId]
+            );
+        }
+
+        $payload = [
+            'pachet' => [
+                'id_doc' => $packageNo,
+                'data' => !empty($packageRow['issue_date'])
+                    ? date('Y-m-d', strtotime((string) $packageRow['issue_date']))
+                    : '',
+                'denumire' => $this->normalizeSagaName($label),
+                'pret_vanz' => round($sumValues, 4),
+                'cota_tva' => round((float) ($packageRow['vat_percent'] ?? 0), 2),
+                'cost_total' => round($sumValues, 2),
+                'gestiune' => '0001',
+                'cantitate_produsa' => 1.0,
+                'status' => $status,
+            ],
+            'produse' => $products,
+        ];
+
+        return $payload;
+    }
+
+    private function requireSagaToken(): void
+    {
+        $token = Env::get('SAGA_EXPORT_TOKEN', '');
+        $provided = $_SERVER['HTTP_X_ERP_TOKEN'] ?? ($_GET['token'] ?? '');
+        if ($token === '' || $provided === '' || !hash_equals($token, (string) $provided)) {
+            $this->json(['success' => false, 'message' => 'Token invalid.'], 403);
+        }
+    }
+
+    private function readJsonBody(): array
+    {
+        $raw = (string) file_get_contents('php://input');
+        if ($raw === '') {
+            return [];
+        }
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : [];
+    }
+
+    private function json(array $payload, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     private function readSagaRowsFromCsv(string $path): array

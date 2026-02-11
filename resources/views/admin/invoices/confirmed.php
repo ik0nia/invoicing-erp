@@ -194,6 +194,18 @@
                                     <input type="hidden" name="package_id" value="<?= $packageId ?>">
                                     <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
                                 </form>
+                                <?php if (!empty($row['all_saga'])): ?>
+                                    <?php if (($row['saga_status'] ?? '') === 'executed'): ?>
+                                        <div class="mt-1 text-[11px] font-semibold text-emerald-700">Executat</div>
+                                    <?php else: ?>
+                                        <a
+                                            href="<?= App\Support\Url::to('admin/pachete-confirmate/saga-json?package_id=' . $packageId) ?>"
+                                            class="mt-1 inline-flex text-[11px] font-semibold text-violet-700 hover:text-violet-800"
+                                        >
+                                            Genereaza SAGA
+                                        </a>
+                                    <?php endif; ?>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

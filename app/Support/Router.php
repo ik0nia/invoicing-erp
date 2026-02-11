@@ -39,6 +39,10 @@ class Router
             if (!$this->hasValidStockToken()) {
                 Response::abort(403, 'Token invalid.');
             }
+        } elseif ($method === 'POST' && $this->isSagaApiRoute($path)) {
+            if (!$this->hasValidSagaToken()) {
+                Response::abort(403, 'Token invalid.');
+            }
         } elseif ($method === 'POST' && !Csrf::validate($_POST['_token'] ?? null)) {
             Response::abort(419, 'Token CSRF invalid.');
         }
@@ -76,9 +80,28 @@ class Router
         return $path === '/api/stock/import';
     }
 
+    private function isSagaApiRoute(string $path): bool
+    {
+        return str_starts_with($path, '/api/saga/');
+    }
+
     private function hasValidStockToken(): bool
     {
         $token = Env::get('STOCK_IMPORT_TOKEN', '');
+        if ($token === '') {
+            return false;
+        }
+        $provided = $_SERVER['HTTP_X_ERP_TOKEN'] ?? ($_GET['token'] ?? '');
+        if ($provided === '') {
+            return false;
+        }
+
+        return hash_equals($token, (string) $provided);
+    }
+
+    private function hasValidSagaToken(): bool
+    {
+        $token = Env::get('SAGA_EXPORT_TOKEN', '');
         if ($token === '') {
             return false;
         }

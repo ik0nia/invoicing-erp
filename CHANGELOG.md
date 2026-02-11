@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.22
+
+- Buton Genereaza SAGA pentru pachete cu produse asociate.
+- API SAGA JSON + status pending/executed.
+
 ## v1.0.21
 
 - Evidentiere pachete cu toate produsele asociate SAGA.
