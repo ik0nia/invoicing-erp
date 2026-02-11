@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.27
+
+- Auto-creare coloana saga_status la generare SAGA.
+
 ## v1.0.26
 
 - Status JSON SAGA setat la processing dupa generare.

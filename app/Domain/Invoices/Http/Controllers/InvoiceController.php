@@ -986,7 +986,7 @@ class InvoiceController
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        if (!Database::columnExists('packages', 'saga_status')) {
+        if (!$this->ensureSagaStatusColumn()) {
             Session::flash('error', 'Lipseste coloana saga_status.');
             Response::redirect('/admin/pachete-confirmate');
         }
@@ -1067,7 +1067,7 @@ class InvoiceController
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             $this->json(['success' => true, 'count' => 0, 'data' => []]);
         }
-        if (!Database::columnExists('packages', 'saga_status')) {
+        if (!$this->ensureSagaStatusColumn()) {
             $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
@@ -1124,7 +1124,7 @@ class InvoiceController
             $this->json(['success' => false, 'message' => 'Lipseste id_doc sau package_id.'], 400);
         }
 
-        if (!Database::columnExists('packages', 'saga_status')) {
+        if (!$this->ensureSagaStatusColumn()) {
             $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
@@ -4313,6 +4313,7 @@ class InvoiceController
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             throw new \RuntimeException('Nu exista coloana cod_saga in linii facturi.');
         }
+        $this->ensureSagaStatusColumn();
 
         if ($packageRow === null) {
             $hasSagaStatus = Database::columnExists('packages', 'saga_status');
@@ -4431,6 +4432,17 @@ class InvoiceController
         header('Content-Type: application/json');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE);
         exit;
+    }
+
+    private function ensureSagaStatusColumn(): bool
+    {
+        if (!Database::tableExists('packages')) {
+            return false;
+        }
+        if (!Database::columnExists('packages', 'saga_status')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
+        }
+        return Database::columnExists('packages', 'saga_status');
     }
 
     private function readSagaRowsFromCsv(string $path): array
