@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.30
+
+- Accepta GET pentru API importat SAGA.
+
 ## v1.0.29
 
 - API pentru marcarea importului SAGA (processing -> imported).

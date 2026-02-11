@@ -1157,7 +1157,13 @@ class InvoiceController
         $payload = $this->readJsonBody();
         $packageNo = isset($_POST['id_pachet']) ? (int) $_POST['id_pachet'] : (int) ($payload['id_pachet'] ?? 0);
         if (!$packageNo) {
+            $packageNo = isset($_GET['id_pachet']) ? (int) $_GET['id_pachet'] : 0;
+        }
+        if (!$packageNo) {
             $packageNo = isset($_POST['id_doc']) ? (int) $_POST['id_doc'] : (int) ($payload['id_doc'] ?? 0);
+        }
+        if (!$packageNo) {
+            $packageNo = isset($_GET['id_doc']) ? (int) $_GET['id_doc'] : 0;
         }
 
         if (!$packageNo) {
