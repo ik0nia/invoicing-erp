@@ -4359,7 +4359,14 @@ class InvoiceController
         }
         $this->ensureSagaStatusColumn();
 
-        if ($packageRow === null) {
+        $needsLookup = $packageRow === null
+            || !array_key_exists('selected_client_cui', $packageRow)
+            || !array_key_exists('supplier_cui', $packageRow)
+            || !array_key_exists('commission_percent', $packageRow)
+            || !array_key_exists('invoice_number', $packageRow)
+            || !array_key_exists('invoice_in_id', $packageRow);
+
+        if ($needsLookup) {
             $hasSagaStatus = Database::columnExists('packages', 'saga_status');
             $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
             $packageRow = Database::fetchOne(
