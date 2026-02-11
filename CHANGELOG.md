@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.38
+
+- pret_vanz in JSON SAGA la 4 zecimale.
+
 ## v1.0.37
 
 - API SAGA foloseste comisionul facturii pentru pret_vanz.
