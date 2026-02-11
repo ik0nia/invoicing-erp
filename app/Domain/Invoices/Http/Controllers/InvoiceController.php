@@ -964,7 +964,7 @@ class InvoiceController
         }
 
         try {
-            $payload = $this->buildSagaPackagePayload($packageId);
+            $payload = $this->buildSagaPackagePayload($packageId, null, !empty($_GET['debug']));
         } catch (\Throwable $exception) {
             Response::abort(400, $exception->getMessage());
         }
@@ -1048,7 +1048,7 @@ class InvoiceController
         }
 
         try {
-            $payload = $this->buildSagaPackagePayload($packageId);
+            $payload = $this->buildSagaPackagePayload($packageId, null, !empty($_GET['debug']));
         } catch (\Throwable $exception) {
             $this->json(['success' => false, 'message' => $exception->getMessage()], 400);
         }
@@ -1096,9 +1096,10 @@ class InvoiceController
         );
 
         $payloads = [];
+        $debug = !empty($_GET['debug']);
         foreach ($packages as $package) {
             try {
-                $payloads[] = $this->buildSagaPackagePayload((int) $package['id'], $package);
+                $payloads[] = $this->buildSagaPackagePayload((int) $package['id'], $package, $debug);
             } catch (\Throwable $exception) {
                 continue;
             }
@@ -4351,7 +4352,7 @@ class InvoiceController
         }
     }
 
-    private function buildSagaPackagePayload(int $packageId, ?array $packageRow = null): array
+    private function buildSagaPackagePayload(int $packageId, ?array $packageRow = null, bool $debug = false): array
     {
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             throw new \RuntimeException('Nu exista coloana cod_saga in linii facturi.');
@@ -4363,7 +4364,8 @@ class InvoiceController
             $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
             $packageRow = Database::fetchOne(
                 'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ',
-                        i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
+                        i.id AS invoice_in_id, i.invoice_number, i.issue_date,
+                        i.selected_client_cui, i.supplier_cui, i.commission_percent
                  FROM packages p
                  JOIN invoices_in i ON i.id = p.invoice_in_id
                  WHERE p.id = :id
@@ -4390,6 +4392,7 @@ class InvoiceController
 
         $products = [];
         $sumValues = 0.0;
+        $sumGross = 0.0;
         foreach ($lines as $line) {
             $code = trim((string) ($line['cod_saga'] ?? ''));
             if ($code === '') {
@@ -4399,7 +4402,9 @@ class InvoiceController
             $quantity = (float) ($line['quantity'] ?? 0);
             $unitPrice = (float) ($line['unit_price'] ?? 0);
             $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
+            $lineTotalVat = (float) ($line['line_total_vat'] ?? 0);
             $sumValues += $lineTotal;
+            $sumGross += $lineTotalVat;
             $products[] = [
                 'cod_articol' => $code,
                 'cantitate' => $quantity,
@@ -4447,10 +4452,12 @@ class InvoiceController
             }
         }
         $vatPercent = (float) ($packageRow['vat_percent'] ?? 0);
-        $sellTotal = $sumValues;
+        $sellGross = $sumGross;
         if ($commissionPercent !== null) {
-            $sellTotal = $sumValues * (1 + ($commissionPercent / 100));
+            $sellGross = $this->applyCommission($sellGross, $commissionPercent);
         }
+        $vatFactor = $vatPercent > 0 ? (1 + ($vatPercent / 100)) : 1;
+        $sellTotal = $vatFactor > 0 ? ($sellGross / $vatFactor) : $sellGross;
 
         $payload = [
             'pachet' => [
@@ -4468,6 +4475,21 @@ class InvoiceController
             ],
             'produse' => $products,
         ];
+
+        if ($debug) {
+            $payload['debug'] = [
+                'invoice_id' => (int) ($packageRow['invoice_in_id'] ?? 0),
+                'invoice_number' => (string) ($packageRow['invoice_number'] ?? ''),
+                'supplier_cui' => (string) ($packageRow['supplier_cui'] ?? ''),
+                'selected_client_cui' => (string) ($packageRow['selected_client_cui'] ?? ''),
+                'commission_percent' => $commissionPercent,
+                'sum_net' => round($sumValues, 4),
+                'sum_gross' => round($sumGross, 4),
+                'sell_gross' => round($sellGross, 4),
+                'vat_percent' => $vatPercent,
+                'pret_vanz_calc' => round($sellTotal, 4),
+            ];
+        }
 
         return $payload;
     }

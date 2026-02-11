@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.35
+
+- pret_vanz bazat pe total cu TVA + comision, fara TVA.
+- Debug optional in API SAGA (?debug=1).
+
 ## v1.0.34
 
 - pret_vanz = cost_total + comision (fara TVA).
