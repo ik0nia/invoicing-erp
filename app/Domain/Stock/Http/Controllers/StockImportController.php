@@ -8,6 +8,17 @@ use App\Support\Response;
 
 class StockImportController
 {
+    public function status(): void
+    {
+        $this->json([
+            'success' => true,
+            'message' => 'Trimite CSV prin POST cu token.',
+            'columns' => ['cod', 'denumire', 'stoc'],
+            'file_field' => 'stock_csv',
+            'auth' => 'X-ERP-TOKEN header sau ?token=',
+        ]);
+    }
+
     public function import(): void
     {
         $token = (string) Env::get('STOCK_IMPORT_TOKEN', '');

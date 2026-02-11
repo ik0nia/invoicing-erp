@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.18
+
+- Endpoint GET pentru import stoc (instructiuni).
+
 ## v1.0.17
 
 - Endpoint import stoc CSV cu token (cod/denumire/stoc).
