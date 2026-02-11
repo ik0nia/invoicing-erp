@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.20
+
+- Fix import CSV SAGA pentru pachete confirmate.
+- Normalizare uppercase la comparare pachete in import.
+
 ## v1.0.19
 
 - Bifa verde pe produse cu cod SAGA si stoc suficient.
