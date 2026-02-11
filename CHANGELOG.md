@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.39
+
+- pret_vanz exportat cu 4 zecimale fixe in JSON SAGA.
+
 ## v1.0.38
 
 - pret_vanz in JSON SAGA la 4 zecimale.
