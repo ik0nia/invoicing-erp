@@ -34,6 +34,7 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
+        $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $canShowRequestAlert = $user ? $user->hasRole(['super_admin', 'admin', 'contabil', 'staff', 'supplier_user']) : false;
         $invoiceId = isset($_GET['invoice_id']) ? (int) $_GET['invoice_id'] : null;
@@ -1007,8 +1008,12 @@ class InvoiceController
             $this->json(['success' => true, 'count' => 0, 'data' => []]);
         }
 
+        $hasSagaStatus = Database::columnExists('packages', 'saga_status');
+        $statusSelect = $hasSagaStatus ? ', p.saga_status' : ', NULL AS saga_status';
+        $statusFilter = $hasSagaStatus ? " AND (p.saga_status IS NULL OR p.saga_status <> 'executed')" : '';
+
         $packages = Database::fetchAll(
-            "SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
+            "SELECT p.id, p.package_no, p.label, p.vat_percent{$statusSelect}, i.issue_date
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              JOIN (
@@ -1020,8 +1025,7 @@ class InvoiceController
              ) l ON l.package_id = p.id
              WHERE i.packages_confirmed = 1
                AND l.line_count > 0
-               AND l.saga_count = l.line_count
-               AND (p.saga_status IS NULL OR p.saga_status <> 'executed')
+               AND l.saga_count = l.line_count{$statusFilter}
              ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC"
         );
 
@@ -1055,6 +1059,10 @@ class InvoiceController
 
         if (!$packageNo && !$packageId) {
             $this->json(['success' => false, 'message' => 'Lipseste id_doc sau package_id.'], 400);
+        }
+
+        if (!Database::columnExists('packages', 'saga_status')) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
         if ($packageId) {
@@ -4305,10 +4313,12 @@ class InvoiceController
         $status = (string) ($packageRow['saga_status'] ?? '');
         if ($status === '') {
             $status = 'pending';
-            Database::execute(
-                'UPDATE packages SET saga_status = :status WHERE id = :id',
-                ['status' => $status, 'id' => $packageId]
-            );
+            if (Database::columnExists('packages', 'saga_status')) {
+                Database::execute(
+                    'UPDATE packages SET saga_status = :status WHERE id = :id',
+                    ['status' => $status, 'id' => $packageId]
+                );
+            }
         }
 
         $payload = [
