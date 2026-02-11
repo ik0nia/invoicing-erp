@@ -1008,13 +1008,13 @@ class InvoiceController
         }
 
         $packages = Database::fetchAll(
-            'SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
+            "SELECT p.id, p.package_no, p.label, p.vat_percent, p.saga_status, i.issue_date
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              JOIN (
                 SELECT package_id,
                        COUNT(*) AS line_count,
-                       SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> \'\' THEN 1 ELSE 0 END) AS saga_count
+                       SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> '' THEN 1 ELSE 0 END) AS saga_count
                 FROM invoice_in_lines
                 GROUP BY package_id
              ) l ON l.package_id = p.id
@@ -1022,7 +1022,7 @@ class InvoiceController
                AND l.line_count > 0
                AND l.saga_count = l.line_count
                AND (p.saga_status IS NULL OR p.saga_status <> 'executed')
-             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC'
+             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC"
         );
 
         $payloads = [];
