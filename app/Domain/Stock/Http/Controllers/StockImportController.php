@@ -74,10 +74,21 @@ class StockImportController
              ON DUPLICATE KEY UPDATE name = VALUES(name), cod_saga = VALUES(cod_saga),
                  stock_qty = VALUES(stock_qty), updated_at = VALUES(updated_at)'
         );
-        $updateLines = $pdo->prepare(
+        $lineIdsByKey = [];
+        if (Database::tableExists('invoice_in_lines')) {
+            $lineRows = Database::fetchAll('SELECT id, product_name FROM invoice_in_lines');
+            foreach ($lineRows as $row) {
+                $nameKey = $this->normalizeNameKey((string) ($row['product_name'] ?? ''));
+                if ($nameKey === '') {
+                    continue;
+                }
+                $lineIdsByKey[$nameKey][] = (int) $row['id'];
+            }
+        }
+        $updateLine = $pdo->prepare(
             'UPDATE invoice_in_lines
              SET cod_saga = :code, stock_saga = :stock
-             WHERE UPPER(TRIM(product_name)) = :key'
+             WHERE id = :id'
         );
 
         $updatedProducts = 0;
@@ -93,12 +104,16 @@ class StockImportController
             ]);
             $updatedProducts++;
 
-            $updateLines->execute([
-                'code' => $item['code'],
-                'stock' => $item['stock'],
-                'key' => $key,
-            ]);
-            $updatedLines += $updateLines->rowCount();
+            if (!empty($lineIdsByKey[$key])) {
+                foreach ($lineIdsByKey[$key] as $lineId) {
+                    $updateLine->execute([
+                        'code' => $item['code'],
+                        'stock' => $item['stock'],
+                        'id' => $lineId,
+                    ]);
+                    $updatedLines += $updateLine->rowCount();
+                }
+            }
         }
 
         $this->json([
