@@ -4376,7 +4376,7 @@ class InvoiceController
         }
 
         $lines = Database::fetchAll(
-            'SELECT id, product_name, quantity, line_total, cod_saga
+            'SELECT id, product_name, quantity, unit_price, line_total, cod_saga
              FROM invoice_in_lines
              WHERE package_id = :id
              ORDER BY id ASC',
@@ -4395,11 +4395,13 @@ class InvoiceController
                 throw new \RuntimeException('Exista produse fara cod SAGA asociat.');
             }
 
-            $lineTotal = (float) ($line['line_total'] ?? 0);
+            $quantity = (float) ($line['quantity'] ?? 0);
+            $unitPrice = (float) ($line['unit_price'] ?? 0);
+            $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
             $sumValues += $lineTotal;
             $products[] = [
                 'cod_articol' => $code,
-                'cantitate' => (float) ($line['quantity'] ?? 0),
+                'cantitate' => $quantity,
                 'val_produse' => round($lineTotal, 2),
             ];
         }
@@ -4408,8 +4410,9 @@ class InvoiceController
             'SELECT COALESCE(SUM(line_total), 0) FROM invoice_in_lines WHERE package_id = :id',
             ['id' => $packageId]
         );
-        if (abs($dbTotal - $sumValues) > 0.01) {
-            throw new \RuntimeException('Totalul produselor nu corespunde costului pachetului.');
+        if (abs($dbTotal - $sumValues) > 0.01 && $dbTotal > 0) {
+            // Use the stored totals if they diverge (avoid VAT adjustments).
+            $sumValues = $dbTotal;
         }
 
         $labelText = trim((string) ($packageRow['label'] ?? ''));

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.31
+
+- JSON SAGA foloseste valori nete (fara TVA) din produse.
+
 ## v1.0.30
 
 - Accepta GET pentru API importat SAGA.
