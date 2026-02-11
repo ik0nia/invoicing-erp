@@ -1079,7 +1079,8 @@ class InvoiceController
         $statusFilter = " AND p.saga_status IN ('processing', 'pending')";
 
         $packages = Database::fetchAll(
-            "SELECT p.id, p.package_no, p.label, p.vat_percent{$statusSelect}, i.issue_date
+            "SELECT p.id, p.package_no, p.label, p.vat_percent, p.invoice_in_id{$statusSelect},
+                    i.invoice_number, i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              JOIN (
@@ -4364,7 +4365,9 @@ class InvoiceController
             || !array_key_exists('supplier_cui', $packageRow)
             || !array_key_exists('commission_percent', $packageRow)
             || !array_key_exists('invoice_number', $packageRow)
-            || !array_key_exists('invoice_in_id', $packageRow);
+            || !array_key_exists('invoice_in_id', $packageRow)
+            || trim((string) ($packageRow['supplier_cui'] ?? '')) === ''
+            || trim((string) ($packageRow['selected_client_cui'] ?? '')) === '';
 
         if ($needsLookup) {
             $hasSagaStatus = Database::columnExists('packages', 'saga_status');
@@ -4452,6 +4455,25 @@ class InvoiceController
         }
         $clientCui = preg_replace('/\D+/', '', (string) ($packageRow['selected_client_cui'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
+        if ($commissionPercent === null && !empty($packageRow['invoice_in_id'])) {
+            $invoiceRow = Database::fetchOne(
+                'SELECT invoice_number, selected_client_cui, supplier_cui, commission_percent
+                 FROM invoices_in
+                 WHERE id = :id
+                 LIMIT 1',
+                ['id' => (int) $packageRow['invoice_in_id']]
+            );
+            if ($invoiceRow) {
+                $packageRow['invoice_number'] = $packageRow['invoice_number'] ?? $invoiceRow['invoice_number'];
+                $packageRow['selected_client_cui'] = $packageRow['selected_client_cui'] ?? $invoiceRow['selected_client_cui'];
+                $packageRow['supplier_cui'] = $packageRow['supplier_cui'] ?? $invoiceRow['supplier_cui'];
+                if ($invoiceRow['commission_percent'] !== null) {
+                    $commissionPercent = (float) $invoiceRow['commission_percent'];
+                }
+                $clientCui = preg_replace('/\D+/', '', (string) ($packageRow['selected_client_cui'] ?? ''));
+                $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
+            }
+        }
         if ($commissionPercent === null && $clientCui !== '' && $supplierCui !== '') {
             $commission = Commission::forSupplierClient($supplierCui, $clientCui);
             if ($commission) {
