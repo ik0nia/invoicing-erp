@@ -181,6 +181,18 @@ if ($isSuperAdmin) {
         .dark-mode thead { background-color: #0b1220 !important; color: #94a3b8 !important; }
         .dark-mode tbody tr { border-color: #1f2937 !important; }
         .dark-mode tbody tr:hover { background-color: #1f2937 !important; }
+        .dark-mode .bg-emerald-50 { background-color: #0b2b26 !important; }
+        .dark-mode .bg-green-50 { background-color: #0c2a1e !important; }
+        .dark-mode .bg-teal-50 { background-color: #0a2a2a !important; }
+        .dark-mode .bg-blue-50 { background-color: #0b1f33 !important; }
+        .dark-mode .bg-indigo-50 { background-color: #111827 !important; }
+        .dark-mode .bg-purple-50 { background-color: #201132 !important; }
+        .dark-mode .bg-violet-50 { background-color: #1f1433 !important; }
+        .dark-mode .bg-amber-50 { background-color: #2a1f0b !important; }
+        .dark-mode .bg-yellow-50 { background-color: #2a240b !important; }
+        .dark-mode .bg-orange-50 { background-color: #2a160b !important; }
+        .dark-mode .bg-red-50 { background-color: #2a0b0b !important; }
+        .dark-mode .bg-rose-50 { background-color: #2a0b1b !important; }
 
         body.sidebar-open #sidebar {
             transform: translateX(0);

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.42
+
+- Culori dark pentru randurile highlight.
+
 ## v1.0.41
 
 - Ajustari dark mode pentru tabele si input-uri.
