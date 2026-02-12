@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.44
+
+- Toggle dark mode stil switch on/off.
+
 ## v1.0.43
 
 - Muta numele utilizatorului langa toggle (doar prenume).

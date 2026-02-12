@@ -198,6 +198,8 @@ if ($isSuperAdmin) {
         .dark-mode .bg-orange-50 { background-color: #2a160b !important; }
         .dark-mode .bg-red-50 { background-color: #2a0b0b !important; }
         .dark-mode .bg-rose-50 { background-color: #2a0b1b !important; }
+        .dark-mode .dark-toggle-track { background-color: #1f2937 !important; }
+        .dark-mode .dark-toggle-knob { background-color: #e2e8f0 !important; }
 
         body.sidebar-open #sidebar {
             transform: translateX(0);
@@ -269,9 +271,12 @@ if ($isSuperAdmin) {
                         </button>
                     </div>
                     <div class="flex items-center gap-3">
-                        <label class="flex items-center gap-2 text-sm text-slate-600">
-                            <input type="checkbox" id="dark-mode-toggle" class="rounded border-slate-300">
-                            Dark mode
+                        <label class="relative inline-flex items-center gap-2 text-sm text-slate-600">
+                            <input type="checkbox" id="dark-mode-toggle" class="peer sr-only">
+                            <span class="dark-toggle-track relative inline-flex h-6 w-11 items-center rounded-full bg-slate-200 transition-colors peer-checked:bg-blue-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300">
+                                <span class="dark-toggle-knob inline-block h-4 w-4 translate-x-1 rounded-full bg-white transition-transform peer-checked:translate-x-6"></span>
+                            </span>
+                            <span>Dark mode</span>
                         </label>
                         <?php if ($user): ?>
                             <div class="text-right">
