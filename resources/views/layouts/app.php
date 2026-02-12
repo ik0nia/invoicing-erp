@@ -136,8 +136,12 @@ if ($isSuperAdmin) {
         .dark-mode .bg-white { background-color: #0b1220 !important; }
         .dark-mode .bg-slate-50 { background-color: #0f172a !important; }
         .dark-mode .bg-slate-100 { background-color: #111827 !important; }
+        .dark-mode .bg-slate-200 { background-color: #1f2937 !important; }
+        .dark-mode .bg-blue-50 { background-color: #0f172a !important; }
+        .dark-mode .bg-blue-100 { background-color: #1e293b !important; }
         .dark-mode .border-slate-200 { border-color: #1f2937 !important; }
         .dark-mode .border-slate-300 { border-color: #374151 !important; }
+        .dark-mode .border-slate-100 { border-color: #1f2937 !important; }
         .dark-mode .text-slate-900 { color: #f8fafc !important; }
         .dark-mode .text-slate-800 { color: #e2e8f0 !important; }
         .dark-mode .text-slate-700 { color: #cbd5f5 !important; }
@@ -146,8 +150,37 @@ if ($isSuperAdmin) {
         .dark-mode .text-slate-400 { color: #94a3b8 !important; }
         .dark-mode .hover\:bg-slate-100:hover { background-color: #1f2937 !important; }
         .dark-mode .hover\:bg-slate-50:hover { background-color: #1f2937 !important; }
-        .dark-mode .bg-blue-100 { background-color: #1e293b !important; }
         .dark-mode .text-blue-800 { color: #93c5fd !important; }
+        .dark-mode .text-blue-700 { color: #93c5fd !important; }
+        .dark-mode .text-blue-600 { color: #7dd3fc !important; }
+        .dark-mode .hover\:text-slate-900:hover { color: #f8fafc !important; }
+        .dark-mode .hover\:text-blue-800:hover { color: #bfdbfe !important; }
+        .dark-mode .hover\:text-blue-700:hover { color: #bfdbfe !important; }
+        .dark-mode .hover\:text-blue-600:hover { color: #bae6fd !important; }
+        .dark-mode input[type="text"],
+        .dark-mode input[type="number"],
+        .dark-mode input[type="date"],
+        .dark-mode input[type="email"],
+        .dark-mode input[type="password"],
+        .dark-mode input[type="search"],
+        .dark-mode select,
+        .dark-mode textarea {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+        .dark-mode input::placeholder,
+        .dark-mode textarea::placeholder {
+            color: #94a3b8 !important;
+        }
+        .dark-mode option {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+        }
+        .dark-mode table { color: #e2e8f0 !important; }
+        .dark-mode thead { background-color: #0b1220 !important; color: #94a3b8 !important; }
+        .dark-mode tbody tr { border-color: #1f2937 !important; }
+        .dark-mode tbody tr:hover { background-color: #1f2937 !important; }
 
         body.sidebar-open #sidebar {
             transform: translateX(0);

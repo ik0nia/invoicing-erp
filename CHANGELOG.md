@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.41
+
+- Ajustari dark mode pentru tabele si input-uri.
+
 ## v1.0.40
 
 - Toggle pentru dark mode in bara de sus.
