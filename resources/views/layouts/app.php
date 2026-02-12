@@ -18,6 +18,11 @@ $user = Auth::user();
 $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
+$userFirstName = '';
+if ($user && !empty($user->name)) {
+    $parts = preg_split('/\s+/', trim((string) $user->name));
+    $userFirstName = $parts[0] ?? '';
+}
 ?>
 <?php
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
@@ -253,29 +258,29 @@ if ($isSuperAdmin) {
         <div class="flex flex-1 flex-col lg:pl-0">
             <header class="border-b border-slate-200 bg-white">
                 <div class="flex items-center justify-between gap-4 px-4 py-4 lg:px-6">
-                    <div>
-                        <div class="flex items-center gap-3">
-                            <button
-                                type="button"
-                                class="inline-flex items-center justify-center rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 lg:hidden"
-                                id="sidebar-toggle"
-                                aria-label="Deschide meniul"
-                            >
-                                ☰
-                            </button>
-                            <div>
-                                <div class="text-sm text-slate-600">Admin</div>
-                                <div class="text-base font-semibold text-slate-900">
-                                    <?= htmlspecialchars($user?->name ?? 'Administrator') ?>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="flex items-center gap-3">
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center rounded border border-slate-200 px-3 py-2 text-sm text-slate-700 lg:hidden"
+                            id="sidebar-toggle"
+                            aria-label="Deschide meniul"
+                        >
+                            ☰
+                        </button>
                     </div>
                     <div class="flex items-center gap-3">
                         <label class="flex items-center gap-2 text-sm text-slate-600">
                             <input type="checkbox" id="dark-mode-toggle" class="rounded border-slate-300">
                             Dark mode
                         </label>
+                        <?php if ($user): ?>
+                            <div class="text-right">
+                                <div class="text-sm text-slate-600">Admin</div>
+                                <div class="text-base font-semibold text-slate-900">
+                                    <?= htmlspecialchars($userFirstName !== '' ? $userFirstName : 'Administrator') ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                         <?php if ($user): ?>
                             <form method="POST" action="<?= App\Support\Url::to('logout') ?>">
                                 <?= App\Support\Csrf::input() ?>

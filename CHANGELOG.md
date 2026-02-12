@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.43
+
+- Muta numele utilizatorului langa toggle (doar prenume).
+
 ## v1.0.42
 
 - Culori dark pentru randurile highlight.
