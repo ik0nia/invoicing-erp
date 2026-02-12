@@ -119,10 +119,35 @@ if ($isSuperAdmin) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title ?? 'ERP Intern') ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('dark-mode') === '1') {
+                    document.documentElement.classList.add('dark-mode');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <style>
         .text-slate-400 { color: #475569 !important; }
         .text-slate-500 { color: #475569 !important; }
         .text-slate-600 { color: #334155 !important; }
+        .dark-mode body { background-color: #0f172a !important; color: #e2e8f0 !important; }
+        .dark-mode .bg-white { background-color: #0b1220 !important; }
+        .dark-mode .bg-slate-50 { background-color: #0f172a !important; }
+        .dark-mode .bg-slate-100 { background-color: #111827 !important; }
+        .dark-mode .border-slate-200 { border-color: #1f2937 !important; }
+        .dark-mode .border-slate-300 { border-color: #374151 !important; }
+        .dark-mode .text-slate-900 { color: #f8fafc !important; }
+        .dark-mode .text-slate-800 { color: #e2e8f0 !important; }
+        .dark-mode .text-slate-700 { color: #cbd5f5 !important; }
+        .dark-mode .text-slate-600 { color: #94a3b8 !important; }
+        .dark-mode .text-slate-500 { color: #64748b !important; }
+        .dark-mode .text-slate-400 { color: #94a3b8 !important; }
+        .dark-mode .hover\:bg-slate-100:hover { background-color: #1f2937 !important; }
+        .dark-mode .hover\:bg-slate-50:hover { background-color: #1f2937 !important; }
+        .dark-mode .bg-blue-100 { background-color: #1e293b !important; }
+        .dark-mode .text-blue-800 { color: #93c5fd !important; }
 
         body.sidebar-open #sidebar {
             transform: translateX(0);
@@ -201,14 +226,20 @@ if ($isSuperAdmin) {
                             </div>
                         </div>
                     </div>
-                    <?php if ($user): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('logout') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <button type="submit" class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900">
-                                Logout
-                            </button>
-                        </form>
-                    <?php endif; ?>
+                    <div class="flex items-center gap-3">
+                        <label class="flex items-center gap-2 text-sm text-slate-600">
+                            <input type="checkbox" id="dark-mode-toggle" class="rounded border-slate-300">
+                            Dark mode
+                        </label>
+                        <?php if ($user): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('logout') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <button type="submit" class="rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900">
+                                    Logout
+                                </button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </header>
 
@@ -242,6 +273,20 @@ if ($isSuperAdmin) {
                     closeSidebar();
                 }
             });
+        })();
+        (function () {
+            const darkToggle = document.getElementById('dark-mode-toggle');
+            if (!darkToggle) {
+                return;
+            }
+            const setDark = (enabled) => {
+                document.documentElement.classList.toggle('dark-mode', enabled);
+                try {
+                    localStorage.setItem('dark-mode', enabled ? '1' : '0');
+                } catch (e) {}
+            };
+            darkToggle.checked = document.documentElement.classList.contains('dark-mode');
+            darkToggle.addEventListener('change', () => setDark(darkToggle.checked));
         })();
     </script>
 </body>

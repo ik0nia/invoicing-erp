@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.40
+
+- Toggle pentru dark mode in bara de sus.
+
 ## v1.0.39
 
 - pret_vanz exportat cu 4 zecimale fixe in JSON SAGA.
