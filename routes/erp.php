@@ -8,12 +8,15 @@ use App\Domain\Payments\Http\Controllers\PaymentsController;
 use App\Domain\Reports\Http\Controllers\ReportsController;
 use App\Domain\Users\Http\Controllers\UsersController;
 use App\Domain\Stock\Http\Controllers\StockImportController;
+use App\Domain\Audit\Http\Controllers\AuditController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 $router->post('/admin/setari/demo-generate', [SettingsController::class, 'generateDemo']);
 $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo']);
 $router->get('/admin/manual', [SettingsController::class, 'manual']);
+$router->get('/admin/audit', [AuditController::class, 'index']);
+$router->get('/admin/audit/view', [AuditController::class, 'show']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/search', [InvoiceController::class, 'search']);

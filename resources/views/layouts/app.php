@@ -114,6 +114,11 @@ if ($isSuperAdmin) {
             'path' => '/admin/utilizatori',
             'active' => str_starts_with($currentPath, '/admin/utilizatori'),
         ],
+        [
+            'label' => 'Audit Log',
+            'path' => '/admin/audit',
+            'active' => str_starts_with($currentPath, '/admin/audit'),
+        ],
     ];
 }
 ?>
