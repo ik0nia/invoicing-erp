@@ -7,9 +7,11 @@ use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\FgoClient;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
+use App\Domain\Invoices\Services\SagaExportService;
 use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
+use App\Domain\Partners\Services\CommissionService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
@@ -22,6 +24,15 @@ use App\Support\Session;
 
 class InvoiceController
 {
+    private CommissionService $commissionService;
+    private SagaExportService $sagaExportService;
+
+    public function __construct()
+    {
+        $this->commissionService = new CommissionService();
+        $this->sagaExportService = new SagaExportService($this->commissionService);
+    }
+
     public function index(): void
     {
         $this->requireInvoiceRole();
@@ -144,7 +155,7 @@ class InvoiceController
 
             $commissionBase = $invoice->commission_percent ?? $commissionPercent;
             if ($commissionBase !== null) {
-                $clientTotal = $this->applyCommission($invoice->total_with_vat, (float) $commissionBase);
+                $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
             }
 
             Response::view('admin/invoices/show', [
@@ -964,7 +975,7 @@ class InvoiceController
         }
 
         try {
-            $payload = $this->buildSagaPackagePayload($packageId, null, !empty($_GET['debug']));
+            $payload = $this->sagaExportService->buildPackagePayload($packageId, null, !empty($_GET['debug']));
         } catch (\Throwable $exception) {
             Response::abort(400, $exception->getMessage());
         }
@@ -1048,7 +1059,7 @@ class InvoiceController
         }
 
         try {
-            $payload = $this->buildSagaPackagePayload($packageId, null, !empty($_GET['debug']));
+            $payload = $this->sagaExportService->buildPackagePayload($packageId, null, !empty($_GET['debug']));
         } catch (\Throwable $exception) {
             $this->json(['success' => false, 'message' => $exception->getMessage()], 400);
         }
@@ -1100,7 +1111,7 @@ class InvoiceController
         $debug = !empty($_GET['debug']);
         foreach ($packages as $package) {
             try {
-                $payloads[] = $this->buildSagaPackagePayload((int) $package['id'], $package, $debug);
+                $payloads[] = $this->sagaExportService->buildPackagePayload((int) $package['id'], $package, $debug);
             } catch (\Throwable $exception) {
                 continue;
             }
@@ -1233,14 +1244,11 @@ class InvoiceController
                 $clientName = $partner ? $partner->denumire : '';
             }
 
-            if ($invoice->commission_percent !== null) {
-                $commissionPercent = (float) $invoice->commission_percent;
-            } else {
-                $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-                if ($commission) {
-                    $commissionPercent = (float) $commission->commission;
-                }
-            }
+            $commissionPercent = $this->commissionService->resolveCommissionPercent(
+                $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null,
+                (string) $invoice->supplier_cui,
+                (string) $clientCui
+            );
         }
 
         $totalWithout = 0.0;
@@ -1251,8 +1259,8 @@ class InvoiceController
             $with = (float) ($stat['total_vat'] ?? 0);
 
             if ($commissionPercent !== null) {
-                $without = $this->applyCommission($without, $commissionPercent);
-                $with = $this->applyCommission($with, $commissionPercent);
+                $without = $this->commissionService->applyCommission($without, $commissionPercent);
+                $with = $this->commissionService->applyCommission($with, $commissionPercent);
             }
 
             $totalWithout += $without;
@@ -1931,7 +1939,7 @@ class InvoiceController
             }
 
             $stat = $packageStats[$package->id];
-            $total = $this->applyCommission($stat['total_vat'], $commission->commission);
+            $total = $this->commissionService->applyCommission($stat['total_vat'], $commission->commission);
 
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
@@ -3321,23 +3329,12 @@ class InvoiceController
         }
 
         foreach ($packageStats as $packageId => $stat) {
-            $value = $this->applyCommission($stat['total_vat'], $commissionPercent);
+            $value = $this->commissionService->applyCommission($stat['total_vat'], $commissionPercent);
             $totals['packages'][$packageId] = $value;
             $totals['invoice_total'] += $value;
         }
 
         return $totals;
-    }
-
-    private function applyCommission(float $amount, float $percent): float
-    {
-        $factor = 1 + (abs($percent) / 100);
-
-        if ($percent >= 0) {
-            return round($amount * $factor, 2);
-        }
-
-        return round($amount / $factor, 2);
     }
 
     private function lastConfirmedPackageNo(): int
@@ -3661,7 +3658,7 @@ class InvoiceController
         $clientTotal = null;
 
         if ($commission !== null) {
-            $clientTotal = $this->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
@@ -4351,177 +4348,6 @@ class InvoiceController
         if (!UserSupplierAccess::userHasSupplier($user->id, $supplierCui)) {
             Response::abort(403, 'Nu ai acces la acest furnizor.');
         }
-    }
-
-    private function buildSagaPackagePayload(int $packageId, ?array $packageRow = null, bool $debug = false): array
-    {
-        if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
-            throw new \RuntimeException('Nu exista coloana cod_saga in linii facturi.');
-        }
-        $this->ensureSagaStatusColumn();
-
-        $needsLookup = $packageRow === null
-            || !array_key_exists('selected_client_cui', $packageRow)
-            || !array_key_exists('supplier_cui', $packageRow)
-            || !array_key_exists('commission_percent', $packageRow)
-            || !array_key_exists('invoice_number', $packageRow)
-            || !array_key_exists('invoice_in_id', $packageRow)
-            || trim((string) ($packageRow['supplier_cui'] ?? '')) === ''
-            || trim((string) ($packageRow['selected_client_cui'] ?? '')) === '';
-
-        if ($needsLookup) {
-            $hasSagaStatus = Database::columnExists('packages', 'saga_status');
-            $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
-            $packageRow = Database::fetchOne(
-                'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ',
-                        i.id AS invoice_in_id, i.invoice_number, i.issue_date,
-                        i.selected_client_cui, i.supplier_cui, i.commission_percent
-                 FROM packages p
-                 JOIN invoices_in i ON i.id = p.invoice_in_id
-                 WHERE p.id = :id
-                 LIMIT 1',
-                ['id' => $packageId]
-            );
-        }
-
-        if (!$packageRow) {
-            throw new \RuntimeException('Pachetul nu a fost gasit.');
-        }
-
-        $lines = Database::fetchAll(
-            'SELECT id, product_name, quantity, unit_price, line_total, line_total_vat, cod_saga
-             FROM invoice_in_lines
-             WHERE package_id = :id
-             ORDER BY id ASC',
-            ['id' => $packageId]
-        );
-
-        if (empty($lines)) {
-            throw new \RuntimeException('Pachetul nu are produse.');
-        }
-
-        $products = [];
-        $sumValues = 0.0;
-        $sumGross = 0.0;
-        foreach ($lines as $line) {
-            $code = trim((string) ($line['cod_saga'] ?? ''));
-            if ($code === '') {
-                throw new \RuntimeException('Exista produse fara cod SAGA asociat.');
-            }
-
-            $quantity = (float) ($line['quantity'] ?? 0);
-            $unitPrice = (float) ($line['unit_price'] ?? 0);
-            $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
-            $lineTotalVat = (float) ($line['line_total_vat'] ?? 0);
-            $sumValues += $lineTotal;
-            $sumGross += $lineTotalVat;
-            $products[] = [
-                'cod_articol' => $code,
-                'cantitate' => $quantity,
-                'val_produse' => round($lineTotal, 2),
-            ];
-        }
-
-        $dbTotal = (float) Database::fetchValue(
-            'SELECT COALESCE(SUM(line_total), 0) FROM invoice_in_lines WHERE package_id = :id',
-            ['id' => $packageId]
-        );
-        if (abs($dbTotal - $sumValues) > 0.01 && $dbTotal > 0) {
-            // Use the stored totals if they diverge (avoid VAT adjustments).
-            $sumValues = $dbTotal;
-        }
-
-        $labelText = trim((string) ($packageRow['label'] ?? ''));
-        if ($labelText === '') {
-            $labelText = 'Pachet de produse';
-        }
-        $packageNo = (int) ($packageRow['package_no'] ?? $packageId);
-        $label = $labelText . ' #' . $packageNo;
-
-        $status = (string) ($packageRow['saga_status'] ?? '');
-        if ($status === '' || $status === 'pending') {
-            $status = 'processing';
-            if (Database::columnExists('packages', 'saga_status')) {
-                Database::execute(
-                    'UPDATE packages SET saga_status = :status WHERE id = :id',
-                    ['status' => $status, 'id' => $packageId]
-                );
-            }
-        }
-
-        $commissionPercent = null;
-        if ($packageRow['commission_percent'] !== null) {
-            $commissionPercent = (float) $packageRow['commission_percent'];
-        }
-        $clientCui = preg_replace('/\D+/', '', (string) ($packageRow['selected_client_cui'] ?? ''));
-        $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
-        if ($commissionPercent === null && !empty($packageRow['invoice_in_id'])) {
-            $invoiceRow = Database::fetchOne(
-                'SELECT invoice_number, selected_client_cui, supplier_cui, commission_percent
-                 FROM invoices_in
-                 WHERE id = :id
-                 LIMIT 1',
-                ['id' => (int) $packageRow['invoice_in_id']]
-            );
-            if ($invoiceRow) {
-                $packageRow['invoice_number'] = $packageRow['invoice_number'] ?? $invoiceRow['invoice_number'];
-                $packageRow['selected_client_cui'] = $packageRow['selected_client_cui'] ?? $invoiceRow['selected_client_cui'];
-                $packageRow['supplier_cui'] = $packageRow['supplier_cui'] ?? $invoiceRow['supplier_cui'];
-                if ($invoiceRow['commission_percent'] !== null) {
-                    $commissionPercent = (float) $invoiceRow['commission_percent'];
-                }
-                $clientCui = preg_replace('/\D+/', '', (string) ($packageRow['selected_client_cui'] ?? ''));
-                $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
-            }
-        }
-        if ($commissionPercent === null && $clientCui !== '' && $supplierCui !== '') {
-            $commission = Commission::forSupplierClient($supplierCui, $clientCui);
-            if ($commission) {
-                $commissionPercent = (float) $commission->commission;
-            }
-        }
-        $vatPercent = (float) ($packageRow['vat_percent'] ?? 0);
-        $sellGross = $sumGross;
-        if ($commissionPercent !== null) {
-            $sellGross = $this->applyCommission($sellGross, $commissionPercent);
-        }
-        $vatFactor = $vatPercent > 0 ? (1 + ($vatPercent / 100)) : 1;
-        $sellTotal = $vatFactor > 0 ? ($sellGross / $vatFactor) : $sellGross;
-
-        $pretVanz = number_format($sellTotal, 4, '.', '');
-        $payload = [
-            'pachet' => [
-                'id_doc' => $packageNo,
-                'data' => !empty($packageRow['issue_date'])
-                    ? date('Y-m-d', strtotime((string) $packageRow['issue_date']))
-                    : '',
-                'denumire' => $this->normalizeSagaName($label),
-                'pret_vanz' => $pretVanz,
-                'cota_tva' => round($vatPercent, 2),
-                'cost_total' => round($sumValues, 2),
-                'gestiune' => '0001',
-                'cantitate_produsa' => 1.0,
-                'status' => $status,
-            ],
-            'produse' => $products,
-        ];
-
-        if ($debug) {
-            $payload['debug'] = [
-                'invoice_id' => (int) ($packageRow['invoice_in_id'] ?? 0),
-                'invoice_number' => (string) ($packageRow['invoice_number'] ?? ''),
-                'supplier_cui' => (string) ($packageRow['supplier_cui'] ?? ''),
-                'selected_client_cui' => (string) ($packageRow['selected_client_cui'] ?? ''),
-                'commission_percent' => $commissionPercent,
-                'sum_net' => round($sumValues, 4),
-                'sum_gross' => round($sumGross, 4),
-                'sell_gross' => round($sellGross, 4),
-                'vat_percent' => $vatPercent,
-                'pret_vanz_calc' => $pretVanz,
-            ];
-        }
-
-        return $payload;
     }
 
     private function requireSagaToken(): void

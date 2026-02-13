@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.46
+
+- Eliminare completa functionalitati AHK.
+- Refactor comisioane + export SAGA in servicii.
+
 ## v1.0.45
 
 - Pagina profil pentru schimbarea parolei.
@@ -93,7 +98,6 @@
 
 ## v1.0.23
 
-- Eliminare generare AHK Saga din interfata.
 - Fix eroare 500 la pachete confirmate.
 
 ## v1.0.22
