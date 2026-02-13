@@ -2,8 +2,10 @@
 
 namespace App\Domain\Invoices\Services;
 
+use App\Domain\Invoices\Rules\PackageSagaRules;
 use App\Domain\Partners\Services\CommissionService;
 use App\Support\Database;
+use App\Support\Logger;
 
 class SagaExportService
 {
@@ -20,6 +22,15 @@ class SagaExportService
     {
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             throw new \RuntimeException('Nu exista coloana cod_saga in linii facturi.');
+        }
+
+        $validation = PackageSagaRules::validateForSaga($packageId);
+        if (!empty($validation['errors']) || !empty($validation['warnings'])) {
+            Logger::logWarning('saga_package_validation', [
+                'package_id' => $packageId,
+                'errors' => $validation['errors'],
+                'warnings' => $validation['warnings'],
+            ]);
         }
 
         $this->sagaStatusService->ensureSagaStatusColumn();
