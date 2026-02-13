@@ -6,6 +6,7 @@ use App\Domain\Invoices\Rules\SagaStatusRules;
 use App\Support\Audit;
 use App\Support\Database;
 use App\Support\Logger;
+use App\Support\SchemaEnsurer;
 
 class SagaStatusService
 {
@@ -105,13 +106,7 @@ class SagaStatusService
 
     public function ensureSagaStatusColumn(): bool
     {
-        if (!Database::tableExists('packages')) {
-            return false;
-        }
-        if (!Database::columnExists('packages', 'saga_status')) {
-            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
-        }
-        return Database::columnExists('packages', 'saga_status');
+        return SchemaEnsurer::ensurePackagesSagaStatusColumn();
     }
 
     private function logTransition(?string $from, string $to, array $context): void

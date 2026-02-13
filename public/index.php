@@ -28,6 +28,10 @@ if (!file_exists(BASE_PATH . '/.env') && !str_starts_with($relativePath, '/insta
     exit;
 }
 
+if (file_exists(BASE_PATH . '/.env')) {
+    App\Support\SchemaEnsurer::ensure();
+}
+
 $router = new App\Support\Router();
 
 require BASE_PATH . '/routes/web.php';

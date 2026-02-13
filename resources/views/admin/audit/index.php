@@ -44,6 +44,12 @@
     </div>
 </div>
 
+<?php if (!empty($schema_error ?? '')): ?>
+    <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <?= htmlspecialchars((string) $schema_error) ?>
+    </div>
+<?php endif; ?>
+
 <form method="GET" action="<?= App\Support\Url::to('admin/audit') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>

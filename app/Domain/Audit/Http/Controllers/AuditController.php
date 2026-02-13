@@ -13,10 +13,6 @@ class AuditController
     {
         Auth::requireSuperAdmin();
 
-        if (!Database::tableExists('audit_log')) {
-            Response::abort(500, 'Lipseste tabela audit_log.');
-        }
-
         $filters = [
             'action' => trim((string) ($_GET['action'] ?? '')),
             'entity_type' => trim((string) ($_GET['entity_type'] ?? '')),
@@ -34,6 +30,23 @@ class AuditController
         }
         if ($filters['page'] < 1) {
             $filters['page'] = 1;
+        }
+
+        if (!Database::tableExists('audit_log')) {
+            $pagination = [
+                'page' => $filters['page'],
+                'per_page' => $filters['per_page'],
+                'total' => 0,
+                'total_pages' => 1,
+                'start' => 0,
+                'end' => 0,
+            ];
+            Response::view('admin/audit/index', [
+                'rows' => [],
+                'filters' => $filters,
+                'pagination' => $pagination,
+                'schema_error' => 'Nu pot crea tabela audit_log (permisiuni DB). Contacteaza administratorul.',
+            ]);
         }
 
         $where = [];
@@ -97,13 +110,18 @@ class AuditController
     {
         Auth::requireSuperAdmin();
 
-        if (!Database::tableExists('audit_log')) {
-            Response::abort(500, 'Lipseste tabela audit_log.');
-        }
-
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         if (!$id) {
             Response::redirect('/admin/audit');
+        }
+
+        if (!Database::tableExists('audit_log')) {
+            Response::view('admin/audit/show', [
+                'row' => [],
+                'context_pretty' => '',
+                'back_url' => Url::to('admin/audit'),
+                'schema_error' => 'Nu pot crea tabela audit_log (permisiuni DB). Contacteaza administratorul.',
+            ]);
         }
 
         $row = Database::fetchOne('SELECT * FROM audit_log WHERE id = :id LIMIT 1', ['id' => $id]);
