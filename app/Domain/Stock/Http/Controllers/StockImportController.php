@@ -119,7 +119,7 @@ class StockImportController
 
         Audit::record('stock.import', 'stock_import', null, [
             'rows_count' => count($items),
-            'updated_lines_count' => $updatedLines,
+            'updated_count' => $updatedLines,
         ]);
 
         $this->json([

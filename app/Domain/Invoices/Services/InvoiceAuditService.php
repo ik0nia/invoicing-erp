@@ -10,22 +10,28 @@ class InvoiceAuditService
     public function recordImportXml(InvoiceIn $invoice): void
     {
         Audit::record('invoice.import_xml', 'invoice_in', $invoice->id, [
+            'invoice_id' => $invoice->id,
             'supplier_cui' => $invoice->supplier_cui,
-            'invoice_number' => $invoice->invoice_number,
-            'total_without_vat' => $invoice->total_without_vat,
-            'total_vat' => $invoice->total_vat,
-            'total_with_vat' => $invoice->total_with_vat,
+            'selected_client_cui' => $invoice->selected_client_cui,
+            'totals' => [
+                'net' => $invoice->total_without_vat,
+                'vat' => $invoice->total_vat,
+                'gross' => $invoice->total_with_vat,
+            ],
         ]);
     }
 
     public function recordManualCreate(InvoiceIn $invoice): void
     {
         Audit::record('invoice.create_manual', 'invoice_in', $invoice->id, [
+            'invoice_id' => $invoice->id,
             'supplier_cui' => $invoice->supplier_cui,
-            'invoice_number' => $invoice->invoice_number,
-            'total_without_vat' => $invoice->total_without_vat,
-            'total_vat' => $invoice->total_vat,
-            'total_with_vat' => $invoice->total_with_vat,
+            'selected_client_cui' => $invoice->selected_client_cui,
+            'totals' => [
+                'net' => $invoice->total_without_vat,
+                'vat' => $invoice->total_vat,
+                'gross' => $invoice->total_with_vat,
+            ],
         ]);
     }
 
@@ -33,7 +39,7 @@ class InvoiceAuditService
     {
         Audit::record('invoice.packages_confirm', 'invoice_in', $invoiceId, [
             'invoice_id' => $invoiceId,
-            'packages_count' => $packagesCount,
+            'rows_count' => $packagesCount,
         ]);
     }
 }
