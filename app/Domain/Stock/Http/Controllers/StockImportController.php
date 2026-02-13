@@ -3,6 +3,7 @@
 namespace App\Domain\Stock\Http\Controllers;
 
 use App\Support\Database;
+use App\Support\Audit;
 use App\Support\Env;
 use App\Support\Response;
 
@@ -115,6 +116,11 @@ class StockImportController
                 }
             }
         }
+
+        Audit::record('stock.import', 'stock_import', null, [
+            'rows_count' => count($items),
+            'updated_lines_count' => $updatedLines,
+        ]);
 
         $this->json([
             'success' => true,

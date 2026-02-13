@@ -204,3 +204,19 @@ CREATE TABLE payment_orders (
     generated_at DATETIME NULL,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE audit_log (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    actor_user_id INT NULL,
+    actor_role VARCHAR(32) NULL,
+    ip VARCHAR(64) NULL,
+    user_agent VARCHAR(255) NULL,
+    action VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(32) NOT NULL,
+    entity_id BIGINT NULL,
+    context_json TEXT NULL,
+    INDEX idx_action_created_at (action, created_at),
+    INDEX idx_entity (entity_type, entity_id),
+    INDEX idx_actor (actor_user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

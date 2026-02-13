@@ -6,6 +6,7 @@ use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\FgoClient;
+use App\Domain\Invoices\Services\InvoiceAuditService;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
 use App\Domain\Invoices\Services\SagaExportService;
 use App\Domain\Invoices\Services\PackageLockService;
@@ -29,6 +30,7 @@ class InvoiceController
 {
     private CommissionService $commissionService;
     private SagaExportService $sagaExportService;
+    private InvoiceAuditService $invoiceAuditService;
     private PackageLockService $packageLockService;
     private SagaStatusService $sagaStatusService;
     private PackageTotalsService $packageTotalsService;
@@ -39,6 +41,7 @@ class InvoiceController
         $this->sagaStatusService = new SagaStatusService();
         $this->packageLockService = new PackageLockService();
         $this->packageTotalsService = new PackageTotalsService();
+        $this->invoiceAuditService = new InvoiceAuditService();
         $this->sagaExportService = new SagaExportService($this->commissionService, $this->sagaStatusService);
     }
 
@@ -1454,6 +1457,7 @@ class InvoiceController
         }
 
         $this->generatePackages($invoice->id);
+        $this->invoiceAuditService->recordImportXml($invoice);
 
         Session::flash('status', 'Factura a fost importata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
@@ -1632,6 +1636,7 @@ class InvoiceController
         }
 
         $this->generatePackages($invoice->id);
+        $this->invoiceAuditService->recordManualCreate($invoice);
 
         Session::flash('status', 'Factura a fost adaugata manual.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
@@ -3369,6 +3374,7 @@ class InvoiceController
             'UPDATE invoices_in SET packages_confirmed = 1, packages_confirmed_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
         );
+        $this->invoiceAuditService->recordPackagesConfirmed($invoiceId, count($packages));
     }
 
     private function renumberPackages(int $invoiceId): void
