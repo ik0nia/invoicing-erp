@@ -8,10 +8,12 @@ use App\Support\Database;
 class SagaExportService
 {
     private CommissionService $commissionService;
+    private SagaStatusService $sagaStatusService;
 
-    public function __construct(?CommissionService $commissionService = null)
+    public function __construct(?CommissionService $commissionService = null, ?SagaStatusService $sagaStatusService = null)
     {
         $this->commissionService = $commissionService ?? new CommissionService();
+        $this->sagaStatusService = $sagaStatusService ?? new SagaStatusService();
     }
 
     public function buildPackagePayload(int $packageId, ?array $packageRow = null, bool $debug = false): array
@@ -20,7 +22,7 @@ class SagaExportService
             throw new \RuntimeException('Nu exista coloana cod_saga in linii facturi.');
         }
 
-        $this->ensureSagaStatusColumn();
+        $this->sagaStatusService->ensureSagaStatusColumn();
 
         $needsLookup = $packageRow === null
             || !array_key_exists('selected_client_cui', $packageRow)
@@ -145,12 +147,7 @@ class SagaExportService
         $status = (string) ($packageRow['saga_status'] ?? '');
         if ($status === '' || $status === 'pending') {
             $status = 'processing';
-            if (Database::columnExists('packages', 'saga_status')) {
-                Database::execute(
-                    'UPDATE packages SET saga_status = :status WHERE id = :id',
-                    ['status' => $status, 'id' => $packageId]
-                );
-            }
+            $this->sagaStatusService->markProcessing($packageId);
         }
 
         $pretVanz = number_format($sellTotal, 4, '.', '');
@@ -187,17 +184,6 @@ class SagaExportService
         }
 
         return $payload;
-    }
-
-    private function ensureSagaStatusColumn(): bool
-    {
-        if (!Database::tableExists('packages')) {
-            return false;
-        }
-        if (!Database::columnExists('packages', 'saga_status')) {
-            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
-        }
-        return Database::columnExists('packages', 'saga_status');
     }
 
     private function normalizeName(string $value): string

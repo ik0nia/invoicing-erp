@@ -8,6 +8,9 @@ use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\FgoClient;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
 use App\Domain\Invoices\Services\SagaExportService;
+use App\Domain\Invoices\Services\PackageLockService;
+use App\Domain\Invoices\Services\PackageTotalsService;
+use App\Domain\Invoices\Services\SagaStatusService;
 use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
@@ -26,11 +29,17 @@ class InvoiceController
 {
     private CommissionService $commissionService;
     private SagaExportService $sagaExportService;
+    private PackageLockService $packageLockService;
+    private SagaStatusService $sagaStatusService;
+    private PackageTotalsService $packageTotalsService;
 
     public function __construct()
     {
         $this->commissionService = new CommissionService();
-        $this->sagaExportService = new SagaExportService($this->commissionService);
+        $this->sagaStatusService = new SagaStatusService();
+        $this->packageLockService = new PackageLockService();
+        $this->packageTotalsService = new PackageTotalsService();
+        $this->sagaExportService = new SagaExportService($this->commissionService, $this->sagaStatusService);
     }
 
     public function index(): void
@@ -71,7 +80,8 @@ class InvoiceController
             $canRenamePackages = $this->canRenamePackages($user);
             $canUnconfirmPackages = $this->canUnconfirmPackages($user);
             $hasFgoInvoice = $this->hasFgoInvoice($invoice);
-            $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
+            $invoiceLocked = $this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed]);
+            $clientLocked = $invoiceLocked && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
             $fgoSeriesOptions = $settings->get('fgo.series_list', []);
@@ -531,7 +541,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (empty($invoice->packages_confirmed)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Pachetele nu sunt confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
         }
@@ -583,7 +593,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (empty($invoice->packages_confirmed)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
         }
 
@@ -892,9 +902,7 @@ class InvoiceController
         if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
             Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
         }
-        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_status')) {
-            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
-        }
+        $this->sagaStatusService->ensureSagaStatusColumn();
 
         $packages = Database::fetchAll(
             'SELECT p.id, p.label, p.package_no, p.vat_percent
@@ -1000,7 +1008,7 @@ class InvoiceController
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        if (!$this->ensureSagaStatusColumn()) {
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
             Session::flash('error', 'Lipseste coloana saga_status.');
             Response::redirect('/admin/pachete-confirmate');
         }
@@ -1013,7 +1021,7 @@ class InvoiceController
              LIMIT 1',
             ['id' => $packageId]
         );
-        if (!$row || empty($row['packages_confirmed'])) {
+        if (!$row || !$this->packageLockService->isInvoiceLocked($row)) {
             Session::flash('error', 'Pachetul nu este confirmat.');
             Response::redirect('/admin/pachete-confirmate');
         }
@@ -1037,10 +1045,7 @@ class InvoiceController
             Response::redirect('/admin/pachete-confirmate');
         }
 
-        Database::execute(
-            'UPDATE packages SET saga_status = :status WHERE id = :id',
-            ['status' => 'processing', 'id' => $packageId]
-        );
+        $this->sagaStatusService->markProcessing($packageId);
         Session::flash('status', 'Pachet marcat ca processing pentru SAGA.');
         Response::redirect('/admin/pachete-confirmate');
     }
@@ -1081,7 +1086,7 @@ class InvoiceController
         if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
             $this->json(['success' => true, 'count' => 0, 'data' => []]);
         }
-        if (!$this->ensureSagaStatusColumn()) {
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
             $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
@@ -1140,20 +1145,14 @@ class InvoiceController
             $this->json(['success' => false, 'message' => 'Lipseste id_doc sau package_id.'], 400);
         }
 
-        if (!$this->ensureSagaStatusColumn()) {
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
             $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
         if ($packageId) {
-            Database::execute(
-                'UPDATE packages SET saga_status = :status WHERE id = :id',
-                ['status' => 'executed', 'id' => $packageId]
-            );
+            $this->sagaStatusService->markExecuted($packageId);
         } else {
-            Database::execute(
-                'UPDATE packages SET saga_status = :status WHERE package_no = :no',
-                ['status' => 'executed', 'no' => $packageNo]
-            );
+            $this->sagaStatusService->markExecutedByPackageNo($packageNo);
         }
 
         $this->json(['success' => true, 'status' => 'executed']);
@@ -1183,19 +1182,16 @@ class InvoiceController
             $this->json(['success' => false, 'message' => 'Lipseste id_pachet.'], 400);
         }
 
-        if (!$this->ensureSagaStatusColumn()) {
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
             $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
         }
 
-        $updated = Database::execute(
-            'UPDATE packages SET saga_status = :status WHERE package_no = :no AND saga_status = :current',
-            ['status' => 'imported', 'no' => $packageNo, 'current' => 'processing']
-        );
+        $this->sagaStatusService->markImported($packageNo);
 
         $this->json([
             'success' => true,
             'status' => 'imported',
-            'updated' => $updated ? 1 : 0,
+            'updated' => 1,
         ]);
     }
 
@@ -1717,7 +1713,7 @@ class InvoiceController
         $invoice = $this->guardInvoice($invoiceId);
 
         if ($action === 'generate') {
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi regenerate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1728,7 +1724,7 @@ class InvoiceController
         }
 
         if ($action === 'delete') {
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu pot fi sterse.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1750,7 +1746,7 @@ class InvoiceController
         }
 
         if ($action === 'confirm') {
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('status', 'Pachetele sunt deja confirmate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1766,7 +1762,7 @@ class InvoiceController
                 Response::abort(403, 'Acces interzis.');
             }
 
-            if (!$this->isInvoiceConfirmed($invoiceId)) {
+            if (!$invoiceLock) {
                 Session::flash('status', 'Pachetele nu sunt confirmate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1832,7 +1828,7 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
         }
 
-        if (!$this->isInvoiceConfirmed($invoiceId)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Confirma pachetele inainte de generare.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
@@ -2292,8 +2288,8 @@ class InvoiceController
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
 
         if ($invoiceId && $lineId) {
-            $this->guardInvoice($invoiceId);
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            $invoice = $this->guardInvoice($invoiceId);
+            if ($this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi modificate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -2340,7 +2336,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if ($this->isInvoiceConfirmed($invoiceId)) {
+        if ($this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Pachetele sunt confirmate si nu pot fi modificate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
@@ -3405,13 +3401,6 @@ class InvoiceController
         return $packages;
     }
 
-    private function isInvoiceConfirmed(int $invoiceId): bool
-    {
-        $invoice = InvoiceIn::find($invoiceId);
-
-        return $invoice ? (bool) $invoice->packages_confirmed : false;
-    }
-
     private function unconfirmPackages(int $invoiceId): void
     {
         Database::execute(
@@ -3523,30 +3512,13 @@ class InvoiceController
             return [];
         }
 
-        $placeholders = [];
-        $params = [];
-
-        foreach ($packageIds as $index => $id) {
-            $key = 'p' . $index;
-            $placeholders[] = ':' . $key;
-            $params[$key] = $id;
-        }
-
-        $sql = 'SELECT package_id, COUNT(*) AS line_count,
-                       COALESCE(SUM(line_total), 0) AS total,
-                       COALESCE(SUM(line_total_vat), 0) AS total_vat
-                FROM invoice_in_lines
-                WHERE package_id IN (' . implode(',', $placeholders) . ')
-                GROUP BY package_id';
-
-        $rows = Database::fetchAll($sql, $params);
         $totals = [];
-
-        foreach ($rows as $row) {
-            $totals[(int) $row['package_id']] = [
-                'line_count' => (int) $row['line_count'],
-                'total' => (float) $row['total'],
-                'total_vat' => (float) $row['total_vat'],
+        foreach ($packageIds as $packageId) {
+            $data = $this->packageTotalsService->calculatePackageTotals((int) $packageId);
+            $totals[(int) $packageId] = [
+                'line_count' => (int) $data['line_count'],
+                'total' => (float) $data['sum_net'],
+                'total_vat' => (float) $data['sum_gross'],
             ];
         }
 
@@ -4375,17 +4347,6 @@ class InvoiceController
         header('Content-Type: application/json');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE);
         exit;
-    }
-
-    private function ensureSagaStatusColumn(): bool
-    {
-        if (!Database::tableExists('packages')) {
-            return false;
-        }
-        if (!Database::columnExists('packages', 'saga_status')) {
-            Database::execute('ALTER TABLE packages ADD COLUMN saga_status VARCHAR(16) NULL AFTER saga_value');
-        }
-        return Database::columnExists('packages', 'saga_status');
     }
 
     private function readSagaRowsFromCsv(string $path): array

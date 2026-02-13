@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.47
+
+- Refactor servicii: PackageLock, SagaStatus, PackageTotals.
+
 ## v1.0.46
 
 - Eliminare completa functionalitati AHK.
