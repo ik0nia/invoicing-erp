@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.45
+
+- Pagina profil pentru schimbarea parolei.
+
 ## v1.0.44
 
 - Toggle dark mode stil switch on/off.

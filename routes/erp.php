@@ -84,6 +84,8 @@ $router->post('/admin/utilizatori/adauga', [UsersController::class, 'store']);
 $router->get('/admin/utilizatori/edit', [UsersController::class, 'edit']);
 $router->post('/admin/utilizatori/update', [UsersController::class, 'update']);
 $router->post('/admin/utilizatori/sterge', [UsersController::class, 'delete']);
+$router->get('/admin/profil', [UsersController::class, 'profile']);
+$router->post('/admin/profil/parola', [UsersController::class, 'updatePassword']);
 
 $router->get('/admin/companii', [CompanyController::class, 'index']);
 $router->get('/admin/companii/edit', [CompanyController::class, 'edit']);

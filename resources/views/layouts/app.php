@@ -279,12 +279,12 @@ if ($isSuperAdmin) {
                             <span>Dark mode</span>
                         </label>
                         <?php if ($user): ?>
-                            <div class="text-right">
+                            <a href="<?= App\Support\Url::to('admin/profil') ?>" class="text-right hover:text-slate-900">
                                 <div class="text-sm text-slate-600">Admin</div>
                                 <div class="text-base font-semibold text-slate-900">
                                     <?= htmlspecialchars($userFirstName !== '' ? $userFirstName : 'Administrator') ?>
                                 </div>
-                            </div>
+                            </a>
                         <?php endif; ?>
                         <?php if ($user): ?>
                             <form method="POST" action="<?= App\Support\Url::to('logout') ?>">
