@@ -9,6 +9,11 @@ use App\Domain\Reports\Http\Controllers\ReportsController;
 use App\Domain\Users\Http\Controllers\UsersController;
 use App\Domain\Stock\Http\Controllers\StockImportController;
 use App\Domain\Audit\Http\Controllers\AuditController;
+use App\Domain\Enrollment\Http\Controllers\EnrollmentLinksController;
+use App\Domain\Portal\Http\Controllers\PortalLinksController;
+use App\Domain\Contracts\Http\Controllers\ContractsController;
+use App\Domain\Contracts\Http\Controllers\ContractTemplatesController;
+use App\Domain\Contacts\Http\Controllers\ContactsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
@@ -17,6 +22,22 @@ $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo
 $router->get('/admin/manual', [SettingsController::class, 'manual']);
 $router->get('/admin/audit', [AuditController::class, 'index']);
 $router->get('/admin/audit/view', [AuditController::class, 'show']);
+$router->get('/admin/enrollment-links', [EnrollmentLinksController::class, 'index']);
+$router->post('/admin/enrollment-links/create', [EnrollmentLinksController::class, 'create']);
+$router->post('/admin/enrollment-links/disable', [EnrollmentLinksController::class, 'disable']);
+$router->post('/admin/enrollment-links/lookup', [EnrollmentLinksController::class, 'lookup']);
+$router->get('/admin/portal-links', [PortalLinksController::class, 'index']);
+$router->post('/admin/portal-links/create', [PortalLinksController::class, 'create']);
+$router->post('/admin/portal-links/disable', [PortalLinksController::class, 'disable']);
+$router->get('/admin/contracts', [ContractsController::class, 'index']);
+$router->post('/admin/contracts/generate', [ContractsController::class, 'generate']);
+$router->post('/admin/contracts/upload-signed', [ContractsController::class, 'uploadSigned']);
+$router->post('/admin/contracts/approve', [ContractsController::class, 'approve']);
+$router->get('/admin/contracts/download', [ContractsController::class, 'download']);
+$router->get('/admin/contract-templates', [ContractTemplatesController::class, 'index']);
+$router->post('/admin/contract-templates/save', [ContractTemplatesController::class, 'save']);
+$router->post('/admin/contacts/create', [ContactsController::class, 'create']);
+$router->post('/admin/contacts/delete', [ContactsController::class, 'delete']);
 
 $router->get('/admin/facturi', [InvoiceController::class, 'index']);
 $router->get('/admin/facturi/search', [InvoiceController::class, 'search']);
