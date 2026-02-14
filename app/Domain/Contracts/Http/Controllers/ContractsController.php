@@ -3,6 +3,8 @@
 namespace App\Domain\Contracts\Http\Controllers;
 
 use App\Domain\Users\Models\UserSupplierAccess;
+use App\Domain\Contracts\Services\ContractTemplateVariables;
+use App\Domain\Contracts\Services\TemplateRenderer;
 use App\Support\Auth;
 use App\Support\Audit;
 use App\Support\Database;
@@ -69,6 +71,15 @@ class ContractsController
         if ($html === '') {
             $html = '<html><body><h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1></body></html>';
         }
+        $variablesService = new ContractTemplateVariables();
+        $renderer = new TemplateRenderer();
+        $vars = $variablesService->buildVariables(
+            $partnerCui !== '' ? $partnerCui : null,
+            $supplierCui !== '' ? $supplierCui : null,
+            $clientCui !== '' ? $clientCui : null,
+            ['title' => $title, 'created_at' => date('Y-m-d')]
+        );
+        $html = $renderer->render($html, $vars);
 
         $path = $this->storeGeneratedFile($html);
         if ($path === null) {

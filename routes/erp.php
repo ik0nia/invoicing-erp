@@ -36,6 +36,10 @@ $router->post('/admin/contracts/approve', [ContractsController::class, 'approve'
 $router->get('/admin/contracts/download', [ContractsController::class, 'download']);
 $router->get('/admin/contract-templates', [ContractTemplatesController::class, 'index']);
 $router->post('/admin/contract-templates/save', [ContractTemplatesController::class, 'save']);
+$router->get('/admin/contract-templates/edit', [ContractTemplatesController::class, 'edit']);
+$router->post('/admin/contract-templates/update', [ContractTemplatesController::class, 'update']);
+$router->post('/admin/contract-templates/duplicate', [ContractTemplatesController::class, 'duplicate']);
+$router->post('/admin/contract-templates/preview', [ContractTemplatesController::class, 'preview']);
 $router->post('/admin/contacts/create', [ContactsController::class, 'create']);
 $router->post('/admin/contacts/delete', [ContactsController::class, 'delete']);
 
