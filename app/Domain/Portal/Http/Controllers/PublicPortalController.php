@@ -10,6 +10,8 @@ use App\Support\TokenService;
 
 class PublicPortalController
 {
+    private const MAX_UPLOAD_BYTES = 20971520;
+    private const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
     public function index(): void
     {
         $token = trim((string) ($_GET['token'] ?? ''));
@@ -347,12 +349,22 @@ class PublicPortalController
         if (!$file || !isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
             return null;
         }
+        if (!is_uploaded_file($file['tmp_name'] ?? '')) {
+            return null;
+        }
+        if (isset($file['size']) && (int) $file['size'] > self::MAX_UPLOAD_BYTES) {
+            return null;
+        }
         $tmp = $file['tmp_name'];
         if (!is_readable($tmp)) {
             return null;
         }
-        $ext = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
-        $ext = $ext !== '' ? ('.' . preg_replace('/[^a-z0-9]/i', '', $ext)) : '';
+        $extRaw = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        $ext = preg_replace('/[^a-z0-9]/i', '', $extRaw);
+        if ($ext === '' || !in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
+            return null;
+        }
+        $ext = '.' . $ext;
         $name = bin2hex(random_bytes(16)) . $ext;
         $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $dir = $base . '/storage/uploads/' . trim($subdir, '/');
@@ -370,8 +382,14 @@ class PublicPortalController
     private function streamFile(string $relativePath): void
     {
         $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $path = $base . '/' . ltrim($relativePath, '/');
-        if (!file_exists($path) || !is_readable($path)) {
+        $clean = ltrim($relativePath, '/');
+        if (!str_starts_with($clean, 'storage/uploads/')) {
+            Response::abort(404);
+        }
+        $sub = substr($clean, strlen('storage/uploads/'));
+        $path = realpath($base . '/storage/uploads/' . ltrim($sub, '/'));
+        $root = realpath($base . '/storage/uploads');
+        if (!$path || !$root || !str_starts_with($path, $root) || !is_readable($path)) {
             Response::abort(404);
         }
         $filename = basename($path);

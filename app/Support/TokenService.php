@@ -6,7 +6,10 @@ class TokenService
 {
     public static function generateToken(int $bytes = 32): string
     {
-        return bin2hex(random_bytes(max(16, $bytes)));
+        $size = max(32, $bytes);
+        $raw = random_bytes($size);
+        $base64 = base64_encode($raw);
+        return rtrim(strtr($base64, '+/', '-_'), '=');
     }
 
     public static function hashToken(string $token): string

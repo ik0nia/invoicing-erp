@@ -3,6 +3,7 @@
 namespace App\Domain\Enrollment\Http\Controllers;
 
 use App\Domain\Companies\Services\CompanyLookupService;
+use App\Domain\Contracts\Services\ContractOnboardingService;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Support\Audit;
@@ -94,6 +95,17 @@ class PublicEnrollmentController
             $this->ensureCommission($supplierCui, $cui, $link['commission_percent'] ?? null);
         }
 
+        $supplierCui = $link['type'] === 'client' ? (string) ($link['supplier_cui'] ?? '') : null;
+        $clientCui = $link['type'] === 'client' ? $cui : null;
+        $partnerCui = $link['type'] === 'supplier' ? $cui : $cui;
+        $contractService = new ContractOnboardingService();
+        $contractResult = $contractService->ensureDraftContractForEnrollment(
+            (string) $link['type'],
+            $partnerCui,
+            $supplierCui,
+            $clientCui
+        );
+
         Database::execute(
             'UPDATE enrollment_links SET uses = uses + 1, confirmed_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => (int) $link['id']]
@@ -103,7 +115,13 @@ class PublicEnrollmentController
             'rows_count' => 1,
         ]);
 
-        Session::flash('status', 'Inrolarea a fost salvata.');
+        $statusMessage = 'Inrolarea a fost salvata.';
+        if (!empty($contractResult['has_template'])) {
+            $statusMessage .= ' Contract creat in Draft; adminul va genera si trimite pentru semnare.';
+        } else {
+            $statusMessage .= ' Nu exista template activ pentru contract; adminul trebuie sa configureze.';
+        }
+        Session::flash('status', $statusMessage);
         Response::redirect('/enroll/' . $token);
     }
 

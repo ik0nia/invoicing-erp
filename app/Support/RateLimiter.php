@@ -7,13 +7,17 @@ class RateLimiter
     public static function hit(string $key, int $limit, int $windowSeconds): bool
     {
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 2);
-        $dir = $basePath . '/storage/cache/rate_limits';
+        $dir = $basePath . '/storage/ratelimit';
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
 
         $file = $dir . '/rl_' . sha1($key) . '.json';
         $now = time();
+
+        if (random_int(1, 100) === 1) {
+            self::purgeExpired($dir, $windowSeconds);
+        }
 
         $data = [
             'start' => $now,
@@ -60,5 +64,24 @@ class RateLimiter
         fclose($handle);
 
         return true;
+    }
+
+    private static function purgeExpired(string $dir, int $windowSeconds): void
+    {
+        $threshold = time() - ($windowSeconds * 2);
+        $files = @scandir($dir);
+        if (!is_array($files)) {
+            return;
+        }
+        foreach ($files as $file) {
+            if (!str_starts_with($file, 'rl_')) {
+                continue;
+            }
+            $path = $dir . '/' . $file;
+            $mtime = @filemtime($path);
+            if ($mtime !== false && $mtime < $threshold) {
+                @unlink($path);
+            }
+        }
     }
 }
