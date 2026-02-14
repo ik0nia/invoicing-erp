@@ -46,7 +46,8 @@ class PublicEnrollmentController
         }
         if ($storedCui !== '') {
             $partner = Partner::findByCui($storedCui);
-            if ($partner) {
+            $company = Database::tableExists('companies') ? Company::findByCui($storedCui) : null;
+            if ($partner || $company) {
                 $prefill = $this->prefillFromDb($storedCui);
             }
         }
@@ -282,20 +283,20 @@ class PublicEnrollmentController
     {
         $data = [];
         $partner = Partner::findByCui($cui);
-        if ($partner) {
+        $company = Database::tableExists('companies') ? Company::findByCui($cui) : null;
+        if ($company) {
+            $data['cui'] = $company->cui;
+            $data['denumire'] = $company->denumire;
+            $data['nr_reg_comertului'] = $company->nr_reg_comertului;
+            $data['adresa'] = $company->adresa;
+            $data['localitate'] = $company->localitate;
+            $data['judet'] = $company->judet;
+            $data['telefon'] = $company->telefon;
+            $data['email'] = $company->email;
+        }
+        if (!$company && $partner) {
             $data['cui'] = $partner->cui;
             $data['denumire'] = $partner->denumire;
-        }
-        if (Database::tableExists('companies')) {
-            $company = Company::findByCui($cui);
-            if ($company) {
-                $data['nr_reg_comertului'] = $company->nr_reg_comertului;
-                $data['adresa'] = $company->adresa;
-                $data['localitate'] = $company->localitate;
-                $data['judet'] = $company->judet;
-                $data['telefon'] = $company->telefon;
-                $data['email'] = $company->email;
-            }
         }
 
         return $data;

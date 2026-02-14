@@ -1486,15 +1486,25 @@ class InvoiceController
         $errors = [];
 
         if ($supplierName === '' && $supplierCui !== '') {
-            $supplier = Partner::findByCui($supplierCui);
-            if ($supplier) {
-                $supplierName = $supplier->denumire;
+            $supplierCompany = Company::findByCui($supplierCui);
+            if ($supplierCompany) {
+                $supplierName = $supplierCompany->denumire;
+            } else {
+                $supplier = Partner::findByCui($supplierCui);
+                if ($supplier) {
+                    $supplierName = $supplier->denumire;
+                }
             }
         }
         if ($customerName === '' && $customerCui !== '') {
-            $customer = Partner::findByCui($customerCui);
-            if ($customer) {
-                $customerName = $customer->denumire;
+            $customerCompany = Company::findByCui($customerCui);
+            if ($customerCompany) {
+                $customerName = $customerCompany->denumire;
+            } else {
+                $customer = Partner::findByCui($customerCui);
+                if ($customer) {
+                    $customerName = $customer->denumire;
+                }
             }
         }
 

@@ -305,7 +305,7 @@ class DashboardController
 
     private function partnerMap(array $cuis): array
     {
-        if (empty($cuis) || !Database::tableExists('partners')) {
+        if (empty($cuis)) {
             return [];
         }
 
@@ -317,14 +317,28 @@ class DashboardController
             $params[$key] = $cui;
         }
 
-        $rows = Database::fetchAll(
-            'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
-            $params
-        );
-
         $map = [];
-        foreach ($rows as $row) {
-            $map[(string) $row['cui']] = (string) $row['denumire'];
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM companies WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $map[(string) $row['cui']] = (string) $row['denumire'];
+            }
+        }
+
+        if (Database::tableExists('partners')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $cui = (string) $row['cui'];
+                if (!isset($map[$cui]) || $map[$cui] === '') {
+                    $map[$cui] = (string) $row['denumire'];
+                }
+            }
         }
 
         return $map;

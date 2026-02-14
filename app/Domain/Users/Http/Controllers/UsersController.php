@@ -507,13 +507,26 @@ class UsersController
 
         $map = [];
 
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM companies WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $map[(string) $row['cui']] = (string) $row['denumire'];
+            }
+        }
+
         if (Database::tableExists('partners')) {
             $rows = Database::fetchAll(
                 'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
                 $params
             );
             foreach ($rows as $row) {
-                $map[(string) $row['cui']] = (string) $row['denumire'];
+                $cui = (string) $row['cui'];
+                if (!isset($map[$cui]) || $map[$cui] === '') {
+                    $map[$cui] = (string) $row['denumire'];
+                }
             }
         }
 

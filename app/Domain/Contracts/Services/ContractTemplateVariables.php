@@ -84,7 +84,18 @@ class ContractTemplateVariables
     private function fetchPartner(string $cui): array
     {
         $cui = preg_replace('/\D+/', '', $cui);
-        if ($cui === '' || !Database::tableExists('partners')) {
+        if ($cui === '') {
+            return [];
+        }
+
+        if (Database::tableExists('companies')) {
+            $row = Database::fetchOne('SELECT cui, denumire FROM companies WHERE cui = :cui LIMIT 1', ['cui' => $cui]);
+            if ($row) {
+                return $row;
+            }
+        }
+
+        if (!Database::tableExists('partners')) {
             return [];
         }
 

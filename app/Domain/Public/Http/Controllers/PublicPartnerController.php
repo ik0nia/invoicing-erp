@@ -506,8 +506,12 @@ class PublicPartnerController
 
     private function resolvePrefill(array $context, string $partnerCui): array
     {
-        if ($partnerCui !== '' && Partner::findByCui($partnerCui)) {
-            return $this->prefillFromDb($partnerCui);
+        if ($partnerCui !== '') {
+            $partner = Partner::findByCui($partnerCui);
+            $company = Database::tableExists('companies') ? Company::findByCui($partnerCui) : null;
+            if ($partner || $company) {
+                return $this->prefillFromDb($partnerCui);
+            }
         }
 
         $prefill = [];
@@ -541,21 +545,20 @@ class PublicPartnerController
     {
         $data = [];
         $partner = Partner::findByCui($cui);
-        if ($partner) {
+        $company = Database::tableExists('companies') ? Company::findByCui($cui) : null;
+        if ($company) {
+            $data['cui'] = $company->cui;
+            $data['denumire'] = $company->denumire;
+            $data['nr_reg_comertului'] = $company->nr_reg_comertului;
+            $data['adresa'] = $company->adresa;
+            $data['localitate'] = $company->localitate;
+            $data['judet'] = $company->judet;
+            $data['telefon'] = $company->telefon;
+            $data['email'] = $company->email;
+        }
+        if (!$company && $partner) {
             $data['cui'] = $partner->cui;
             $data['denumire'] = $partner->denumire;
-        }
-
-        if (Database::tableExists('companies')) {
-            $company = Company::findByCui($cui);
-            if ($company) {
-                $data['nr_reg_comertului'] = $company->nr_reg_comertului;
-                $data['adresa'] = $company->adresa;
-                $data['localitate'] = $company->localitate;
-                $data['judet'] = $company->judet;
-                $data['telefon'] = $company->telefon;
-                $data['email'] = $company->email;
-            }
         }
 
         return $data;
