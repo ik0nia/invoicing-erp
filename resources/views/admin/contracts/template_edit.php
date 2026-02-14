@@ -54,16 +54,53 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="template-type">Tip</label>
-            <input
-                id="template-type"
-                name="template_type"
-                type="text"
-                value="<?= htmlspecialchars((string) ($template['template_type'] ?? '')) ?>"
+            <label class="block text-sm font-medium text-slate-700" for="template-kind">Tip document</label>
+            <select
+                id="template-kind"
+                name="doc_kind"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 required
             >
+                <?php $docKind = (string) ($template['doc_kind'] ?? 'contract'); ?>
+                <option value="contract" <?= $docKind === 'contract' ? 'selected' : '' ?>>Contract</option>
+                <option value="acord" <?= $docKind === 'acord' ? 'selected' : '' ?>>Acord</option>
+                <option value="anexa" <?= $docKind === 'anexa' ? 'selected' : '' ?>>Anexa</option>
+            </select>
         </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-applies">Se aplica la</label>
+            <?php $appliesTo = (string) ($template['applies_to'] ?? 'both'); ?>
+            <select
+                id="template-applies"
+                name="applies_to"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+                <option value="both" <?= $appliesTo === 'both' ? 'selected' : '' ?>>Ambele</option>
+                <option value="supplier" <?= $appliesTo === 'supplier' ? 'selected' : '' ?>>Furnizor</option>
+                <option value="client" <?= $appliesTo === 'client' ? 'selected' : '' ?>>Client</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-priority">Prioritate</label>
+            <input
+                id="template-priority"
+                name="priority"
+                type="number"
+                value="<?= (int) ($template['priority'] ?? 100) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+    </div>
+    <div class="mt-4">
+        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="auto_on_enrollment" class="rounded border-slate-300" <?= !empty($template['auto_on_enrollment']) ? 'checked' : '' ?>>
+            Creeaza automat la inrolare
+        </label>
+        <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="is_active" class="rounded border-slate-300" <?= !empty($template['is_active']) ? 'checked' : '' ?>>
+            Activ
+        </label>
     </div>
     <div class="mt-4">
         <label class="block text-sm font-medium text-slate-700" for="template-html">HTML</label>

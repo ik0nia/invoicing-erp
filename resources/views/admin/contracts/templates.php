@@ -32,6 +32,14 @@
     </div>
 </div>
 
+<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+    <div class="font-semibold">Inrolare automata</div>
+    <div class="mt-1">
+        Pentru a genera automat documente la inrolare, bifeaza „Creeaza automat la inrolare” si seteaza „Se aplica la”.
+        Prioritatea controleaza ordinea documentelor create.
+    </div>
+</div>
+
 <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="">
@@ -47,16 +55,51 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="template-type">Tip</label>
-            <input
-                id="template-type"
-                name="template_type"
-                type="text"
+            <label class="block text-sm font-medium text-slate-700" for="template-kind">Tip document</label>
+            <select
+                id="template-kind"
+                name="doc_kind"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="supplier_contract / client_agreement / annex"
                 required
             >
+                <option value="contract">Contract</option>
+                <option value="acord">Acord</option>
+                <option value="anexa">Anexa</option>
+            </select>
         </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-applies">Se aplica la</label>
+            <select
+                id="template-applies"
+                name="applies_to"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+                <option value="both">Ambele</option>
+                <option value="supplier">Furnizor</option>
+                <option value="client">Client</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-priority">Prioritate</label>
+            <input
+                id="template-priority"
+                name="priority"
+                type="number"
+                value="100"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+    </div>
+    <div class="mt-4">
+        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="auto_on_enrollment" class="rounded border-slate-300">
+            Creeaza automat la inrolare
+        </label>
+        <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="is_active" class="rounded border-slate-300" checked>
+            Activ
+        </label>
     </div>
     <div class="mt-4">
         <label class="block text-sm font-medium text-slate-700" for="template-html">HTML</label>
@@ -79,7 +122,11 @@
         <thead class="bg-slate-50 text-slate-600">
             <tr>
                 <th class="px-3 py-2">Nume</th>
-                <th class="px-3 py-2">Tip</th>
+                <th class="px-3 py-2">Tip document</th>
+                <th class="px-3 py-2">Se aplica la</th>
+                <th class="px-3 py-2">Automat la inrolare</th>
+                <th class="px-3 py-2">Prioritate</th>
+                <th class="px-3 py-2">Activ</th>
                 <th class="px-3 py-2">Creat</th>
                 <th class="px-3 py-2"></th>
             </tr>
@@ -87,15 +134,27 @@
         <tbody>
             <?php if (empty($templates)): ?>
                 <tr>
-                    <td colspan="4" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista modele de contract active. Creati un model pentru a putea genera contracte.
                     </td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($templates as $template): ?>
+                    <?php
+                        $docKind = (string) ($template['doc_kind'] ?? 'contract');
+                        $applies = (string) ($template['applies_to'] ?? 'both');
+                        $auto = !empty($template['auto_on_enrollment']);
+                        $active = !empty($template['is_active']);
+                        $appliesLabel = $applies === 'supplier' ? 'Furnizor' : ($applies === 'client' ? 'Client' : 'Ambele');
+                        $docLabel = $docKind === 'acord' ? 'Acord' : ($docKind === 'anexa' ? 'Anexa' : 'Contract');
+                    ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($template['name'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($template['template_type'] ?? '')) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($docLabel) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($appliesLabel) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= $auto ? 'Da' : 'Nu' ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= (int) ($template['priority'] ?? 100) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= $active ? 'Da' : 'Nu' ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($template['created_at'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-right">
                             <a

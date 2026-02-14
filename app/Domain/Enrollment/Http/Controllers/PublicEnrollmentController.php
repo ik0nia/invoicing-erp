@@ -116,10 +116,10 @@ class PublicEnrollmentController
         ]);
 
         $statusMessage = 'Inrolarea a fost salvata.';
-        if (!empty($contractResult['has_template'])) {
-            $statusMessage .= ' Contract creat in Ciorna; adminul va genera si trimite pentru semnare.';
+        if (!empty($contractResult['has_templates'])) {
+            $statusMessage .= ' Documentele au fost create in Ciorna; adminul va genera si trimite pentru semnare.';
         } else {
-            $statusMessage .= ' Nu exista model activ pentru contract; adminul trebuie sa configureze.';
+            $statusMessage .= ' Nu exista modele active pentru inrolare; adminul trebuie sa configureze.';
         }
         Session::flash('status', $statusMessage);
         Response::redirect('/enroll/' . $token);

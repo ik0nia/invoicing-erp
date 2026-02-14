@@ -275,11 +275,19 @@ class SchemaEnsurer
                     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(128) NOT NULL,
                     template_type VARCHAR(32) NOT NULL,
+                    applies_to ENUM("client", "supplier", "both") NOT NULL DEFAULT "both",
+                    auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0,
+                    doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract",
+                    priority INT NOT NULL DEFAULT 100,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
                     html_content TEXT NULL,
                     created_by_user_id INT NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NULL,
-                    INDEX idx_templates_type (template_type)
+                    INDEX idx_templates_type (template_type),
+                    INDEX idx_templates_auto (auto_on_enrollment, applies_to),
+                    INDEX idx_templates_active (is_active),
+                    INDEX idx_templates_priority (priority)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
                 [],
                 'contract_templates_create'
@@ -290,6 +298,29 @@ class SchemaEnsurer
 
         if (self::tableExists('contract_templates')) {
             self::ensureIndex('contract_templates', 'idx_templates_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_type (template_type)');
+            self::ensureIndex('contract_templates', 'idx_templates_auto', 'ALTER TABLE contract_templates ADD INDEX idx_templates_auto (auto_on_enrollment, applies_to)');
+            self::ensureIndex('contract_templates', 'idx_templates_active', 'ALTER TABLE contract_templates ADD INDEX idx_templates_active (is_active)');
+            self::ensureIndex('contract_templates', 'idx_templates_priority', 'ALTER TABLE contract_templates ADD INDEX idx_templates_priority (priority)');
+            if (!self::columnExists('contract_templates', 'applies_to')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN applies_to ENUM("client", "supplier", "both") NOT NULL DEFAULT "both" AFTER template_type', [], 'contract_templates_applies_to');
+                unset(self::$columnCache['contract_templates.applies_to']);
+            }
+            if (!self::columnExists('contract_templates', 'auto_on_enrollment')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0 AFTER applies_to', [], 'contract_templates_auto');
+                unset(self::$columnCache['contract_templates.auto_on_enrollment']);
+            }
+            if (!self::columnExists('contract_templates', 'doc_kind')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract" AFTER auto_on_enrollment', [], 'contract_templates_doc_kind');
+                unset(self::$columnCache['contract_templates.doc_kind']);
+            }
+            if (!self::columnExists('contract_templates', 'priority')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN priority INT NOT NULL DEFAULT 100 AFTER doc_kind', [], 'contract_templates_priority');
+                unset(self::$columnCache['contract_templates.priority']);
+            }
+            if (!self::columnExists('contract_templates', 'is_active')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER priority', [], 'contract_templates_active');
+                unset(self::$columnCache['contract_templates.is_active']);
+            }
         }
     }
 

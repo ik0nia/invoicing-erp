@@ -15,8 +15,13 @@ class ContractTemplateService
         if (!Database::tableExists('contract_templates')) {
             return null;
         }
+        $hasActive = Database::columnExists('contract_templates', 'is_active');
+        $where = 'template_type = :type';
+        if ($hasActive) {
+            $where .= ' AND is_active = 1';
+        }
         $row = Database::fetchOne(
-            'SELECT id FROM contract_templates WHERE template_type = :type ORDER BY created_at DESC, id DESC LIMIT 1',
+            'SELECT id FROM contract_templates WHERE ' . $where . ' ORDER BY created_at DESC, id DESC LIMIT 1',
             ['type' => $type]
         );
         if (!$row) {
@@ -24,5 +29,29 @@ class ContractTemplateService
         }
 
         return isset($row['id']) ? (int) $row['id'] : null;
+    }
+
+    public function getAutoTemplatesForEnrollment(string $role): array
+    {
+        if (!Database::tableExists('contract_templates')) {
+            return [];
+        }
+        $role = $role === 'supplier' ? 'supplier' : 'client';
+        $hasActive = Database::columnExists('contract_templates', 'is_active');
+        $hasAuto = Database::columnExists('contract_templates', 'auto_on_enrollment');
+        $hasApplies = Database::columnExists('contract_templates', 'applies_to');
+        if (!$hasAuto || !$hasApplies) {
+            return [];
+        }
+
+        $where = 'auto_on_enrollment = 1 AND (applies_to = :role OR applies_to = :both)';
+        if ($hasActive) {
+            $where .= ' AND is_active = 1';
+        }
+
+        return Database::fetchAll(
+            'SELECT * FROM contract_templates WHERE ' . $where . ' ORDER BY priority ASC, id ASC',
+            ['role' => $role, 'both' => 'both']
+        );
     }
 }

@@ -17,46 +17,59 @@ class ContractOnboardingService
     public function ensureDraftContractForEnrollment(string $linkType, string $partnerCui, ?string $supplierCui, ?string $clientCui): array
     {
         try {
-            $type = $linkType === 'supplier' ? 'supplier_contract' : 'client_agreement';
-            $templateId = $this->templateService->getActiveTemplateIdForType($type);
-            if (!$templateId) {
-                Logger::logWarning('contract_template_missing', ['type' => $type]);
-                return ['created' => false, 'has_template' => false];
-            }
-
             if (!Database::tableExists('contracts')) {
-                Logger::logWarning('contract_table_missing', ['type' => $type]);
-                return ['created' => false, 'has_template' => true];
+                Logger::logWarning('contract_table_missing', []);
+                return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
             }
 
-            $existing = $this->findExisting($templateId, $partnerCui, $supplierCui, $clientCui, $linkType);
-            if ($existing) {
-                return ['created' => false, 'has_template' => true];
+            $templates = $this->templateService->getAutoTemplatesForEnrollment($linkType);
+            if (empty($templates)) {
+                Logger::logWarning('contract_template_missing', ['role' => $linkType]);
+                return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
             }
 
-            $template = Database::fetchOne('SELECT name FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $templateId]);
-            $title = $template ? (string) ($template['name'] ?? $type) : $type;
-            $meta = json_encode(['type' => $type], JSON_UNESCAPED_UNICODE);
+            $created = 0;
+            foreach ($templates as $template) {
+                $templateId = (int) ($template['id'] ?? 0);
+                if (!$templateId) {
+                    continue;
+                }
+                $existing = $this->findExisting($templateId, $partnerCui, $supplierCui, $clientCui, $linkType);
+                if ($existing) {
+                    continue;
+                }
 
-            Database::execute(
-                'INSERT INTO contracts (template_id, partner_cui, supplier_cui, client_cui, title, status, metadata_json, created_at)
-                 VALUES (:template_id, :partner_cui, :supplier_cui, :client_cui, :title, :status, :meta, :created_at)',
-                [
-                    'template_id' => $templateId,
-                    'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
-                    'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
-                    'client_cui' => $clientCui !== '' ? $clientCui : null,
-                    'title' => $title !== '' ? $title : $type,
-                    'status' => 'draft',
-                    'meta' => $meta,
-                    'created_at' => date('Y-m-d H:i:s'),
-                ]
-            );
+                $title = (string) ($template['name'] ?? '');
+                $docKind = (string) ($template['doc_kind'] ?? '');
+                $meta = json_encode([
+                    'doc_kind' => $docKind,
+                ], JSON_UNESCAPED_UNICODE);
 
-            return ['created' => true, 'has_template' => true];
+                Database::execute(
+                    'INSERT INTO contracts (template_id, partner_cui, supplier_cui, client_cui, title, status, metadata_json, created_at)
+                     VALUES (:template_id, :partner_cui, :supplier_cui, :client_cui, :title, :status, :meta, :created_at)',
+                    [
+                        'template_id' => $templateId,
+                        'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
+                        'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
+                        'client_cui' => $clientCui !== '' ? $clientCui : null,
+                        'title' => $title !== '' ? $title : 'Contract',
+                        'status' => 'draft',
+                        'meta' => $meta,
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]
+                );
+                $created++;
+            }
+
+            return [
+                'created_count' => $created,
+                'total_templates' => count($templates),
+                'has_templates' => true,
+            ];
         } catch (\Throwable $exception) {
             Logger::logWarning('contract_onboarding_failed', ['error' => $exception->getMessage()]);
-            return ['created' => false, 'has_template' => false];
+            return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
         }
     }
 

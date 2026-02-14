@@ -288,11 +288,19 @@ CREATE TABLE contract_templates (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     template_type VARCHAR(32) NOT NULL,
+    applies_to ENUM('client', 'supplier', 'both') NOT NULL DEFAULT 'both',
+    auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0,
+    doc_kind ENUM('contract', 'acord', 'anexa') NOT NULL DEFAULT 'contract',
+    priority INT NOT NULL DEFAULT 100,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
     html_content TEXT NULL,
     created_by_user_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NULL,
-    INDEX idx_templates_type (template_type)
+    INDEX idx_templates_type (template_type),
+    INDEX idx_templates_auto (auto_on_enrollment, applies_to),
+    INDEX idx_templates_active (is_active),
+    INDEX idx_templates_priority (priority)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE contracts (
