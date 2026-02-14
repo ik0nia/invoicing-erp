@@ -10,6 +10,8 @@ class Partner
     public int $id;
     public string $cui;
     public string $denumire;
+    public bool $is_supplier = false;
+    public bool $is_client = false;
 
     public static function fromArray(array $row): self
     {
@@ -17,6 +19,8 @@ class Partner
         $partner->id = (int) $row['id'];
         $partner->cui = (string) $row['cui'];
         $partner->denumire = CompanyName::normalize((string) $row['denumire']);
+        $partner->is_supplier = !empty($row['is_supplier']);
+        $partner->is_client = !empty($row['is_client']);
 
         return $partner;
     }
@@ -84,5 +88,23 @@ class Partner
         );
 
         return self::findByCui($cui);
+    }
+
+    public static function updateFlags(string $cui, bool $isSupplier, bool $isClient): void
+    {
+        if (!Database::tableExists('partners')) {
+            return;
+        }
+        Database::execute(
+            'UPDATE partners
+             SET is_supplier = IF(is_supplier = 1 OR :is_supplier = 1, 1, 0),
+                 is_client = IF(is_client = 1 OR :is_client = 1, 1, 0)
+             WHERE cui = :cui',
+            [
+                'is_supplier' => $isSupplier ? 1 : 0,
+                'is_client' => $isClient ? 1 : 0,
+                'cui' => $cui,
+            ]
+        );
     }
 }

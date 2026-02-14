@@ -8,17 +8,31 @@ class Router
         'GET' => [],
         'POST' => [],
     ];
+    private array $patternRoutes = [
+        'GET' => [],
+        'POST' => [],
+    ];
 
     public function get(string $path, callable|array $handler): self
     {
-        $this->routes['GET'][$this->normalizePath($path)] = $handler;
+        $normalized = $this->normalizePath($path);
+        if (str_contains($normalized, '{')) {
+            $this->patternRoutes['GET'][] = $this->compilePattern($normalized, $handler);
+        } else {
+            $this->routes['GET'][$normalized] = $handler;
+        }
 
         return $this;
     }
 
     public function post(string $path, callable|array $handler): self
     {
-        $this->routes['POST'][$this->normalizePath($path)] = $handler;
+        $normalized = $this->normalizePath($path);
+        if (str_contains($normalized, '{')) {
+            $this->patternRoutes['POST'][] = $this->compilePattern($normalized, $handler);
+        } else {
+            $this->routes['POST'][$normalized] = $handler;
+        }
 
         return $this;
     }
@@ -30,6 +44,17 @@ class Router
         $path = $this->normalizePath($this->stripBasePath($uri));
 
         $handler = $this->routes[$method][$path] ?? null;
+        if (!$handler) {
+            $match = $this->matchPattern($method, $path);
+            if ($match) {
+                $handler = $match['handler'];
+                foreach ($match['params'] as $key => $value) {
+                    if (!isset($_GET[$key])) {
+                        $_GET[$key] = $value;
+                    }
+                }
+            }
+        }
 
         if (!$handler) {
             Response::abort(404);
@@ -73,6 +98,40 @@ class Router
         $path = rtrim($path, '/');
 
         return $path === '' ? '/' : $path;
+    }
+
+    private function compilePattern(string $path, callable|array $handler): array
+    {
+        $paramNames = [];
+        $pattern = preg_replace_callback('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', function (array $matches) use (&$paramNames): string {
+            $paramNames[] = $matches[1];
+            return '([^/]+)';
+        }, preg_quote($path, '#'));
+
+        return [
+            'regex' => '#^' . $pattern . '$#',
+            'params' => $paramNames,
+            'handler' => $handler,
+        ];
+    }
+
+    private function matchPattern(string $method, string $path): ?array
+    {
+        foreach ($this->patternRoutes[$method] ?? [] as $route) {
+            if (preg_match($route['regex'], $path, $matches)) {
+                array_shift($matches);
+                $params = [];
+                foreach ($route['params'] as $index => $name) {
+                    $params[$name] = $matches[$index] ?? null;
+                }
+                return [
+                    'handler' => $route['handler'],
+                    'params' => $params,
+                ];
+            }
+        }
+
+        return null;
     }
 
     private function isStockImportRoute(string $path): bool
