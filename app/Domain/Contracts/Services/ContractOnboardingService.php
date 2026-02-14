@@ -29,6 +29,7 @@ class ContractOnboardingService
             }
 
             $created = 0;
+            $titles = [];
             foreach ($templates as $template) {
                 $templateId = (int) ($template['id'] ?? 0);
                 if (!$templateId) {
@@ -60,16 +61,26 @@ class ContractOnboardingService
                     ]
                 );
                 $created++;
+                $titles[] = [
+                    'title' => $title !== '' ? $title : 'Contract',
+                    'doc_kind' => $docKind !== '' ? $docKind : 'contract',
+                ];
             }
 
             return [
                 'created_count' => $created,
                 'total_templates' => count($templates),
                 'has_templates' => true,
+                'created_titles' => $titles,
             ];
         } catch (\Throwable $exception) {
             Logger::logWarning('contract_onboarding_failed', ['error' => $exception->getMessage()]);
-            return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
+            return [
+                'created_count' => 0,
+                'total_templates' => 0,
+                'has_templates' => false,
+                'created_titles' => [],
+            ];
         }
     }
 

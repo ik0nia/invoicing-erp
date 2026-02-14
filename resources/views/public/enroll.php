@@ -3,6 +3,7 @@
     $link = $link ?? null;
     $prefill = $prefill ?? [];
     $error = $error ?? '';
+    $summary = $summary ?? null;
 ?>
 
 <div class="max-w-3xl">
@@ -14,6 +15,47 @@
     <?php if ($error !== ''): ?>
         <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             <?= htmlspecialchars((string) $error) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($summary)): ?>
+        <div class="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+            <div class="text-sm font-semibold text-emerald-900">Inrolare salvata</div>
+            <div class="mt-2 grid gap-2 md:grid-cols-2">
+                <div><span class="font-medium">CUI:</span> <?= htmlspecialchars((string) ($summary['cui'] ?? '')) ?></div>
+                <div><span class="font-medium">Denumire:</span> <?= htmlspecialchars((string) ($summary['denumire'] ?? '')) ?></div>
+                <div><span class="font-medium">Email:</span> <?= htmlspecialchars((string) ($summary['email'] ?? '')) ?></div>
+                <div><span class="font-medium">Telefon:</span> <?= htmlspecialchars((string) ($summary['telefon'] ?? '')) ?></div>
+            </div>
+            <div class="mt-3">
+                <span class="font-medium">Documente create:</span>
+                <?= (int) ($summary['documents_created'] ?? 0) ?> (Ciorna)
+            </div>
+            <?php if (!empty($summary['documents'])): ?>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-emerald-900">
+                    <?php foreach ((array) $summary['documents'] as $doc): ?>
+                        <li>
+                            <?= htmlspecialchars((string) ($doc['title'] ?? 'Document')) ?>
+                            <?php if (!empty($doc['doc_kind'])): ?>
+                                <span class="text-xs text-emerald-700">(<?= htmlspecialchars((string) $doc['doc_kind']) ?>)</span>
+                            <?php endif; ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+            <?php if (!empty($summary['portal_link'])): ?>
+                <div class="mt-3 text-sm">
+                    Documentele pot fi accesate aici:
+                    <a class="font-semibold text-emerald-900 underline" href="<?= htmlspecialchars((string) $summary['portal_link']) ?>">
+                        <?= htmlspecialchars((string) $summary['portal_link']) ?>
+                    </a>
+                    <span class="text-emerald-800">(pastrati linkul in siguranta).</span>
+                </div>
+            <?php elseif (!empty($summary['portal_notice'])): ?>
+                <div class="mt-3 text-sm text-emerald-900">
+                    <?= htmlspecialchars((string) $summary['portal_notice']) ?>
+                </div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
