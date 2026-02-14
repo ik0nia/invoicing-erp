@@ -18,6 +18,7 @@ $user = Auth::user();
 $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
+$isOperator = $user?->hasRole('operator') ?? false;
 $userFirstName = '';
 if ($user && !empty($user->name)) {
     $parts = preg_split('/\s+/', trim((string) $user->name));
@@ -57,6 +58,44 @@ if ($isPlatformUser) {
         'label' => 'Pachete confirmate',
         'path' => '/admin/pachete-confirmate',
         'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
+    ];
+}
+
+if ($isPlatformUser || $isOperator || $isSupplierUser) {
+    $menuSections['Onboarding'] = [
+        [
+            'label' => 'Enrollment Links',
+            'path' => '/admin/enrollment-links',
+            'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
+        ],
+        [
+            'label' => 'Portal Links',
+            'path' => '/admin/portal-links',
+            'active' => str_starts_with($currentPath, '/admin/portal-links'),
+        ],
+    ];
+}
+
+if ($isPlatformUser || $isOperator || $isSupplierUser) {
+    $menuSections['Documente'] = [
+        [
+            'label' => 'Contracts',
+            'path' => '/admin/contracts',
+            'active' => str_starts_with($currentPath, '/admin/contracts'),
+        ],
+        [
+            'label' => 'Contacts',
+            'path' => '/admin/companii',
+            'active' => str_starts_with($currentPath, '/admin/companii') || str_starts_with($currentPath, '/admin/asocieri'),
+        ],
+    ];
+}
+
+if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
+    $menuSections['Documente'][] = [
+        'label' => 'Contract Templates',
+        'path' => '/admin/contract-templates',
+        'active' => str_starts_with($currentPath, '/admin/contract-templates'),
     ];
 }
 

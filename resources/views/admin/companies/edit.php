@@ -171,6 +171,16 @@
             <input type="checkbox" name="activ" class="rounded border-slate-300" <?= !empty($form['activ']) ? 'checked' : '' ?>>
             Activ
         </label>
+        <?php if (!empty($partner) && ($partner->is_supplier || $partner->is_client)): ?>
+            <div class="inline-flex items-center gap-2 text-xs text-slate-500">
+                <?php if ($partner->is_supplier): ?>
+                    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">Supplier</span>
+                <?php endif; ?>
+                <?php if ($partner->is_client): ?>
+                    <span class="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">Client</span>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 
     <div class="mt-6">
@@ -179,6 +189,89 @@
         </button>
     </div>
 </form>
+
+<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-slate-900">Contacte</h2>
+            <p class="mt-1 text-sm text-slate-500">Contacte asociate companiei.</p>
+        </div>
+    </div>
+
+    <form method="POST" action="<?= App\Support\Url::to('admin/contacts/create') ?>" class="mt-4 grid gap-3 md:grid-cols-4">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="partner_cui" value="<?= htmlspecialchars($form['cui'] ?? '') ?>">
+        <input
+            type="text"
+            name="name"
+            placeholder="Nume"
+            class="rounded border border-slate-300 px-3 py-2 text-sm"
+            required
+        >
+        <input
+            type="text"
+            name="email"
+            placeholder="Email"
+            class="rounded border border-slate-300 px-3 py-2 text-sm"
+        >
+        <input
+            type="text"
+            name="phone"
+            placeholder="Telefon"
+            class="rounded border border-slate-300 px-3 py-2 text-sm"
+        >
+        <input
+            type="text"
+            name="role"
+            placeholder="Rol"
+            class="rounded border border-slate-300 px-3 py-2 text-sm"
+        >
+        <div class="md:col-span-4">
+            <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Adauga contact
+            </button>
+        </div>
+    </form>
+
+    <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-600">
+                <tr>
+                    <th class="px-3 py-2">Nume</th>
+                    <th class="px-3 py-2">Email</th>
+                    <th class="px-3 py-2">Telefon</th>
+                    <th class="px-3 py-2">Rol</th>
+                    <th class="px-3 py-2"></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($contacts)): ?>
+                    <tr>
+                        <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($contacts as $contact): ?>
+                        <tr class="border-t border-slate-100">
+                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
+                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
+                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
+                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
+                            <td class="px-3 py-2 text-right">
+                                <form method="POST" action="<?= App\Support\Url::to('admin/contacts/delete') ?>">
+                                    <?= App\Support\Csrf::input() ?>
+                                    <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
+                                    <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">
+                                        Sterge
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <script>
     (function () {

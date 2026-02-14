@@ -66,11 +66,20 @@ class CompanyController
         $form = $this->buildFormData($company, $partner);
         $settings = new SettingsService();
         $openApiKey = (string) $settings->get('openapi.api_key', '');
+        $contacts = [];
+        if ($cui !== '' && Database::tableExists('partner_contacts')) {
+            $contacts = Database::fetchAll(
+                'SELECT * FROM partner_contacts WHERE partner_cui = :cui ORDER BY created_at DESC',
+                ['cui' => $cui]
+            );
+        }
 
         Response::view('admin/companies/edit', [
             'form' => $form,
             'isNew' => $company === null,
             'openApiEnabled' => trim($openApiKey) !== '',
+            'contacts' => $contacts,
+            'partner' => $partner,
         ]);
     }
 
