@@ -278,6 +278,7 @@ CREATE TABLE partner_contacts (
     email VARCHAR(128) NULL,
     phone VARCHAR(64) NULL,
     role VARCHAR(64) NULL,
+    is_primary TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_contacts_partner (partner_cui),
     INDEX idx_contacts_relation (supplier_cui, client_cui),

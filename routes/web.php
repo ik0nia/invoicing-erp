@@ -6,6 +6,7 @@ use App\Domain\Users\Http\Controllers\AuthController;
 use App\Domain\Users\Http\Controllers\SetupController;
 use App\Domain\Enrollment\Http\Controllers\PublicEnrollmentController;
 use App\Domain\Portal\Http\Controllers\PublicPortalController;
+use App\Domain\Public\Http\Controllers\PublicPartnerController;
 
 $router->get('/', function (): void {
     if (!file_exists(BASE_PATH . '/.env')) {
@@ -35,6 +36,12 @@ $router->get('/enroll/{token}/lookup', [PublicEnrollmentController::class, 'look
 $router->get('/portal/{token}', [PublicPortalController::class, 'index']);
 $router->get('/portal/{token}/download', [PublicPortalController::class, 'download']);
 $router->post('/portal/{token}/upload', [PublicPortalController::class, 'upload']);
+$router->get('/p/{token}', [PublicPartnerController::class, 'index']);
+$router->post('/p/{token}/save-company', [PublicPartnerController::class, 'saveCompany']);
+$router->post('/p/{token}/save-contact', [PublicPartnerController::class, 'saveContact']);
+$router->post('/p/{token}/delete-contact', [PublicPartnerController::class, 'deleteContact']);
+$router->get('/p/{token}/download', [PublicPartnerController::class, 'download']);
+$router->post('/p/{token}/upload-signed', [PublicPartnerController::class, 'uploadSigned']);
 
 $router->get('/admin/dashboard', [DashboardController::class, 'index']);
 

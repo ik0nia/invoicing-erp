@@ -248,6 +248,7 @@ class SchemaEnsurer
                     email VARCHAR(128) NULL,
                     phone VARCHAR(64) NULL,
                     role VARCHAR(64) NULL,
+                    is_primary TINYINT(1) NOT NULL DEFAULT 0,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_contacts_partner (partner_cui),
                     INDEX idx_contacts_relation (supplier_cui, client_cui),
@@ -264,6 +265,14 @@ class SchemaEnsurer
             self::ensureIndex('partner_contacts', 'idx_contacts_partner', 'ALTER TABLE partner_contacts ADD INDEX idx_contacts_partner (partner_cui)');
             self::ensureIndex('partner_contacts', 'idx_contacts_relation', 'ALTER TABLE partner_contacts ADD INDEX idx_contacts_relation (supplier_cui, client_cui)');
             self::ensureIndex('partner_contacts', 'idx_contacts_created', 'ALTER TABLE partner_contacts ADD INDEX idx_contacts_created (created_at)');
+            if (!self::columnExists('partner_contacts', 'is_primary')) {
+                self::safeExecute(
+                    'ALTER TABLE partner_contacts ADD COLUMN is_primary TINYINT(1) NOT NULL DEFAULT 0 AFTER role',
+                    [],
+                    'partner_contacts_is_primary'
+                );
+                unset(self::$columnCache['partner_contacts.is_primary']);
+            }
         }
     }
 
