@@ -67,8 +67,9 @@
                             <?php foreach ($contracts as $contract): ?>
                                 <?php
                                     $downloadUrl = App\Support\Url::to('portal/' . $token . '/download?type=contract&id=' . (int) $contract['id']);
-                                    $fileAvailable = !empty($contract['signed_file_path']) || !empty($contract['generated_file_path']);
                                     $statusKey = (string) ($contract['status'] ?? '');
+                                    $canGenerate = in_array($statusKey, ['generated', 'sent', 'signed_uploaded', 'approved'], true);
+                                    $fileAvailable = !empty($contract['signed_file_path']) || !empty($contract['generated_file_path']) || $canGenerate;
                                     $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                                     $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
                                 ?>
