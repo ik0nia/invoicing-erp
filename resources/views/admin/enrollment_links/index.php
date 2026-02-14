@@ -1,5 +1,5 @@
 <?php
-    $title = 'Link-uri de inrolare';
+    $title = 'Link-uri publice';
     $rows = $rows ?? [];
     $filters = $filters ?? [
         'status' => '',
@@ -23,6 +23,9 @@
         'status' => $filters['status'] ?? '',
         'type' => $filters['type'] ?? '',
         'supplier_cui' => $filters['supplier_cui'] ?? '',
+        'partner_cui' => $filters['partner_cui'] ?? '',
+        'relation_supplier_cui' => $filters['relation_supplier_cui'] ?? '',
+        'relation_client_cui' => $filters['relation_client_cui'] ?? '',
     ];
     $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
     $paginationParams = $filterParams;
@@ -31,25 +34,25 @@
 
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900">Link-uri de inrolare</h1>
-        <p class="mt-1 text-sm text-slate-500">Gestioneaza linkurile publice de inrolare.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Link-uri publice</h1>
+        <p class="mt-1 text-sm text-slate-500">Gestioneaza linkurile publice pentru onboarding si documente.</p>
     </div>
 </div>
 
 <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-    <div class="font-semibold">Ce este un link de inrolare?</div>
+    <div class="font-semibold">Ce este un link public?</div>
     <ul class="mt-2 list-disc space-y-1 pl-5">
-        <li>Linkul de inrolare permite completarea datelor fara cont si parola.</li>
-        <li>Pentru furnizor se foloseste cand se inroleaza un partener furnizor.</li>
-        <li>Pentru client se foloseste cand se inroleaza un client al unui furnizor.</li>
-        <li>Dupa confirmare se creeaza firma si un contract in status <strong>Ciorna</strong>.</li>
-        <li>Linkul este limitat ca utilizari si poate fi dezactivat oricand.</li>
+        <li>Linkul public permite completarea datelor, contactelor si accesul la contracte.</li>
+        <li>Este multi-utilizare si poate fi folosit ori de cate ori este nevoie.</li>
+        <li>Pentru furnizor se foloseste la inrolarea unui furnizor.</li>
+        <li>Pentru client se foloseste la inrolarea unui client asociat unui furnizor.</li>
+        <li>Linkul poate fi dezactivat sau regenerat oricand.</li>
     </ul>
 </div>
 
 <?php if (!empty($newLink)): ?>
     <div class="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-        Link nou creat (afisat o singura data):
+        Link public (afisat o singura data):
         <div class="mt-2 flex flex-wrap items-center gap-2">
             <input
                 type="text"
@@ -107,17 +110,6 @@
                 type="text"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 placeholder="ex: 5"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="max-uses">Numar utilizari</label>
-            <input
-                id="max-uses"
-                name="max_uses"
-                type="number"
-                min="1"
-                value="1"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
         <div>
@@ -209,7 +201,7 @@
 
     <div class="mt-4 flex flex-wrap items-center gap-2">
         <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            Creeaza link de inrolare
+            Creeaza link public
         </button>
         <button
             type="button"
@@ -251,6 +243,39 @@
             >
         </div>
         <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-partner">Partner CUI</label>
+            <input
+                id="filter-partner"
+                name="partner_cui"
+                type="text"
+                value="<?= htmlspecialchars((string) ($filters['partner_cui'] ?? '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="CUI partener"
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-relation-supplier">Relatie furnizor</label>
+            <input
+                id="filter-relation-supplier"
+                name="relation_supplier_cui"
+                type="text"
+                value="<?= htmlspecialchars((string) ($filters['relation_supplier_cui'] ?? '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="CUI furnizor relatie"
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="filter-relation-client">Relatie client</label>
+            <input
+                id="filter-relation-client"
+                name="relation_client_cui"
+                type="text"
+                value="<?= htmlspecialchars((string) ($filters['relation_client_cui'] ?? '')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="CUI client relatie"
+            >
+        </div>
+        <div>
             <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Per pagina</label>
             <select id="filter-per-page" name="per_page" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <?php foreach ([25, 50, 100] as $option): ?>
@@ -276,19 +301,20 @@
 
 <?php if (empty($rows)): ?>
     <div class="mt-6 rounded border border-slate-200 bg-white p-6 text-sm text-slate-600">
-        Nu exista linkuri de inrolare. Dupa creare, acestea pot fi trimise partenerilor pentru completarea datelor.
+        Nu exista linkuri publice. Dupa creare, acestea pot fi trimise partenerilor pentru completarea datelor.
     </div>
 <?php else: ?>
     <div class="mt-6 overflow-x-auto rounded border border-slate-200 bg-white">
         <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-slate-600">
                 <tr>
-                    <th class="px-3 py-2">Data</th>
+                    <th class="px-3 py-2">Creat la</th>
                     <th class="px-3 py-2">Tip</th>
-                    <th class="px-3 py-2">Furnizor</th>
-                    <th class="px-3 py-2">Utilizari</th>
+                    <th class="px-3 py-2">Partner CUI</th>
+                    <th class="px-3 py-2">Relatie</th>
+                    <th class="px-3 py-2">Pas curent</th>
+                    <th class="px-3 py-2">Ultima accesare</th>
                     <th class="px-3 py-2">Status</th>
-                    <th class="px-3 py-2">Expira</th>
                     <th class="px-3 py-2"></th>
                 </tr>
             </thead>
@@ -296,27 +322,63 @@
                 <?php foreach ($rows as $row): ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($row['created_at'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($row['type'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['supplier_cui'] ?? '—')) ?></td>
-                        <td class="px-3 py-2 text-slate-600">
-                            <?= (int) ($row['uses'] ?? 0) ?> / <?= (int) ($row['max_uses'] ?? 1) ?>
+                        <td class="px-3 py-2 text-slate-700">
+                            <?= htmlspecialchars((string) (($row['type'] ?? '') === 'supplier' ? 'Furnizor' : 'Client')) ?>
                         </td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['status'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['expires_at'] ?? '—')) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['partner_cui'] ?? '—')) ?></td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?php if (!empty($row['relation_supplier_cui']) || !empty($row['relation_client_cui'])): ?>
+                                <?= htmlspecialchars((string) ($row['relation_supplier_cui'] ?? '')) ?> /
+                                <?= htmlspecialchars((string) ($row['relation_client_cui'] ?? '')) ?>
+                            <?php else: ?>
+                                —
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?= (int) ($row['current_step'] ?? 1) ?>/3
+                        </td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['last_used_at'] ?? '—')) ?></td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?= htmlspecialchars((string) (($row['status'] ?? '') === 'active' ? 'Activ' : 'Dezactivat')) ?>
+                        </td>
                         <td class="px-3 py-2 text-right">
                             <?php if (($row['status'] ?? '') === 'active'): ?>
-                                <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/disable') ?>">
-                                    <?= App\Support\Csrf::input() ?>
-                                    <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
-                                    <button
-                                        class="text-xs font-semibold text-rose-600 hover:text-rose-700"
-                                        onclick="return confirm('Sigur doriti sa dezactivati acest link?')"
-                                    >
-                                        Dezactiveaza link
-                                    </button>
-                                </form>
+                                <div class="flex flex-wrap items-center justify-end gap-2">
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/disable') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                        <button
+                                            class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                                            onclick="return confirm('Sigur doriti sa dezactivati acest link?')"
+                                        >
+                                            Dezactiveaza
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/regenerate') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                        <button
+                                            class="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                                            onclick="return confirm('Regenerati linkul? Linkul anterior nu va mai functiona.')"
+                                        >
+                                            Regenereaza
+                                        </button>
+                                    </form>
+                                </div>
                             <?php else: ?>
-                                <span class="text-xs text-slate-400">Dezactivat</span>
+                                <div class="flex flex-wrap items-center justify-end gap-2">
+                                    <span class="text-xs text-slate-400">Dezactivat</span>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/regenerate') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                        <button
+                                            class="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                                            onclick="return confirm('Regenerati linkul? Linkul anterior nu va mai functiona.')"
+                                        >
+                                            Regenereaza
+                                        </button>
+                                    </form>
+                                </div>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -359,7 +421,7 @@
         <div class="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center">
             <div>
                 Afisezi <?= (int) ($pagination['start'] ?? 0) ?>-<?= (int) ($pagination['end'] ?? 0) ?>
-                din <?= (int) ($pagination['total'] ?? 0) ?> linkuri
+                din <?= (int) ($pagination['total'] ?? 0) ?> linkuri publice
             </div>
             <div class="ml-auto inline-flex flex-wrap items-center gap-1">
                 <a

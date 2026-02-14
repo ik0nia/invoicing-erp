@@ -10,65 +10,34 @@ class PublicLinkResolver
     public function resolve(string $token): ?array
     {
         $hash = TokenService::hashToken($token);
-
-        $portal = $this->findPortalLink($hash);
-        if ($portal) {
-            return [
-                'mode' => 'portal',
-                'hash' => $hash,
-                'link' => $portal,
-                'permissions' => $this->decodePermissions($portal['permissions_json'] ?? null),
-                'owner_type' => (string) ($portal['owner_type'] ?? ''),
-                'owner_cui' => (string) ($portal['owner_cui'] ?? ''),
-                'relation_supplier_cui' => (string) ($portal['relation_supplier_cui'] ?? ''),
-                'relation_client_cui' => (string) ($portal['relation_client_cui'] ?? ''),
-            ];
-        }
-
-        $enrollment = $this->findEnrollmentLink($hash);
-        if ($enrollment) {
-            return [
-                'mode' => 'enrollment',
-                'hash' => $hash,
-                'link' => $enrollment,
-                'permissions' => [
-                    'can_view' => true,
-                    'can_upload_signed' => true,
-                    'can_upload_custom' => false,
-                ],
-                'enroll_type' => (string) ($enrollment['type'] ?? ''),
-                'supplier_cui' => (string) ($enrollment['supplier_cui'] ?? ''),
-            ];
-        }
-
-        return null;
-    }
-
-    private function findPortalLink(string $hash): ?array
-    {
-        if (!Database::tableExists('portal_links')) {
+        $enrollment = $this->findEnrollmentLink($hash, true);
+        if (!$enrollment) {
             return null;
         }
 
-        $row = Database::fetchOne(
-            'SELECT * FROM portal_links WHERE token_hash = :hash LIMIT 1',
-            ['hash' => $hash]
-        );
+        return [
+            'hash' => $hash,
+            'link' => $enrollment,
+            'permissions' => $this->decodePermissions($enrollment['permissions_json'] ?? null),
+        ];
+    }
+
+    public function resolveAny(string $token): ?array
+    {
+        $hash = TokenService::hashToken($token);
+        $row = $this->findEnrollmentLink($hash, false);
         if (!$row) {
             return null;
         }
-        if (($row['status'] ?? '') !== 'active') {
-            return null;
-        }
-        $expires = $row['expires_at'] ?? null;
-        if ($expires && strtotime((string) $expires) < time()) {
-            return null;
-        }
 
-        return $row;
+        return [
+            'hash' => $hash,
+            'link' => $row,
+            'permissions' => $this->decodePermissions($row['permissions_json'] ?? null),
+        ];
     }
 
-    private function findEnrollmentLink(string $hash): ?array
+    private function findEnrollmentLink(string $hash, bool $onlyActive): ?array
     {
         if (!Database::tableExists('enrollment_links')) {
             return null;
@@ -81,17 +50,14 @@ class PublicLinkResolver
         if (!$row) {
             return null;
         }
-        if (($row['status'] ?? '') !== 'active') {
-            return null;
-        }
-        $expires = $row['expires_at'] ?? null;
-        if ($expires && strtotime((string) $expires) < time()) {
-            return null;
-        }
-        $maxUses = (int) ($row['max_uses'] ?? 1);
-        $uses = (int) ($row['uses'] ?? 0);
-        if ($maxUses > 0 && $uses >= $maxUses && empty($row['confirmed_at'])) {
-            return null;
+        if ($onlyActive) {
+            if (($row['status'] ?? '') !== 'active') {
+                return null;
+            }
+            $expires = $row['expires_at'] ?? null;
+            if ($expires && strtotime((string) $expires) < time()) {
+                return null;
+            }
         }
 
         return $row;
@@ -101,16 +67,16 @@ class PublicLinkResolver
     {
         if (!$raw) {
             return [
-                'can_view' => false,
-                'can_upload_signed' => false,
+                'can_view' => true,
+                'can_upload_signed' => true,
                 'can_upload_custom' => false,
             ];
         }
         $decoded = json_decode((string) $raw, true);
         if (!is_array($decoded)) {
             return [
-                'can_view' => false,
-                'can_upload_signed' => false,
+                'can_view' => true,
+                'can_upload_signed' => true,
                 'can_upload_custom' => false,
             ];
         }

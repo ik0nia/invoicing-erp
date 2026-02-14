@@ -43,19 +43,9 @@
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
-            <?php if (!empty($summary['portal_link'])): ?>
-                <div class="mt-3 text-sm">
-                    Documentele pot fi accesate aici:
-                    <a class="font-semibold text-emerald-900 underline" href="<?= htmlspecialchars((string) $summary['portal_link']) ?>">
-                        <?= htmlspecialchars((string) $summary['portal_link']) ?>
-                    </a>
-                    <span class="text-emerald-800">(pastrati linkul in siguranta).</span>
-                </div>
-            <?php elseif (!empty($summary['portal_notice'])): ?>
-                <div class="mt-3 text-sm text-emerald-900">
-                    <?= htmlspecialchars((string) $summary['portal_notice']) ?>
-                </div>
-            <?php endif; ?>
+            <div class="mt-3 text-sm text-emerald-900">
+                Linkul public ofera acces continuu la date si documente. Pastrati-l in siguranta.
+            </div>
         </div>
     <?php endif; ?>
 

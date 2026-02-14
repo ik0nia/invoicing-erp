@@ -23,6 +23,9 @@ class EnrollmentLinksController
             'status' => trim((string) ($_GET['status'] ?? '')),
             'type' => trim((string) ($_GET['type'] ?? '')),
             'supplier_cui' => trim((string) ($_GET['supplier_cui'] ?? '')),
+            'partner_cui' => trim((string) ($_GET['partner_cui'] ?? '')),
+            'relation_supplier_cui' => trim((string) ($_GET['relation_supplier_cui'] ?? '')),
+            'relation_client_cui' => trim((string) ($_GET['relation_client_cui'] ?? '')),
             'page' => (int) ($_GET['page'] ?? 1),
             'per_page' => (int) ($_GET['per_page'] ?? 50),
         ];
@@ -44,9 +47,24 @@ class EnrollmentLinksController
             $where[] = 'type = :type';
             $params['type'] = $filters['type'];
         }
+        $hasPartnerCui = Database::columnExists('enrollment_links', 'partner_cui');
+        $hasRelationSupplier = Database::columnExists('enrollment_links', 'relation_supplier_cui');
+        $hasRelationClient = Database::columnExists('enrollment_links', 'relation_client_cui');
         if ($filters['supplier_cui'] !== '') {
             $where[] = 'supplier_cui = :supplier_cui';
             $params['supplier_cui'] = preg_replace('/\D+/', '', $filters['supplier_cui']);
+        }
+        if ($filters['partner_cui'] !== '' && $hasPartnerCui) {
+            $where[] = 'partner_cui = :partner_cui';
+            $params['partner_cui'] = preg_replace('/\D+/', '', $filters['partner_cui']);
+        }
+        if ($filters['relation_supplier_cui'] !== '' && $hasRelationSupplier) {
+            $where[] = 'relation_supplier_cui = :relation_supplier_cui';
+            $params['relation_supplier_cui'] = preg_replace('/\D+/', '', $filters['relation_supplier_cui']);
+        }
+        if ($filters['relation_client_cui'] !== '' && $hasRelationClient) {
+            $where[] = 'relation_client_cui = :relation_client_cui';
+            $params['relation_client_cui'] = preg_replace('/\D+/', '', $filters['relation_client_cui']);
         }
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
@@ -81,7 +99,7 @@ class EnrollmentLinksController
             'rows' => $rows,
             'filters' => $filters,
             'pagination' => $pagination,
-            'newLink' => Session::pull('enrollment_link'),
+            'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
         ]);
     }
@@ -92,7 +110,6 @@ class EnrollmentLinksController
 
         $type = trim((string) ($_POST['type'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
-        $maxUses = (int) ($_POST['max_uses'] ?? 1);
         $commissionRaw = trim((string) ($_POST['commission_percent'] ?? ''));
         $commission = $commissionRaw !== '' ? (float) str_replace(',', '.', $commissionRaw) : null;
         $expiresAt = trim((string) ($_POST['expires_at'] ?? ''));
@@ -121,10 +138,6 @@ class EnrollmentLinksController
             Response::redirect('/admin/enrollment-links');
         }
 
-        if ($maxUses < 1) {
-            $maxUses = 1;
-        }
-
         $prefill = [
             'cui' => preg_replace('/\D+/', '', (string) ($_POST['prefill_cui'] ?? '')),
             'denumire' => trim((string) ($_POST['prefill_denumire'] ?? '')),
@@ -140,35 +153,85 @@ class EnrollmentLinksController
 
         $token = TokenService::generateToken(32);
         $tokenHash = TokenService::hashToken($token);
+        $permissionsJson = json_encode([
+            'can_view' => true,
+            'can_upload_signed' => true,
+            'can_upload_custom' => false,
+        ], JSON_UNESCAPED_UNICODE);
+        $relationSupplier = $type === 'client' && $supplierCui !== '' ? $supplierCui : null;
 
         Database::execute(
-            'INSERT INTO enrollment_links (token_hash, type, created_by_user_id, supplier_cui, commission_percent, prefill_json, max_uses, uses, status, expires_at, created_at)
-             VALUES (:token_hash, :type, :user_id, :supplier_cui, :commission_percent, :prefill_json, :max_uses, 0, :status, :expires_at, :created_at)',
+            'INSERT INTO enrollment_links (
+                token_hash,
+                type,
+                created_by_user_id,
+                supplier_cui,
+                partner_cui,
+                relation_supplier_cui,
+                relation_client_cui,
+                commission_percent,
+                prefill_json,
+                permissions_json,
+                max_uses,
+                uses,
+                current_step,
+                status,
+                expires_at,
+                last_used_at,
+                created_at,
+                updated_at
+            ) VALUES (
+                :token_hash,
+                :type,
+                :user_id,
+                :supplier_cui,
+                :partner_cui,
+                :relation_supplier_cui,
+                :relation_client_cui,
+                :commission_percent,
+                :prefill_json,
+                :permissions_json,
+                :max_uses,
+                0,
+                :current_step,
+                :status,
+                :expires_at,
+                :last_used_at,
+                :created_at,
+                :updated_at
+            )',
             [
                 'token_hash' => $tokenHash,
                 'type' => $type,
                 'user_id' => $user ? $user->id : null,
                 'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
+                'partner_cui' => null,
+                'relation_supplier_cui' => $relationSupplier,
+                'relation_client_cui' => null,
                 'commission_percent' => $commission,
                 'prefill_json' => $prefillJson,
-                'max_uses' => $maxUses,
+                'permissions_json' => $permissionsJson,
+                'max_uses' => 0,
+                'current_step' => 1,
                 'status' => 'active',
                 'expires_at' => $expiresAt !== '' ? ($expiresAt . ' 23:59:59') : null,
+                'last_used_at' => null,
                 'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
             ]
         );
         $linkId = (int) Database::lastInsertId();
-        Audit::record('enrollment.link_create', 'enrollment_link', $linkId ?: null, [
+        Audit::record('public_link.create', 'public_link', $linkId ?: null, [
             'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
             'rows_count' => 1,
         ]);
 
         $link = [
             'token' => $token,
-            'url' => $this->absoluteUrl(Url::to('enroll/' . $token)),
+            'url' => $this->absoluteUrl(Url::to('p/' . $token)),
         ];
-        Session::flash('status', 'Link de inrolare creat.');
-        Session::flash('enrollment_link', $link);
+        Session::flash('status', 'Link public creat.');
+        Session::flash('public_link', $link);
         Response::redirect('/admin/enrollment-links');
     }
 
@@ -182,12 +245,47 @@ class EnrollmentLinksController
         }
 
         Database::execute(
-            'UPDATE enrollment_links SET status = :status WHERE id = :id',
-            ['status' => 'disabled', 'id' => $id]
+            'UPDATE enrollment_links SET status = :status, updated_at = :updated_at WHERE id = :id',
+            ['status' => 'disabled', 'updated_at' => date('Y-m-d H:i:s'), 'id' => $id]
         );
-        Audit::record('enrollment.link_disable', 'enrollment_link', $id, []);
+        Audit::record('public_link.disable', 'public_link', $id, []);
 
         Session::flash('status', 'Link dezactivat.');
+        Response::redirect('/admin/enrollment-links');
+    }
+
+    public function regenerate(): void
+    {
+        $this->requireEnrollmentRole();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if (!$id) {
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        $token = TokenService::generateToken(32);
+        $tokenHash = TokenService::hashToken($token);
+
+        Database::execute(
+            'UPDATE enrollment_links
+             SET token_hash = :token_hash, status = :status, updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'token_hash' => $tokenHash,
+                'status' => 'active',
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]
+        );
+
+        Audit::record('public_link.regenerate', 'public_link', $id, ['rows_count' => 1]);
+
+        $link = [
+            'token' => $token,
+            'url' => $this->absoluteUrl(Url::to('p/' . $token)),
+        ];
+        Session::flash('status', 'Link public regenerat.');
+        Session::flash('public_link', $link);
         Response::redirect('/admin/enrollment-links');
     }
 

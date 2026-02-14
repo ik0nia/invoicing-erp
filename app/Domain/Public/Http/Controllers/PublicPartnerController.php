@@ -3,18 +3,19 @@
 namespace App\Domain\Public\Http\Controllers;
 
 use App\Domain\Companies\Models\Company;
+use App\Domain\Companies\Services\CompanyLookupService;
 use App\Domain\Contracts\Services\ContractOnboardingService;
 use App\Domain\Contracts\Services\ContractTemplateVariables;
 use App\Domain\Contracts\Services\TemplateRenderer;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Public\Services\PublicLinkResolver;
+use App\Support\Audit;
 use App\Support\CompanyName;
 use App\Support\Database;
 use App\Support\RateLimiter;
 use App\Support\Response;
 use App\Support\Session;
-use App\Support\TokenService;
 
 class PublicPartnerController
 {
@@ -30,6 +31,12 @@ class PublicPartnerController
 
         $context = $this->resolveContext($token);
         if (!$context) {
+            $anyContext = $this->resolveAnyContext($token);
+            if ($anyContext && ($anyContext['link']['status'] ?? '') === 'disabled') {
+                Response::view('public/partner_portal', [
+                    'error' => 'Link dezactivat. Contactati administratorul.',
+                ], 'layouts/guest');
+            }
             Response::view('public/partner_portal', [
                 'error' => 'Link invalid sau expirat.',
             ], 'layouts/guest');
@@ -43,25 +50,27 @@ class PublicPartnerController
             Response::abort(403, 'Acces interzis.');
         }
 
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
         $partnerCui = $this->resolvePartnerCui($context);
         $prefill = $this->resolvePrefill($context, $partnerCui);
         $scope = $this->resolveScope($context, $partnerCui);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
+        Audit::record('public_wizard.view', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+            'current_step' => $currentStep,
+        ]);
 
         $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
         $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
         $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
-
-        $previewHtml = '';
-        $previewContract = null;
-        $previewId = isset($_GET['preview']) ? (int) $_GET['preview'] : 0;
-        if ($previewId > 0) {
-            $previewContract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $previewId]);
-            if ($previewContract && $this->contractAllowed($previewContract, $scope)) {
-                $previewHtml = $this->buildContractPreview($previewContract);
-            } else {
-                $previewContract = null;
-            }
-        }
 
         Response::view('public/partner_portal', [
             'context' => $context,
@@ -71,8 +80,7 @@ class PublicPartnerController
             'relationContacts' => $relationContacts,
             'contracts' => $contracts,
             'scope' => $scope,
-            'previewHtml' => $previewHtml,
-            'previewContract' => $previewContract,
+            'currentStep' => $currentStep,
             'token' => $token,
         ], 'layouts/guest');
     }
@@ -93,6 +101,10 @@ class PublicPartnerController
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
 
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
         $cui = preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? ''));
         $denumire = CompanyName::normalize((string) ($_POST['denumire'] ?? ''));
         if ($cui === '' || $denumire === '') {
@@ -103,38 +115,36 @@ class PublicPartnerController
         Partner::upsert($cui, $denumire);
         $this->upsertCompanyFromPayload($cui, $context, $_POST);
 
-        if ($context['mode'] === 'enrollment') {
-            $isSupplier = ($context['enroll_type'] ?? '') === 'supplier';
-            $isClient = ($context['enroll_type'] ?? '') === 'client';
-            Partner::updateFlags($cui, $isSupplier, $isClient);
+        $linkType = (string) ($context['link']['type'] ?? '');
+        $isSupplier = $linkType === 'supplier';
+        $isClient = $linkType === 'client';
+        Partner::updateFlags($cui, $isSupplier, $isClient);
 
-            $supplierCui = (string) ($context['supplier_cui'] ?? '');
-            if ($isClient && $supplierCui !== '') {
-                $this->ensurePartnerRelation($supplierCui, $cui);
-                $this->ensureCommission($supplierCui, $cui, $context['link']['commission_percent'] ?? null);
-            }
-
-            $contractService = new ContractOnboardingService();
-            $contractService->ensureDraftContractForEnrollment(
-                (string) ($context['enroll_type'] ?? ''),
-                $cui,
-                $supplierCui !== '' ? $supplierCui : null,
-                $isClient ? $cui : null
-            );
-
-            if (empty($context['link']['confirmed_at'])) {
-                Database::execute(
-                    'UPDATE enrollment_links SET uses = uses + 1, confirmed_at = :now WHERE id = :id',
-                    [
-                        'now' => date('Y-m-d H:i:s'),
-                        'id' => (int) ($context['link']['id'] ?? 0),
-                    ]
-                );
-                $this->ensurePortalLink($context, $cui);
-            }
+        $supplierCui = (string) ($context['link']['relation_supplier_cui'] ?? $context['link']['supplier_cui'] ?? '');
+        if ($isClient && $supplierCui !== '') {
+            $this->ensurePartnerRelation($supplierCui, $cui);
+            $this->ensureCommission($supplierCui, $cui, $context['link']['commission_percent'] ?? null);
         }
 
-        Session::put($this->contextSessionKey($context), $cui);
+        $contractService = new ContractOnboardingService();
+        $contractService->ensureDraftContractForEnrollment(
+            $linkType,
+            $cui,
+            $supplierCui !== '' ? $supplierCui : null,
+            $isClient ? $cui : null
+        );
+
+        $nextStep = isset($_POST['next_step']) ? (int) $_POST['next_step'] : 0;
+        if ($nextStep < 1 || $nextStep > 3) {
+            $nextStep = 0;
+        }
+        $this->updateLinkAfterCompanySave($context, $cui, $supplierCui, $nextStep);
+
+        Audit::record('public_company.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'supplier_cui' => $isSupplier ? $cui : ($supplierCui !== '' ? $supplierCui : null),
+            'selected_client_cui' => $isClient ? $cui : null,
+        ]);
+
         Session::flash('status', 'Datele companiei au fost salvate.');
         Response::redirect('/p/' . $token . '?cui=' . urlencode($cui));
     }
@@ -153,6 +163,10 @@ class PublicPartnerController
 
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
         }
 
         $partnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
@@ -226,6 +240,13 @@ class PublicPartnerController
             );
         }
 
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $nextStep = max($currentStep, 2);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $nextStep, true);
+        Audit::record('public_contact.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+        ]);
+
         Session::flash('status', 'Contact adaugat.');
         Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
     }
@@ -259,8 +280,85 @@ class PublicPartnerController
         }
 
         Database::execute('DELETE FROM partner_contacts WHERE id = :id', ['id' => $id]);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
+        Audit::record('public_contact.delete', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+        ]);
         Session::flash('status', 'Contact sters.');
         Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+    }
+
+    public function setStep(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $step = isset($_POST['step']) ? (int) $_POST['step'] : 1;
+        if ($step < 1 || $step > 3) {
+            $step = 1;
+        }
+
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
+        Session::flash('status', 'Pas actualizat.');
+        Response::redirect('/p/' . $token . '#pas-' . $step);
+    }
+
+    public function preview(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id <= 0) {
+            Response::abort(404);
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$contract || !$this->contractAllowed($contract, $scope)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $html = $this->buildContractPreview($contract);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.preview', 'contract', $id, ['rows_count' => 1]);
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
     }
 
     public function download(): void
@@ -310,6 +408,11 @@ class PublicPartnerController
             Response::abort(404);
         }
 
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.download', 'contract', $id, [
+            'rows_count' => 1,
+        ]);
         $this->streamFile($path);
     }
 
@@ -360,6 +463,11 @@ class PublicPartnerController
             ]
         );
 
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.upload_signed', 'contract', $contractId, [
+            'rows_count' => 1,
+        ]);
         Session::flash('status', 'Contract semnat incarcat.');
         Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
     }
@@ -371,17 +479,21 @@ class PublicPartnerController
         return $resolver->resolve($token);
     }
 
+    private function resolveAnyContext(string $token): ?array
+    {
+        $resolver = new PublicLinkResolver();
+
+        return $resolver->resolveAny($token);
+    }
+
     private function resolvePartnerCui(array $context): string
     {
-        if (($context['mode'] ?? '') === 'portal') {
-            return preg_replace('/\D+/', '', (string) ($context['owner_cui'] ?? ''));
+        $linkCui = preg_replace('/\D+/', '', (string) ($context['link']['partner_cui'] ?? ''));
+        if ($linkCui !== '') {
+            return $linkCui;
         }
 
-        $key = $this->contextSessionKey($context);
         $cui = preg_replace('/\D+/', '', (string) ($_GET['cui'] ?? ''));
-        if ($cui === '') {
-            $cui = (string) Session::get($key, '');
-        }
         if ($cui === '' && !empty($context['link']['prefill_json'])) {
             $decoded = json_decode((string) $context['link']['prefill_json'], true);
             if (is_array($decoded) && !empty($decoded['cui'])) {
@@ -403,6 +515,22 @@ class PublicPartnerController
             $decoded = json_decode((string) $context['link']['prefill_json'], true);
             if (is_array($decoded)) {
                 $prefill = $decoded;
+            }
+        }
+
+        $lookup = trim((string) ($_GET['lookup'] ?? ''));
+        $lookupCui = preg_replace('/\D+/', '', (string) ($_GET['lookup_cui'] ?? ''));
+        if ($lookupCui === '' && $partnerCui !== '') {
+            $lookupCui = $partnerCui;
+        }
+        if ($lookupCui === '' && !empty($prefill['cui'])) {
+            $lookupCui = preg_replace('/\D+/', '', (string) $prefill['cui']);
+        }
+        if ($lookup === '1' && $lookupCui !== '') {
+            $service = new CompanyLookupService();
+            $response = $service->lookupByCui($lookupCui);
+            if ($response['error'] === null && is_array($response['data'])) {
+                $prefill = $this->mergePrefill($prefill, $response['data']);
             }
         }
 
@@ -435,29 +563,18 @@ class PublicPartnerController
 
     private function resolveScope(array $context, string $partnerCui): array
     {
-        if (($context['mode'] ?? '') === 'portal') {
-            if (!empty($context['relation_supplier_cui']) && !empty($context['relation_client_cui'])) {
-                return [
-                    'type' => 'relation',
-                    'supplier_cui' => (string) $context['relation_supplier_cui'],
-                    'client_cui' => (string) $context['relation_client_cui'],
-                ];
-            }
-            if (($context['owner_type'] ?? '') === 'supplier') {
-                return [
-                    'type' => 'supplier',
-                    'supplier_cui' => (string) ($context['owner_cui'] ?? ''),
-                ];
-            }
-
+        $relationSupplier = (string) ($context['link']['relation_supplier_cui'] ?? '');
+        $relationClient = (string) ($context['link']['relation_client_cui'] ?? '');
+        if ($relationSupplier !== '' && $relationClient !== '') {
             return [
-                'type' => 'client',
-                'client_cui' => (string) ($context['owner_cui'] ?? ''),
+                'type' => 'relation',
+                'supplier_cui' => $relationSupplier,
+                'client_cui' => $relationClient,
             ];
         }
 
-        $type = (string) ($context['enroll_type'] ?? '');
-        $supplierCui = (string) ($context['supplier_cui'] ?? '');
+        $type = (string) ($context['link']['type'] ?? '');
+        $supplierCui = (string) ($context['link']['supplier_cui'] ?? '');
         if ($type === 'client' && $supplierCui !== '' && $partnerCui !== '') {
             return [
                 'type' => 'relation',
@@ -720,62 +837,102 @@ class PublicPartnerController
         );
     }
 
-    private function ensurePortalLink(array $context, string $partnerCui): void
+    private function updateLinkAfterCompanySave(array $context, string $partnerCui, string $supplierCui, int $nextStep): void
     {
-        if (!Database::tableExists('portal_links')) {
+        if (!Database::tableExists('enrollment_links')) {
             return;
         }
 
-        $ownerType = ($context['enroll_type'] ?? '') === 'supplier' ? 'supplier' : 'client';
-        $relationSupplier = null;
-        $relationClient = null;
-        if (($context['enroll_type'] ?? '') === 'client' && !empty($context['supplier_cui'])) {
-            $relationSupplier = (string) $context['supplier_cui'];
+        $linkId = (int) ($context['link']['id'] ?? 0);
+        if ($linkId <= 0) {
+            return;
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+        $stepValue = $nextStep > 0 ? $nextStep : $currentStep;
+        $type = (string) ($context['link']['type'] ?? '');
+
+        $relationSupplier = (string) ($context['link']['relation_supplier_cui'] ?? '');
+        $relationClient = (string) ($context['link']['relation_client_cui'] ?? '');
+        if ($type === 'client' && $supplierCui !== '') {
+            $relationSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
             $relationClient = $partnerCui;
         }
 
-        $where = 'owner_type = :owner_type AND owner_cui = :owner_cui';
-        $params = [
-            'owner_type' => $ownerType,
-            'owner_cui' => $partnerCui,
-        ];
-        if ($relationSupplier !== null && $relationClient !== null) {
-            $where .= ' AND relation_supplier_cui = :relation_supplier_cui AND relation_client_cui = :relation_client_cui';
-            $params['relation_supplier_cui'] = $relationSupplier;
-            $params['relation_client_cui'] = $relationClient;
-        } else {
-            $where .= ' AND relation_supplier_cui IS NULL AND relation_client_cui IS NULL';
-        }
+        $now = date('Y-m-d H:i:s');
+        Database::execute(
+            'UPDATE enrollment_links
+             SET partner_cui = :partner_cui,
+                 relation_supplier_cui = :relation_supplier_cui,
+                 relation_client_cui = :relation_client_cui,
+                 current_step = :current_step,
+                 uses = uses + 1,
+                 last_used_at = :last_used_at,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
+                'relation_supplier_cui' => $relationSupplier !== '' ? $relationSupplier : null,
+                'relation_client_cui' => $relationClient !== '' ? $relationClient : null,
+                'current_step' => $stepValue,
+                'last_used_at' => $now,
+                'updated_at' => $now,
+                'id' => $linkId,
+            ]
+        );
+    }
 
-        $existing = Database::fetchOne('SELECT id FROM portal_links WHERE ' . $where . ' LIMIT 1', $params);
-        if ($existing) {
+    private function touchLink(int $linkId, int $currentStep, bool $incrementUses): void
+    {
+        if ($linkId <= 0 || !Database::tableExists('enrollment_links')) {
             return;
         }
 
-        $token = TokenService::generateToken(32);
-        $tokenHash = TokenService::hashToken($token);
-        $permissions = json_encode([
-            'can_view' => true,
-            'can_upload_signed' => true,
-            'can_upload_custom' => false,
-        ], JSON_UNESCAPED_UNICODE);
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+        $now = date('Y-m-d H:i:s');
+        $sets = [
+            'last_used_at = :last_used_at',
+            'updated_at = :updated_at',
+            'current_step = :current_step',
+        ];
+        if ($incrementUses) {
+            $sets[] = 'uses = uses + 1';
+        }
 
-        Database::execute(
-            'INSERT INTO portal_links (token_hash, owner_type, owner_cui, relation_supplier_cui, relation_client_cui, permissions_json, status, expires_at, created_by_user_id, created_at)
-             VALUES (:token_hash, :owner_type, :owner_cui, :relation_supplier_cui, :relation_client_cui, :permissions_json, :status, :expires_at, :created_by_user_id, :created_at)',
-            [
-                'token_hash' => $tokenHash,
-                'owner_type' => $ownerType,
-                'owner_cui' => $partnerCui,
-                'relation_supplier_cui' => $relationSupplier,
-                'relation_client_cui' => $relationClient,
-                'permissions_json' => $permissions,
-                'status' => 'active',
-                'expires_at' => null,
-                'created_by_user_id' => null,
-                'created_at' => date('Y-m-d H:i:s'),
-            ]
-        );
+        $sql = 'UPDATE enrollment_links SET ' . implode(', ', $sets) . ' WHERE id = :id';
+        Database::execute($sql, [
+            'last_used_at' => $now,
+            'updated_at' => $now,
+            'current_step' => $currentStep,
+            'id' => $linkId,
+        ]);
+    }
+
+    private function mergePrefill(array $prefill, array $incoming): array
+    {
+        $map = [
+            'cui' => 'cui',
+            'denumire' => 'denumire',
+            'nr_reg_comertului' => 'nr_reg_comertului',
+            'adresa' => 'adresa',
+            'localitate' => 'localitate',
+            'judet' => 'judet',
+            'telefon' => 'telefon',
+            'email' => 'email',
+        ];
+        foreach ($map as $key => $target) {
+            $value = trim((string) ($incoming[$key] ?? ''));
+            if ($value !== '') {
+                $prefill[$target] = $value;
+            }
+        }
+
+        return $prefill;
     }
 
     private function storeUpload(?array $file, string $subdir, array $allowedExtensions): ?string
@@ -839,13 +996,5 @@ class PublicPartnerController
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         $key = 'public|' . $hash . '|' . $ip;
         return RateLimiter::hit($key, 60, 600);
-    }
-
-    private function contextSessionKey(array $context): string
-    {
-        $id = (int) ($context['link']['id'] ?? 0);
-        $mode = (string) ($context['mode'] ?? 'public');
-
-        return 'public_partner_cui_' . $mode . '_' . $id;
     }
 }

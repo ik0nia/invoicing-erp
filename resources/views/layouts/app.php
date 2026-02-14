@@ -64,14 +64,9 @@ if ($isPlatformUser) {
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
     $menuSections['Inrolare'] = [
         [
-            'label' => 'Link-uri de inrolare',
+            'label' => 'Link-uri publice',
             'path' => '/admin/enrollment-links',
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
-        ],
-        [
-            'label' => 'Link-uri portal',
-            'path' => '/admin/portal-links',
-            'active' => str_starts_with($currentPath, '/admin/portal-links'),
         ],
     ];
 }

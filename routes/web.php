@@ -5,7 +5,6 @@ use App\Domain\Settings\Http\Controllers\InstallController;
 use App\Domain\Users\Http\Controllers\AuthController;
 use App\Domain\Users\Http\Controllers\SetupController;
 use App\Domain\Enrollment\Http\Controllers\PublicEnrollmentController;
-use App\Domain\Portal\Http\Controllers\PublicPortalController;
 use App\Domain\Public\Http\Controllers\PublicPartnerController;
 
 $router->get('/', function (): void {
@@ -33,13 +32,12 @@ $router->post('/logout', [AuthController::class, 'logout']);
 $router->get('/enroll/{token}', [PublicEnrollmentController::class, 'show']);
 $router->post('/enroll/{token}', [PublicEnrollmentController::class, 'submit']);
 $router->get('/enroll/{token}/lookup', [PublicEnrollmentController::class, 'lookup']);
-$router->get('/portal/{token}', [PublicPortalController::class, 'index']);
-$router->get('/portal/{token}/download', [PublicPortalController::class, 'download']);
-$router->post('/portal/{token}/upload', [PublicPortalController::class, 'upload']);
 $router->get('/p/{token}', [PublicPartnerController::class, 'index']);
 $router->post('/p/{token}/save-company', [PublicPartnerController::class, 'saveCompany']);
 $router->post('/p/{token}/save-contact', [PublicPartnerController::class, 'saveContact']);
 $router->post('/p/{token}/delete-contact', [PublicPartnerController::class, 'deleteContact']);
+$router->post('/p/{token}/set-step', [PublicPartnerController::class, 'setStep']);
+$router->get('/p/{token}/preview', [PublicPartnerController::class, 'preview']);
 $router->get('/p/{token}/download', [PublicPartnerController::class, 'download']);
 $router->post('/p/{token}/upload-signed', [PublicPartnerController::class, 'uploadSigned']);
 

@@ -153,14 +153,21 @@ class SchemaEnsurer
                     type ENUM("supplier", "client") NOT NULL,
                     created_by_user_id INT NULL,
                     supplier_cui VARCHAR(32) NULL,
+                    partner_cui VARCHAR(32) NULL,
+                    relation_supplier_cui VARCHAR(32) NULL,
+                    relation_client_cui VARCHAR(32) NULL,
                     commission_percent DECIMAL(8,4) NULL,
                     prefill_json TEXT NULL,
+                    permissions_json TEXT NULL,
                     max_uses INT NOT NULL DEFAULT 1,
                     uses INT NOT NULL DEFAULT 0,
+                    current_step TINYINT NOT NULL DEFAULT 1,
                     status ENUM("active", "disabled") NOT NULL DEFAULT "active",
                     expires_at DATETIME NULL,
                     confirmed_at DATETIME NULL,
+                    last_used_at DATETIME NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL,
                     INDEX idx_enrollment_status (status),
                     INDEX idx_enrollment_supplier (supplier_cui),
                     INDEX idx_enrollment_created (created_at)
@@ -176,6 +183,34 @@ class SchemaEnsurer
             self::ensureIndex('enrollment_links', 'idx_enrollment_status', 'ALTER TABLE enrollment_links ADD INDEX idx_enrollment_status (status)');
             self::ensureIndex('enrollment_links', 'idx_enrollment_supplier', 'ALTER TABLE enrollment_links ADD INDEX idx_enrollment_supplier (supplier_cui)');
             self::ensureIndex('enrollment_links', 'idx_enrollment_created', 'ALTER TABLE enrollment_links ADD INDEX idx_enrollment_created (created_at)');
+            if (!self::columnExists('enrollment_links', 'partner_cui')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN partner_cui VARCHAR(32) NULL AFTER supplier_cui', [], 'enrollment_links_partner_cui');
+                unset(self::$columnCache['enrollment_links.partner_cui']);
+            }
+            if (!self::columnExists('enrollment_links', 'relation_supplier_cui')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN relation_supplier_cui VARCHAR(32) NULL AFTER partner_cui', [], 'enrollment_links_relation_supplier');
+                unset(self::$columnCache['enrollment_links.relation_supplier_cui']);
+            }
+            if (!self::columnExists('enrollment_links', 'relation_client_cui')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN relation_client_cui VARCHAR(32) NULL AFTER relation_supplier_cui', [], 'enrollment_links_relation_client');
+                unset(self::$columnCache['enrollment_links.relation_client_cui']);
+            }
+            if (!self::columnExists('enrollment_links', 'permissions_json')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN permissions_json TEXT NULL AFTER prefill_json', [], 'enrollment_links_permissions');
+                unset(self::$columnCache['enrollment_links.permissions_json']);
+            }
+            if (!self::columnExists('enrollment_links', 'current_step')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN current_step TINYINT NOT NULL DEFAULT 1 AFTER uses', [], 'enrollment_links_current_step');
+                unset(self::$columnCache['enrollment_links.current_step']);
+            }
+            if (!self::columnExists('enrollment_links', 'last_used_at')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN last_used_at DATETIME NULL AFTER confirmed_at', [], 'enrollment_links_last_used');
+                unset(self::$columnCache['enrollment_links.last_used_at']);
+            }
+            if (!self::columnExists('enrollment_links', 'updated_at')) {
+                self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN updated_at DATETIME NULL AFTER created_at', [], 'enrollment_links_updated_at');
+                unset(self::$columnCache['enrollment_links.updated_at']);
+            }
         }
     }
 

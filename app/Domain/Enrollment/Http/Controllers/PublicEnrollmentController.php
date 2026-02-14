@@ -10,12 +10,10 @@ use App\Domain\Partners\Models\Partner;
 use App\Support\Audit;
 use App\Support\CompanyName;
 use App\Support\Database;
-use App\Support\Env;
 use App\Support\RateLimiter;
 use App\Support\Response;
 use App\Support\Session;
 use App\Support\TokenService;
-use App\Support\Url;
 
 class PublicEnrollmentController
 {
@@ -107,7 +105,6 @@ class PublicEnrollmentController
             $this->ensureCommission($supplierCui, $cui, $link['commission_percent'] ?? null);
         }
 
-        $isFirstUse = ((int) ($link['uses'] ?? 0)) === 0;
         $supplierCui = $link['type'] === 'client' ? (string) ($link['supplier_cui'] ?? '') : null;
         $clientCui = $link['type'] === 'client' ? $cui : null;
         $partnerCui = $link['type'] === 'supplier' ? $cui : $cui;
@@ -129,19 +126,6 @@ class PublicEnrollmentController
             'rows_count' => 1,
         ]);
 
-        $portalLink = null;
-        $portalNotice = null;
-        if ($isFirstUse) {
-            $portalResult = $this->ensurePortalLink($link, $cui);
-            if (!empty($portalResult['url'])) {
-                $portalLink = $portalResult['url'];
-            } else {
-                $portalNotice = 'Linkul catre portal a fost afisat la prima confirmare. Contactati administratorul pentru regenerare.';
-            }
-        } else {
-            $portalNotice = 'Linkul catre portal a fost afisat la prima confirmare. Contactati administratorul pentru regenerare.';
-        }
-
         $company = Database::tableExists('companies') ? Company::findByCui($cui) : null;
         $summary = [
             'cui' => $cui,
@@ -151,8 +135,6 @@ class PublicEnrollmentController
             'documents_created' => (int) ($contractResult['created_count'] ?? 0),
             'documents_total' => (int) ($contractResult['total_templates'] ?? 0),
             'documents' => $contractResult['created_titles'] ?? [],
-            'portal_link' => $portalLink,
-            'portal_notice' => $portalNotice,
             'has_templates' => !empty($contractResult['has_templates']),
         ];
         Session::flash('enroll_summary', $summary);
@@ -198,11 +180,6 @@ class PublicEnrollmentController
         }
 
         if (($row['status'] ?? '') !== 'active') {
-            return null;
-        }
-        $maxUses = (int) ($row['max_uses'] ?? 1);
-        $uses = (int) ($row['uses'] ?? 0);
-        if ($maxUses > 0 && $uses >= $maxUses) {
             return null;
         }
         $expires = $row['expires_at'] ?? null;
@@ -370,77 +347,4 @@ class PublicEnrollmentController
         Company::save($data);
     }
 
-    private function ensurePortalLink(array $link, string $partnerCui): array
-    {
-        if (!Database::tableExists('portal_links')) {
-            return ['url' => null];
-        }
-
-        $ownerType = $link['type'] === 'supplier' ? 'supplier' : 'client';
-        $relationSupplier = null;
-        $relationClient = null;
-        if ($link['type'] === 'client' && !empty($link['supplier_cui'])) {
-            $relationSupplier = (string) $link['supplier_cui'];
-            $relationClient = $partnerCui;
-        }
-
-        $where = 'owner_type = :owner_type AND owner_cui = :owner_cui';
-        $params = [
-            'owner_type' => $ownerType,
-            'owner_cui' => $partnerCui,
-        ];
-        if ($relationSupplier !== null && $relationClient !== null) {
-            $where .= ' AND relation_supplier_cui = :relation_supplier_cui AND relation_client_cui = :relation_client_cui';
-            $params['relation_supplier_cui'] = $relationSupplier;
-            $params['relation_client_cui'] = $relationClient;
-        } else {
-            $where .= ' AND relation_supplier_cui IS NULL AND relation_client_cui IS NULL';
-        }
-
-        $existing = Database::fetchOne('SELECT id FROM portal_links WHERE ' . $where . ' LIMIT 1', $params);
-        if ($existing) {
-            return ['url' => null];
-        }
-
-        $token = TokenService::generateToken(32);
-        $tokenHash = TokenService::hashToken($token);
-        $permissions = json_encode([
-            'can_view' => true,
-            'can_upload_signed' => true,
-            'can_upload_custom' => false,
-        ], JSON_UNESCAPED_UNICODE);
-
-        Database::execute(
-            'INSERT INTO portal_links (token_hash, owner_type, owner_cui, relation_supplier_cui, relation_client_cui, permissions_json, status, expires_at, created_by_user_id, created_at)
-             VALUES (:token_hash, :owner_type, :owner_cui, :relation_supplier_cui, :relation_client_cui, :permissions_json, :status, :expires_at, :created_by_user_id, :created_at)',
-            [
-                'token_hash' => $tokenHash,
-                'owner_type' => $ownerType,
-                'owner_cui' => $partnerCui,
-                'relation_supplier_cui' => $relationSupplier,
-                'relation_client_cui' => $relationClient,
-                'permissions_json' => $permissions,
-                'status' => 'active',
-                'expires_at' => null,
-                'created_by_user_id' => null,
-                'created_at' => date('Y-m-d H:i:s'),
-            ]
-        );
-
-        return [
-            'url' => $this->absoluteUrl(Url::to('portal/' . $token)),
-        ];
-    }
-
-    private function absoluteUrl(string $path): string
-    {
-        $base = trim((string) Env::get('APP_URL', ''));
-        if ($base === '') {
-            return $path;
-        }
-        $base = rtrim($base, '/');
-        $path = '/' . ltrim($path, '/');
-
-        return $base . $path;
-    }
 }
