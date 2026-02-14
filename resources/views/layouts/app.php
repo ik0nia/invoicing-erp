@@ -62,14 +62,14 @@ if ($isPlatformUser) {
 }
 
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
-    $menuSections['Onboarding'] = [
+    $menuSections['Inrolare'] = [
         [
-            'label' => 'Enrollment Links',
+            'label' => 'Link-uri de inrolare',
             'path' => '/admin/enrollment-links',
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
         ],
         [
-            'label' => 'Portal Links',
+            'label' => 'Link-uri portal',
             'path' => '/admin/portal-links',
             'active' => str_starts_with($currentPath, '/admin/portal-links'),
         ],
@@ -79,12 +79,12 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
     $menuSections['Documente'] = [
         [
-            'label' => 'Contracts',
+            'label' => 'Contracte',
             'path' => '/admin/contracts',
             'active' => str_starts_with($currentPath, '/admin/contracts'),
         ],
         [
-            'label' => 'Contacts',
+            'label' => 'Contacte',
             'path' => '/admin/companii',
             'active' => str_starts_with($currentPath, '/admin/companii') || str_starts_with($currentPath, '/admin/asocieri'),
         ],
@@ -93,7 +93,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
 
 if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
     $menuSections['Documente'][] = [
-        'label' => 'Contract Templates',
+        'label' => 'Modele de contract',
         'path' => '/admin/contract-templates',
         'active' => str_starts_with($currentPath, '/admin/contract-templates'),
     ];

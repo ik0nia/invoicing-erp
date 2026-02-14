@@ -1,12 +1,12 @@
 <?php
-    $title = 'Contract Templates';
+    $title = 'Modele de contract';
     $templates = $templates ?? [];
 ?>
 
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900">Contract Templates</h1>
-        <p class="mt-1 text-sm text-slate-500">Gestioneaza sabloane contracte.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Modele de contract</h1>
+        <p class="mt-1 text-sm text-slate-500">Gestioneaza modelele folosite la generarea contractelor.</p>
     </div>
 </div>
 
@@ -47,7 +47,7 @@
     </div>
     <div class="mt-4">
         <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-            Salveaza template
+            Salveaza model
         </button>
     </div>
 </form>
@@ -64,7 +64,9 @@
         <tbody>
             <?php if (empty($templates)): ?>
                 <tr>
-                    <td colspan="3" class="px-3 py-4 text-sm text-slate-500">Nu exista template-uri.</td>
+                    <td colspan="3" class="px-3 py-4 text-sm text-slate-500">
+                        Nu exista modele de contract active. Creati un model pentru a putea genera contracte.
+                    </td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($templates as $template): ?>

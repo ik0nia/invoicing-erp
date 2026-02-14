@@ -1,5 +1,5 @@
 <?php
-    $title = 'Portal Links';
+    $title = 'Link-uri portal';
     $rows = $rows ?? [];
     $filters = $filters ?? [
         'status' => '',
@@ -31,9 +31,19 @@
 
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900">Portal Links</h1>
-        <p class="mt-1 text-sm text-slate-500">Linkuri publice pentru acces documente.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Link-uri portal</h1>
+        <p class="mt-1 text-sm text-slate-500">Gestioneaza linkurile publice de acces la documente.</p>
     </div>
+</div>
+
+<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+    <div class="font-semibold">Ce este un link de portal?</div>
+    <ul class="mt-2 list-disc space-y-1 pl-5">
+        <li>Ofera acces la documente pentru furnizori sau clienti, fara parola.</li>
+        <li>Poate afisa documente ale partenerului si ale relatiilor sale.</li>
+        <li>Este diferit de linkul de inrolare (acela este pentru completarea datelor).</li>
+        <li>Recomandare: nu distribuiti public acest link.</li>
+    </ul>
 </div>
 
 <?php if (!empty($newLink)): ?>
@@ -49,14 +59,14 @@
     <?= App\Support\Csrf::input() ?>
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="owner-type">Owner tip</label>
+            <label class="block text-sm font-medium text-slate-700" for="owner-type">Tip titular</label>
             <select id="owner-type" name="owner_type" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="supplier">Furnizor</option>
                 <option value="client">Client</option>
             </select>
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="owner-cui">Owner CUI</label>
+            <label class="block text-sm font-medium text-slate-700" for="owner-cui">CUI titular</label>
             <?php if (!empty($userSuppliers)): ?>
                 <select id="owner-cui" name="owner_cui" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                     <option value="">Selecteaza</option>
@@ -75,7 +85,7 @@
             <?php endif; ?>
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="relation-supplier">Relatie furnizor CUI</label>
+            <label class="block text-sm font-medium text-slate-700" for="relation-supplier">Relatie - furnizor CUI</label>
             <input
                 id="relation-supplier"
                 name="relation_supplier_cui"
@@ -85,7 +95,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="relation-client">Relatie client CUI</label>
+            <label class="block text-sm font-medium text-slate-700" for="relation-client">Relatie - client CUI</label>
             <input
                 id="relation-client"
                 name="relation_client_cui"
@@ -108,21 +118,21 @@
     <div class="mt-4 flex flex-wrap gap-4 text-sm text-slate-700">
         <label class="inline-flex items-center gap-2">
             <input type="checkbox" name="can_view" class="rounded border-slate-300" checked>
-            Poate vedea
+            Poate vedea documente
         </label>
         <label class="inline-flex items-center gap-2">
             <input type="checkbox" name="can_upload_signed" class="rounded border-slate-300">
-            Upload semnat
+            Incarca contract semnat
         </label>
         <label class="inline-flex items-center gap-2">
             <input type="checkbox" name="can_upload_custom" class="rounded border-slate-300">
-            Upload custom
+            Incarca document custom
         </label>
     </div>
 
     <div class="mt-4">
         <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            Creeaza link
+            Creeaza link portal
         </button>
     </div>
 </form>
@@ -138,7 +148,7 @@
             </select>
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-owner-type">Owner tip</label>
+            <label class="block text-sm font-medium text-slate-700" for="filter-owner-type">Tip titular</label>
             <select id="filter-owner-type" name="owner_type" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="">Toate</option>
                 <option value="supplier" <?= ($filters['owner_type'] ?? '') === 'supplier' ? 'selected' : '' ?>>Furnizor</option>
@@ -146,7 +156,7 @@
             </select>
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-owner-cui">Owner CUI</label>
+            <label class="block text-sm font-medium text-slate-700" for="filter-owner-cui">CUI titular</label>
             <input
                 id="filter-owner-cui"
                 name="owner_cui"
@@ -181,7 +191,7 @@
 
 <?php if (empty($rows)): ?>
     <div class="mt-6 rounded border border-slate-200 bg-white p-6 text-sm text-slate-600">
-        Nu exista linkuri portal.
+        Nu exista linkuri portal. Creati un link pentru a permite acces public controlat.
     </div>
 <?php else: ?>
     <div class="mt-6 overflow-x-auto rounded border border-slate-200 bg-white">
@@ -189,7 +199,7 @@
             <thead class="bg-slate-50 text-slate-600">
                 <tr>
                     <th class="px-3 py-2">Data</th>
-                    <th class="px-3 py-2">Owner</th>
+                    <th class="px-3 py-2">Titular</th>
                     <th class="px-3 py-2">Relatie</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2">Expira</th>
@@ -220,7 +230,12 @@
                                 <form method="POST" action="<?= App\Support\Url::to('admin/portal-links/disable') ?>">
                                     <?= App\Support\Csrf::input() ?>
                                     <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
-                                    <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Dezactiveaza</button>
+                                    <button
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                                        onclick="return confirm('Sigur doriti sa dezactivati acest link?')"
+                                    >
+                                        Dezactiveaza link
+                                    </button>
                                 </form>
                             <?php else: ?>
                                 <span class="text-xs text-slate-400">Dezactivat</span>

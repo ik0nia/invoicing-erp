@@ -1,5 +1,5 @@
 <?php
-    $title = 'Portal Documente';
+    $title = 'Portal documente';
     $link = $link ?? null;
     $permissions = $permissions ?? [
         'can_view' => false,
@@ -11,12 +11,26 @@
     $scope = $scope ?? [];
     $token = $token ?? '';
     $error = $error ?? '';
+    $statusLabels = [
+        'draft' => 'Ciorna',
+        'generated' => 'Generat',
+        'sent' => 'Trimis',
+        'signed_uploaded' => 'Semnat (incarcat)',
+        'approved' => 'Aprobat',
+    ];
+    $statusClasses = [
+        'draft' => 'bg-slate-100 text-slate-700',
+        'generated' => 'bg-blue-100 text-blue-700',
+        'sent' => 'bg-amber-100 text-amber-700',
+        'signed_uploaded' => 'bg-purple-100 text-purple-700',
+        'approved' => 'bg-emerald-100 text-emerald-700',
+    ];
 ?>
 
 <div class="max-w-4xl">
     <div>
         <h1 class="text-2xl font-semibold text-slate-900">Portal documente</h1>
-        <p class="mt-1 text-sm text-slate-600">Acces documente si contracte.</p>
+        <p class="mt-1 text-sm text-slate-600">Acces la documente si contracte.</p>
     </div>
 
     <?php if ($error !== ''): ?>
@@ -26,6 +40,15 @@
     <?php endif; ?>
 
     <?php if ($link && !empty($permissions['can_view'])): ?>
+        <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div class="font-semibold">Despre acest portal</div>
+            <ul class="mt-2 list-disc space-y-1 pl-5">
+                <li>Sunt afisate documente si contracte asociate acestui partener sau relatie.</li>
+                <li>Puteti descarca documentele disponibile si incarca documente permise.</li>
+                <li>Acest link ofera acces la documente. Nu il distribuiti.</li>
+            </ul>
+        </div>
+
         <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div class="text-sm font-semibold text-slate-700">Contracte</div>
             <?php if (empty($contracts)): ?>
@@ -45,10 +68,17 @@
                                 <?php
                                     $downloadUrl = App\Support\Url::to('portal/' . $token . '/download?type=contract&id=' . (int) $contract['id']);
                                     $fileAvailable = !empty($contract['signed_file_path']) || !empty($contract['generated_file_path']);
+                                    $statusKey = (string) ($contract['status'] ?? '');
+                                    $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
+                                    $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
                                 ?>
                                 <tr class="border-t border-slate-100">
                                     <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
-                                    <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['status'] ?? '')) ?></td>
+                                    <td class="px-3 py-2 text-slate-600">
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
+                                            <?= htmlspecialchars($statusLabel) ?>
+                                        </span>
+                                    </td>
                                     <td class="px-3 py-2 text-slate-600">
                                         <?php if ($fileAvailable): ?>
                                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-blue-700 hover:text-blue-800 text-xs font-semibold">Descarca</a>
@@ -67,7 +97,7 @@
         <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div class="text-sm font-semibold text-slate-700">Documente relatie</div>
             <?php if (empty($relationDocs)): ?>
-                <div class="mt-3 text-sm text-slate-500">Nu exista documente custom.</div>
+                <div class="mt-3 text-sm text-slate-500">Nu exista documente personalizate.</div>
             <?php else: ?>
                 <div class="mt-3 overflow-x-auto">
                     <table class="w-full text-left text-sm">

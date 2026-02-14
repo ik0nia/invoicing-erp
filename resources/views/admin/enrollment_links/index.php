@@ -1,5 +1,5 @@
 <?php
-    $title = 'Enrollment Links';
+    $title = 'Link-uri de inrolare';
     $rows = $rows ?? [];
     $filters = $filters ?? [
         'status' => '',
@@ -31,9 +31,20 @@
 
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900">Enrollment Links</h1>
-        <p class="mt-1 text-sm text-slate-500">Linkuri publice pentru onboarding furnizori si clienti.</p>
+        <h1 class="text-xl font-semibold text-slate-900">Link-uri de inrolare</h1>
+        <p class="mt-1 text-sm text-slate-500">Gestioneaza linkurile publice de inrolare.</p>
     </div>
+</div>
+
+<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+    <div class="font-semibold">Ce este un link de inrolare?</div>
+    <ul class="mt-2 list-disc space-y-1 pl-5">
+        <li>Linkul de inrolare permite completarea datelor fara cont si parola.</li>
+        <li>Pentru furnizor se foloseste cand se inroleaza un partener furnizor.</li>
+        <li>Pentru client se foloseste cand se inroleaza un client al unui furnizor.</li>
+        <li>Dupa confirmare se creeaza firma si un contract in status <strong>Ciorna</strong>.</li>
+        <li>Linkul este limitat ca utilizari si poate fi dezactivat oricand.</li>
+    </ul>
 </div>
 
 <?php if (!empty($newLink)): ?>
@@ -49,14 +60,14 @@
     <?= App\Support\Csrf::input() ?>
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="link-type">Tip</label>
+            <label class="block text-sm font-medium text-slate-700" for="link-type">Tip link</label>
             <select id="link-type" name="type" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="supplier">Furnizor</option>
                 <option value="client">Client</option>
             </select>
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor (pentru clienti)</label>
+            <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor (pentru client)</label>
             <?php if (!empty($userSuppliers)): ?>
                 <select id="supplier-cui" name="supplier_cui" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                     <option value="">Selecteaza furnizor</option>
@@ -85,7 +96,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="max-uses">Utilizari maxime</label>
+            <label class="block text-sm font-medium text-slate-700" for="max-uses">Numar utilizari</label>
             <input
                 id="max-uses"
                 name="max_uses"
@@ -108,7 +119,7 @@
 
     <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-cui">Prefill CUI</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-cui">Precompletare CUI</label>
             <input
                 id="prefill-cui"
                 name="prefill_cui"
@@ -118,7 +129,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-denumire">Prefill denumire</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-denumire">Precompletare denumire</label>
             <input
                 id="prefill-denumire"
                 name="prefill_denumire"
@@ -127,7 +138,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-nr">Prefill nr. reg comertului</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-nr">Precompletare nr. reg. comertului</label>
             <input
                 id="prefill-nr"
                 name="prefill_nr_reg_comertului"
@@ -136,7 +147,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-email">Prefill email</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-email">Precompletare email</label>
             <input
                 id="prefill-email"
                 name="prefill_email"
@@ -145,7 +156,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-adresa">Prefill adresa</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-adresa">Precompletare adresa</label>
             <input
                 id="prefill-adresa"
                 name="prefill_adresa"
@@ -154,7 +165,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-localitate">Prefill localitate</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-localitate">Precompletare localitate</label>
             <input
                 id="prefill-localitate"
                 name="prefill_localitate"
@@ -163,7 +174,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-judet">Prefill judet</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-judet">Precompletare judet</label>
             <input
                 id="prefill-judet"
                 name="prefill_judet"
@@ -172,7 +183,7 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="prefill-telefon">Prefill telefon</label>
+            <label class="block text-sm font-medium text-slate-700" for="prefill-telefon">Precompletare telefon</label>
             <input
                 id="prefill-telefon"
                 name="prefill_telefon"
@@ -184,14 +195,14 @@
 
     <div class="mt-4 flex flex-wrap items-center gap-2">
         <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            Creeaza link
+            Creeaza link de inrolare
         </button>
         <button
             type="button"
             id="openapi-fetch"
             class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
-            Prefill OpenAPI
+            Precompletare OpenAPI
         </button>
     </div>
 </form>
@@ -251,7 +262,7 @@
 
 <?php if (empty($rows)): ?>
     <div class="mt-6 rounded border border-slate-200 bg-white p-6 text-sm text-slate-600">
-        Nu exista linkuri de inrolare.
+        Nu exista linkuri de inrolare. Dupa creare, acestea pot fi trimise partenerilor pentru completarea datelor.
     </div>
 <?php else: ?>
     <div class="mt-6 overflow-x-auto rounded border border-slate-200 bg-white">
@@ -283,7 +294,12 @@
                                 <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/disable') ?>">
                                     <?= App\Support\Csrf::input() ?>
                                     <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
-                                    <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Dezactiveaza</button>
+                                    <button
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                                        onclick="return confirm('Sigur doriti sa dezactivati acest link?')"
+                                    >
+                                        Dezactiveaza link
+                                    </button>
                                 </form>
                             <?php else: ?>
                                 <span class="text-xs text-slate-400">Dezactivat</span>
