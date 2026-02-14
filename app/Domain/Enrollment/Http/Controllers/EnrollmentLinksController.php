@@ -7,6 +7,7 @@ use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Audit;
 use App\Support\Database;
+use App\Support\Env;
 use App\Support\Response;
 use App\Support\Session;
 use App\Support\TokenService;
@@ -164,7 +165,7 @@ class EnrollmentLinksController
 
         $link = [
             'token' => $token,
-            'url' => Url::to('enroll/' . $token),
+            'url' => $this->absoluteUrl(Url::to('enroll/' . $token)),
         ];
         Session::flash('status', 'Link de inrolare creat.');
         Session::flash('enrollment_link', $link);
@@ -224,5 +225,20 @@ class EnrollmentLinksController
         header('Content-Type: application/json');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE);
         exit;
+    }
+
+    private function absoluteUrl(string $path): string
+    {
+        $base = rtrim((string) Env::get('APP_URL', ''), '/');
+        if ($base === '') {
+            return $path;
+        }
+        $basePath = Url::base();
+        $relative = $path;
+        if ($basePath !== '' && str_ends_with($base, $basePath)) {
+            $relative = substr($path, strlen($basePath));
+        }
+
+        return $base . $relative;
     }
 }

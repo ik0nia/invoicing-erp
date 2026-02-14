@@ -6,6 +6,7 @@ use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Audit;
 use App\Support\Database;
+use App\Support\Env;
 use App\Support\Response;
 use App\Support\Session;
 use App\Support\TokenService;
@@ -169,7 +170,7 @@ class PortalLinksController
         Session::flash('status', 'Link portal creat.');
         Session::flash('portal_link', [
             'token' => $token,
-            'url' => Url::to('portal/' . $token),
+            'url' => $this->absoluteUrl(Url::to('portal/' . $token)),
         ]);
         Response::redirect('/admin/portal-links');
     }
@@ -205,5 +206,20 @@ class PortalLinksController
         }
 
         Response::abort(403, 'Acces interzis.');
+    }
+
+    private function absoluteUrl(string $path): string
+    {
+        $base = rtrim((string) Env::get('APP_URL', ''), '/');
+        if ($base === '') {
+            return $path;
+        }
+        $basePath = Url::base();
+        $relative = $path;
+        if ($basePath !== '' && str_ends_with($base, $basePath)) {
+            $relative = substr($path, strlen($basePath));
+        }
+
+        return $base . $relative;
     }
 }

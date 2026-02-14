@@ -49,8 +49,22 @@
 <?php if (!empty($newLink)): ?>
     <div class="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
         Link nou creat (afisat o singura data):
-        <div class="mt-2 break-all rounded border border-emerald-200 bg-white px-3 py-2 text-xs text-emerald-900">
-            <?= htmlspecialchars((string) ($newLink['url'] ?? '')) ?>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+            <input
+                type="text"
+                readonly
+                id="portal-link-output"
+                value="<?= htmlspecialchars((string) ($newLink['url'] ?? '')) ?>"
+                class="w-full max-w-2xl rounded border border-emerald-200 bg-white px-3 py-2 text-xs text-emerald-900"
+            >
+            <button
+                type="button"
+                id="portal-copy"
+                class="rounded border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+            >
+                Copiaza in clipboard
+            </button>
+            <span id="portal-copy-status" class="text-xs text-emerald-700"></span>
         </div>
     </div>
 <?php endif; ?>
@@ -312,3 +326,34 @@
         </div>
     <?php endif; ?>
 <?php endif; ?>
+
+<script>
+    (function () {
+        const copyButton = document.getElementById('portal-copy');
+        const output = document.getElementById('portal-link-output');
+        const status = document.getElementById('portal-copy-status');
+        if (copyButton && output) {
+            const doCopy = () => {
+                const value = output.value;
+                if (!value) {
+                    return;
+                }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value).then(() => {
+                        if (status) {
+                            status.textContent = 'Copiat.';
+                        }
+                    });
+                } else {
+                    output.select();
+                    document.execCommand('copy');
+                    if (status) {
+                        status.textContent = 'Copiat.';
+                    }
+                }
+            };
+            output.addEventListener('click', doCopy);
+            copyButton.addEventListener('click', doCopy);
+        }
+    })();
+</script>

@@ -103,10 +103,15 @@ class Router
     private function compilePattern(string $path, callable|array $handler): array
     {
         $paramNames = [];
-        $pattern = preg_replace_callback('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', function (array $matches) use (&$paramNames): string {
-            $paramNames[] = $matches[1];
-            return '([^/]+)';
-        }, preg_quote($path, '#'));
+        preg_match_all('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', $path, $matches);
+        if (!empty($matches[1])) {
+            $paramNames = $matches[1];
+        }
+
+        $placeholder = '__PARAM__';
+        $pattern = preg_replace('/\{[a-zA-Z_][a-zA-Z0-9_]*\}/', $placeholder, $path);
+        $pattern = preg_quote((string) $pattern, '#');
+        $pattern = str_replace($placeholder, '([^/]+)', $pattern);
 
         return [
             'regex' => '#^' . $pattern . '$#',
