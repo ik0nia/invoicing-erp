@@ -4402,30 +4402,6 @@ class InvoiceController
         exit;
     }
 
-    private function readSagaRowsFromCsv(string $path): array
-    {
-        $handle = fopen($path, 'r');
-        if ($handle === false) {
-            return [];
-        }
-
-        $headerLine = fgets($handle);
-        if ($headerLine === false) {
-            fclose($handle);
-            return [];
-        }
-
-        $delimiter = $this->detectCsvDelimiter($headerLine);
-        $rows = [str_getcsv($headerLine, $delimiter)];
-
-        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
-            $rows[] = $row;
-        }
-
-        fclose($handle);
-
-        return $rows;
-    }
     private function detectCsvDelimiter(string $line): string
     {
         $delimiters = [';' => 0, ',' => 0, "\t" => 0, '|' => 0];
