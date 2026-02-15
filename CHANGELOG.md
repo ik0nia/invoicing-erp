@@ -1,5 +1,133 @@
 # Changelog
 
+## v1.1.0
+
+- Link public unic /p/{token} cu wizard (date, contacte, contracte).
+- Administrare linkuri publice (regenerare, dezactivare).
+- Standardizare citiri companii (companies + fallback partners).
+
+## v1.0.47
+
+- Refactor servicii: PackageLock, SagaStatus, PackageTotals.
+
+## v1.0.46
+
+- Eliminare completa functionalitati AHK.
+- Refactor comisioane + export SAGA in servicii.
+
+## v1.0.45
+
+- Pagina profil pentru schimbarea parolei.
+
+## v1.0.44
+
+- Toggle dark mode stil switch on/off.
+
+## v1.0.43
+
+- Muta numele utilizatorului langa toggle (doar prenume).
+
+## v1.0.42
+
+- Culori dark pentru randurile highlight.
+
+## v1.0.41
+
+- Ajustari dark mode pentru tabele si input-uri.
+
+## v1.0.40
+
+- Toggle pentru dark mode in bara de sus.
+
+## v1.0.39
+
+- pret_vanz exportat cu 4 zecimale fixe in JSON SAGA.
+
+## v1.0.38
+
+- pret_vanz in JSON SAGA la 4 zecimale.
+
+## v1.0.37
+
+- API SAGA foloseste comisionul facturii pentru pret_vanz.
+
+## v1.0.36
+
+- pret_vanz in JSON SAGA rotunjit la 2 zecimale.
+
+## v1.0.35
+
+- pret_vanz bazat pe total cu TVA + comision, fara TVA.
+- Debug optional in API SAGA (?debug=1).
+
+## v1.0.34
+
+- pret_vanz = cost_total + comision (fara TVA).
+
+## v1.0.33
+
+- pret_vanz din JSON SAGA calculat din total client fara TVA.
+
+## v1.0.32
+
+- pret_vanz calculat cu comision (fara TVA) in JSON SAGA.
+
+## v1.0.31
+
+- JSON SAGA foloseste valori nete (fara TVA) din produse.
+
+## v1.0.30
+
+- Accepta GET pentru API importat SAGA.
+
+## v1.0.29
+
+- API pentru marcarea importului SAGA (processing -> imported).
+
+## v1.0.28
+
+- Citire fallback din .env pentru token SAGA.
+
+## v1.0.27
+
+- Auto-creare coloana saga_status la generare SAGA.
+
+## v1.0.26
+
+- Status JSON SAGA setat la processing dupa generare.
+
+## v1.0.25
+
+- Genereaza SAGA seteaza pending fara download.
+- Buton Json SAGA foloseste API cu token.
+
+## v1.0.24
+
+- API SAGA afiseaza doar pachetele cu status pending.
+- Buton Genereaza devine Json dupa setare pending.
+
+## v1.0.23
+
+- Fix eroare 500 la pachete confirmate.
+
+## v1.0.22
+
+- Buton Genereaza SAGA pentru pachete cu produse asociate.
+- API SAGA JSON + status pending/executed.
+
+## v1.0.21
+
+- Evidentiere pachete cu toate produsele asociate SAGA.
+
+## v1.0.20
+
+- Fix import CSV SAGA pentru pachete confirmate.
+- Normalizare uppercase la comparare pachete in import.
+
+## v1.0.19
+
+- Bifa verde pe produse cu cod SAGA si stoc suficient.
+- Verificare stoc SAGA pentru pachete in lista confirmata.
 ## v1.0.18
 
 - Endpoint GET pentru import stoc (instructiuni).

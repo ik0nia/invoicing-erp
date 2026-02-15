@@ -376,6 +376,65 @@ class UsersController
         Response::redirect('/admin/utilizatori');
     }
 
+    public function profile(): void
+    {
+        Auth::requireLogin();
+
+        if (!$this->ensureUserTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $user = Auth::user();
+
+        Response::view('admin/users/password', [
+            'user' => $user,
+        ]);
+    }
+
+    public function updatePassword(): void
+    {
+        Auth::requireLogin();
+
+        if (!$this->ensureUserTables()) {
+            Session::flash('error', 'Nu pot salva parola.');
+            Response::redirect('/admin/profil');
+        }
+
+        $user = Auth::user();
+        if (!$user) {
+            Response::redirect('/login');
+        }
+
+        $current = (string) ($_POST['current_password'] ?? '');
+        $password = (string) ($_POST['password'] ?? '');
+        $confirm = (string) ($_POST['password_confirmation'] ?? '');
+
+        if ($current === '' || $password === '' || $confirm === '') {
+            Session::flash('error', 'Completeaza parola curenta si parola noua.');
+            Response::redirect('/admin/profil');
+        }
+        if (!password_verify($current, $user->password)) {
+            Session::flash('error', 'Parola curenta este incorecta.');
+            Response::redirect('/admin/profil');
+        }
+        if ($password !== $confirm) {
+            Session::flash('error', 'Parolele nu coincid.');
+            Response::redirect('/admin/profil');
+        }
+
+        Database::execute(
+            'UPDATE users SET password = :password, updated_at = :updated_at WHERE id = :id',
+            [
+                'password' => password_hash($password, PASSWORD_BCRYPT),
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $user->id,
+            ]
+        );
+
+        Session::flash('status', 'Parola a fost actualizata.');
+        Response::redirect('/admin/profil');
+    }
+
 
     private function ensureUserTables(): bool
     {
@@ -493,13 +552,26 @@ class UsersController
 
         $map = [];
 
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM companies WHERE cui IN (' . implode(',', $placeholders) . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $map[(string) $row['cui']] = (string) $row['denumire'];
+            }
+        }
+
         if (Database::tableExists('partners')) {
             $rows = Database::fetchAll(
                 'SELECT cui, denumire FROM partners WHERE cui IN (' . implode(',', $placeholders) . ')',
                 $params
             );
             foreach ($rows as $row) {
-                $map[(string) $row['cui']] = (string) $row['denumire'];
+                $cui = (string) $row['cui'];
+                if (!isset($map[$cui]) || $map[$cui] === '') {
+                    $map[$cui] = (string) $row['denumire'];
+                }
             }
         }
 

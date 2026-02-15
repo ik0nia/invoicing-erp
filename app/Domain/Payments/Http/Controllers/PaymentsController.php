@@ -186,8 +186,13 @@ class PaymentsController
             Response::redirect('/admin/incasari/adauga');
         }
 
-        $client = Partner::findByCui($clientCui);
-        $clientName = $client ? $client->denumire : $clientCui;
+        $clientCompany = Company::findByCui($clientCui);
+        if ($clientCompany) {
+            $clientName = $clientCompany->denumire;
+        } else {
+            $client = Partner::findByCui($clientCui);
+            $clientName = $client ? $client->denumire : $clientCui;
+        }
 
         $allocations = [];
         $allocatedTotal = 0.0;
@@ -676,8 +681,13 @@ class PaymentsController
             Response::redirect('/admin/plati/adauga');
         }
 
-        $supplier = Partner::findByCui($supplierCui);
-        $supplierName = $supplier ? $supplier->denumire : $supplierCui;
+        $supplierCompany = Company::findByCui($supplierCui);
+        if ($supplierCompany) {
+            $supplierName = $supplierCompany->denumire;
+        } else {
+            $supplier = Partner::findByCui($supplierCui);
+            $supplierName = $supplier ? $supplier->denumire : $supplierCui;
+        }
 
         $allocations = [];
         $allocatedTotal = 0.0;

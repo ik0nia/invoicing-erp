@@ -1,0 +1,1003 @@
+<?php
+
+namespace App\Domain\Public\Http\Controllers;
+
+use App\Domain\Companies\Models\Company;
+use App\Domain\Companies\Services\CompanyLookupService;
+use App\Domain\Contracts\Services\ContractOnboardingService;
+use App\Domain\Contracts\Services\ContractTemplateVariables;
+use App\Domain\Contracts\Services\TemplateRenderer;
+use App\Domain\Partners\Models\Commission;
+use App\Domain\Partners\Models\Partner;
+use App\Domain\Public\Services\PublicLinkResolver;
+use App\Support\Audit;
+use App\Support\CompanyName;
+use App\Support\Database;
+use App\Support\RateLimiter;
+use App\Support\Response;
+use App\Support\Session;
+
+class PublicPartnerController
+{
+    private const MAX_UPLOAD_BYTES = 20971520;
+    private const SIGNED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+
+    public function index(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            $anyContext = $this->resolveAnyContext($token);
+            if ($anyContext && ($anyContext['link']['status'] ?? '') === 'disabled') {
+                Response::view('public/partner_portal', [
+                    'error' => 'Link dezactivat. Contactati administratorul.',
+                ], 'layouts/guest');
+            }
+            Response::view('public/partner_portal', [
+                'error' => 'Link invalid sau expirat.',
+            ], 'layouts/guest');
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $prefill = $this->resolvePrefill($context, $partnerCui);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
+        Audit::record('public_wizard.view', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+            'current_step' => $currentStep,
+        ]);
+
+        $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
+        $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
+        $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
+
+        Response::view('public/partner_portal', [
+            'context' => $context,
+            'prefill' => $prefill,
+            'partnerCui' => $partnerCui,
+            'contacts' => $contacts,
+            'relationContacts' => $relationContacts,
+            'contracts' => $contracts,
+            'scope' => $scope,
+            'currentStep' => $currentStep,
+            'token' => $token,
+        ], 'layouts/guest');
+    }
+
+    public function saveCompany(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $cui = preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? ''));
+        $denumire = CompanyName::normalize((string) ($_POST['denumire'] ?? ''));
+        if ($cui === '' || $denumire === '') {
+            Session::flash('error', 'Completeaza CUI si denumire.');
+            Response::redirect('/p/' . $token);
+        }
+
+        Partner::upsert($cui, $denumire);
+        $this->upsertCompanyFromPayload($cui, $context, $_POST);
+
+        $linkType = (string) ($context['link']['type'] ?? '');
+        $isSupplier = $linkType === 'supplier';
+        $isClient = $linkType === 'client';
+        Partner::updateFlags($cui, $isSupplier, $isClient);
+
+        $supplierCui = (string) ($context['link']['relation_supplier_cui'] ?? $context['link']['supplier_cui'] ?? '');
+        if ($isClient && $supplierCui !== '') {
+            $this->ensurePartnerRelation($supplierCui, $cui);
+            $this->ensureCommission($supplierCui, $cui, $context['link']['commission_percent'] ?? null);
+        }
+
+        $contractService = new ContractOnboardingService();
+        $contractService->ensureDraftContractForEnrollment(
+            $linkType,
+            $cui,
+            $supplierCui !== '' ? $supplierCui : null,
+            $isClient ? $cui : null
+        );
+
+        $nextStep = isset($_POST['next_step']) ? (int) $_POST['next_step'] : 0;
+        if ($nextStep < 1 || $nextStep > 3) {
+            $nextStep = 0;
+        }
+        $this->updateLinkAfterCompanySave($context, $cui, $supplierCui, $nextStep);
+
+        Audit::record('public_company.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'supplier_cui' => $isSupplier ? $cui : ($supplierCui !== '' ? $supplierCui : null),
+            'selected_client_cui' => $isClient ? $cui : null,
+        ]);
+
+        Session::flash('status', 'Datele companiei au fost salvate.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($cui));
+    }
+
+    public function saveContact(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $partnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
+        if ($partnerCui === '') {
+            $partnerCui = $this->resolvePartnerCui($context);
+        }
+        if ($partnerCui === '') {
+            Session::flash('error', 'Completeaza datele companiei inainte de contacte.');
+            Response::redirect('/p/' . $token);
+        }
+
+        $name = trim((string) ($_POST['name'] ?? ''));
+        if ($name === '') {
+            Session::flash('error', 'Completeaza numele contactului.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+        }
+
+        $email = trim((string) ($_POST['email'] ?? ''));
+        $phone = trim((string) ($_POST['phone'] ?? ''));
+        $role = trim((string) ($_POST['role'] ?? ''));
+        $isPrimary = !empty($_POST['is_primary']) ? 1 : 0;
+        $scope = $this->resolveScope($context, $partnerCui);
+        $contactScope = trim((string) ($_POST['contact_scope'] ?? 'partner'));
+
+        $supplierCui = null;
+        $clientCui = null;
+        $partnerValue = $partnerCui;
+
+        if ($contactScope === 'relation' && $scope['type'] === 'relation') {
+            $partnerValue = null;
+            $supplierCui = $scope['supplier_cui'];
+            $clientCui = $scope['client_cui'];
+        }
+
+        if (!Database::tableExists('partner_contacts')) {
+            Session::flash('error', 'Contactele nu sunt disponibile momentan.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+        }
+
+        $hasPrimary = Database::columnExists('partner_contacts', 'is_primary');
+        if ($hasPrimary) {
+            Database::execute(
+                'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, is_primary, created_at)
+                 VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :is_primary, :created_at)',
+                [
+                    'partner' => $partnerValue !== '' ? $partnerValue : null,
+                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
+                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'name' => $name,
+                    'email' => $email !== '' ? $email : null,
+                    'phone' => $phone !== '' ? $phone : null,
+                    'role' => $role !== '' ? $role : null,
+                    'is_primary' => $isPrimary,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]
+            );
+        } else {
+            Database::execute(
+                'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, created_at)
+                 VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :created_at)',
+                [
+                    'partner' => $partnerValue !== '' ? $partnerValue : null,
+                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
+                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'name' => $name,
+                    'email' => $email !== '' ? $email : null,
+                    'phone' => $phone !== '' ? $phone : null,
+                    'role' => $role !== '' ? $role : null,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]
+            );
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $nextStep = max($currentStep, 2);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $nextStep, true);
+        Audit::record('public_contact.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+        ]);
+
+        Session::flash('status', 'Contact adaugat.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+    }
+
+    public function deleteContact(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if (!$id) {
+            Response::redirect('/p/' . $token);
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $row = Database::fetchOne('SELECT * FROM partner_contacts WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$row || !$this->contactAllowed($row, $partnerCui, $scope)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        Database::execute('DELETE FROM partner_contacts WHERE id = :id', ['id' => $id]);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
+        Audit::record('public_contact.delete', 'public_link', (int) ($context['link']['id'] ?? 0), [
+            'rows_count' => 1,
+        ]);
+        Session::flash('status', 'Contact sters.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+    }
+
+    public function setStep(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $step = isset($_POST['step']) ? (int) $_POST['step'] : 1;
+        if ($step < 1 || $step > 3) {
+            $step = 1;
+        }
+
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
+        Session::flash('status', 'Pas actualizat.');
+        Response::redirect('/p/' . $token . '#pas-' . $step);
+    }
+
+    public function preview(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id <= 0) {
+            Response::abort(404);
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$contract || !$this->contractAllowed($contract, $scope)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $html = $this->buildContractPreview($contract);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.preview', 'contract', $id, ['rows_count' => 1]);
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
+    }
+
+    public function download(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $kind = trim((string) ($_GET['kind'] ?? ''));
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if (!in_array($kind, ['generated', 'signed'], true) || $id <= 0) {
+            Response::abort(404);
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$contract || !$this->contractAllowed($contract, $scope)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $path = '';
+        if ($kind === 'signed') {
+            $path = (string) ($contract['signed_file_path'] ?? '');
+        } else {
+            $path = (string) ($contract['generated_file_path'] ?? '');
+            if ($path === '') {
+                $path = (string) ($this->ensureGeneratedFile($contract) ?? '');
+            }
+        }
+
+        if ($path === '') {
+            Response::abort(404);
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.download', 'contract', $id, [
+            'rows_count' => 1,
+        ]);
+        $this->streamFile($path);
+    }
+
+    public function uploadSigned(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+
+        if (empty($context['permissions']['can_upload_signed'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $contractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
+        if (!$contractId) {
+            Response::abort(404);
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $contractId]);
+        if (!$contract || !$this->contractAllowed($contract, $scope)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $path = $this->storeUpload($_FILES['file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
+        if ($path === null) {
+            Response::abort(400, 'Fisier invalid.');
+        }
+
+        Database::execute(
+            'UPDATE contracts SET signed_file_path = :path, status = :status, updated_at = :now WHERE id = :id',
+            [
+                'path' => $path,
+                'status' => 'signed_uploaded',
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $contractId,
+            ]
+        );
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.upload_signed', 'contract', $contractId, [
+            'rows_count' => 1,
+        ]);
+        Session::flash('status', 'Contract semnat incarcat.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+    }
+
+    private function resolveContext(string $token): ?array
+    {
+        $resolver = new PublicLinkResolver();
+
+        return $resolver->resolve($token);
+    }
+
+    private function resolveAnyContext(string $token): ?array
+    {
+        $resolver = new PublicLinkResolver();
+
+        return $resolver->resolveAny($token);
+    }
+
+    private function resolvePartnerCui(array $context): string
+    {
+        $linkCui = preg_replace('/\D+/', '', (string) ($context['link']['partner_cui'] ?? ''));
+        if ($linkCui !== '') {
+            return $linkCui;
+        }
+
+        $cui = preg_replace('/\D+/', '', (string) ($_GET['cui'] ?? ''));
+        if ($cui === '' && !empty($context['link']['prefill_json'])) {
+            $decoded = json_decode((string) $context['link']['prefill_json'], true);
+            if (is_array($decoded) && !empty($decoded['cui'])) {
+                $cui = preg_replace('/\D+/', '', (string) $decoded['cui']);
+            }
+        }
+
+        return $cui;
+    }
+
+    private function resolvePrefill(array $context, string $partnerCui): array
+    {
+        if ($partnerCui !== '') {
+            $partner = Partner::findByCui($partnerCui);
+            $company = Database::tableExists('companies') ? Company::findByCui($partnerCui) : null;
+            if ($partner || $company) {
+                return $this->prefillFromDb($partnerCui);
+            }
+        }
+
+        $prefill = [];
+        if (!empty($context['link']['prefill_json'])) {
+            $decoded = json_decode((string) $context['link']['prefill_json'], true);
+            if (is_array($decoded)) {
+                $prefill = $decoded;
+            }
+        }
+
+        $lookup = trim((string) ($_GET['lookup'] ?? ''));
+        $lookupCui = preg_replace('/\D+/', '', (string) ($_GET['lookup_cui'] ?? ''));
+        if ($lookupCui === '' && $partnerCui !== '') {
+            $lookupCui = $partnerCui;
+        }
+        if ($lookupCui === '' && !empty($prefill['cui'])) {
+            $lookupCui = preg_replace('/\D+/', '', (string) $prefill['cui']);
+        }
+        if ($lookup === '1' && $lookupCui !== '') {
+            $service = new CompanyLookupService();
+            $response = $service->lookupByCui($lookupCui);
+            if ($response['error'] === null && is_array($response['data'])) {
+                $prefill = $this->mergePrefill($prefill, $response['data']);
+            }
+        }
+
+        return $prefill;
+    }
+
+    private function prefillFromDb(string $cui): array
+    {
+        $data = [];
+        $partner = Partner::findByCui($cui);
+        $company = Database::tableExists('companies') ? Company::findByCui($cui) : null;
+        if ($company) {
+            $data['cui'] = $company->cui;
+            $data['denumire'] = $company->denumire;
+            $data['nr_reg_comertului'] = $company->nr_reg_comertului;
+            $data['adresa'] = $company->adresa;
+            $data['localitate'] = $company->localitate;
+            $data['judet'] = $company->judet;
+            $data['telefon'] = $company->telefon;
+            $data['email'] = $company->email;
+        }
+        if (!$company && $partner) {
+            $data['cui'] = $partner->cui;
+            $data['denumire'] = $partner->denumire;
+        }
+
+        return $data;
+    }
+
+    private function resolveScope(array $context, string $partnerCui): array
+    {
+        $relationSupplier = (string) ($context['link']['relation_supplier_cui'] ?? '');
+        $relationClient = (string) ($context['link']['relation_client_cui'] ?? '');
+        if ($relationSupplier !== '' && $relationClient !== '') {
+            return [
+                'type' => 'relation',
+                'supplier_cui' => $relationSupplier,
+                'client_cui' => $relationClient,
+            ];
+        }
+
+        $type = (string) ($context['link']['type'] ?? '');
+        $supplierCui = (string) ($context['link']['supplier_cui'] ?? '');
+        if ($type === 'client' && $supplierCui !== '' && $partnerCui !== '') {
+            return [
+                'type' => 'relation',
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $partnerCui,
+            ];
+        }
+        if ($type === 'supplier') {
+            return [
+                'type' => 'supplier',
+                'supplier_cui' => $partnerCui,
+            ];
+        }
+
+        return [
+            'type' => 'client',
+            'client_cui' => $partnerCui,
+        ];
+    }
+
+    private function fetchPartnerContacts(string $partnerCui): array
+    {
+        if (!Database::tableExists('partner_contacts')) {
+            return [];
+        }
+
+        $order = Database::columnExists('partner_contacts', 'is_primary') ? 'is_primary DESC, created_at DESC' : 'created_at DESC';
+
+        return Database::fetchAll(
+            'SELECT * FROM partner_contacts WHERE partner_cui = :cui ORDER BY ' . $order,
+            ['cui' => $partnerCui]
+        );
+    }
+
+    private function fetchRelationContacts(array $scope): array
+    {
+        if (!Database::tableExists('partner_contacts')) {
+            return [];
+        }
+
+        $order = Database::columnExists('partner_contacts', 'is_primary') ? 'is_primary DESC, created_at DESC' : 'created_at DESC';
+
+        return Database::fetchAll(
+            'SELECT * FROM partner_contacts WHERE supplier_cui = :supplier AND client_cui = :client ORDER BY ' . $order,
+            ['supplier' => $scope['supplier_cui'], 'client' => $scope['client_cui']]
+        );
+    }
+
+    private function contactAllowed(array $row, string $partnerCui, array $scope): bool
+    {
+        if (!empty($row['partner_cui']) && $partnerCui !== '') {
+            return (string) $row['partner_cui'] === $partnerCui;
+        }
+        if ($scope['type'] === 'relation') {
+            return (string) ($row['supplier_cui'] ?? '') === $scope['supplier_cui']
+                && (string) ($row['client_cui'] ?? '') === $scope['client_cui'];
+        }
+
+        return false;
+    }
+
+    private function fetchContracts(array $scope): array
+    {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        if ($scope['type'] === 'relation') {
+            return Database::fetchAll(
+                'SELECT * FROM contracts WHERE supplier_cui = :supplier AND client_cui = :client ORDER BY created_at DESC, id DESC',
+                ['supplier' => $scope['supplier_cui'], 'client' => $scope['client_cui']]
+            );
+        }
+
+        if ($scope['type'] === 'supplier') {
+            return Database::fetchAll(
+                'SELECT * FROM contracts WHERE partner_cui = :partner OR supplier_cui = :supplier ORDER BY created_at DESC, id DESC',
+                ['partner' => $scope['supplier_cui'], 'supplier' => $scope['supplier_cui']]
+            );
+        }
+
+        return Database::fetchAll(
+            'SELECT * FROM contracts WHERE partner_cui = :partner OR client_cui = :client ORDER BY created_at DESC, id DESC',
+            ['partner' => $scope['client_cui'], 'client' => $scope['client_cui']]
+        );
+    }
+
+    private function contractAllowed(array $row, array $scope): bool
+    {
+        if ($scope['type'] === 'relation') {
+            return (string) ($row['supplier_cui'] ?? '') === $scope['supplier_cui']
+                && (string) ($row['client_cui'] ?? '') === $scope['client_cui'];
+        }
+        if ($scope['type'] === 'supplier') {
+            return (string) ($row['supplier_cui'] ?? '') === $scope['supplier_cui']
+                || (string) ($row['partner_cui'] ?? '') === $scope['supplier_cui'];
+        }
+
+        return (string) ($row['client_cui'] ?? '') === $scope['client_cui']
+            || (string) ($row['partner_cui'] ?? '') === $scope['client_cui'];
+    }
+
+    private function buildContractPreview(array $contract): string
+    {
+        $title = (string) ($contract['title'] ?? 'Contract');
+        $templateId = isset($contract['template_id']) ? (int) $contract['template_id'] : 0;
+        $html = '';
+
+        if ($templateId > 0) {
+            $template = Database::fetchOne(
+                'SELECT html_content FROM contract_templates WHERE id = :id LIMIT 1',
+                ['id' => $templateId]
+            );
+            $html = $template['html_content'] ?? '';
+        }
+
+        if ($html === '') {
+            $html = '<html><body><h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1></body></html>';
+        }
+
+        $createdAt = $contract['created_at'] ?? null;
+        $createdDate = $createdAt ? date('Y-m-d', strtotime((string) $createdAt)) : date('Y-m-d');
+        $variablesService = new ContractTemplateVariables();
+        $renderer = new TemplateRenderer();
+        $vars = $variablesService->buildVariables(
+            $contract['partner_cui'] ?? null,
+            $contract['supplier_cui'] ?? null,
+            $contract['client_cui'] ?? null,
+            ['title' => $title, 'created_at' => $createdDate]
+        );
+
+        return $renderer->render($html, $vars);
+    }
+
+    private function ensureGeneratedFile(array $contract): ?string
+    {
+        $status = (string) ($contract['status'] ?? '');
+        if (!in_array($status, ['generated', 'sent', 'signed_uploaded', 'approved'], true)) {
+            return null;
+        }
+
+        $html = $this->buildContractPreview($contract);
+        $path = $this->storeGeneratedFile($html);
+        if ($path === null) {
+            return null;
+        }
+
+        Database::execute(
+            'UPDATE contracts SET generated_file_path = :path, updated_at = :now WHERE id = :id',
+            [
+                'path' => $path,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => (int) ($contract['id'] ?? 0),
+            ]
+        );
+
+        return $path;
+    }
+
+    private function storeGeneratedFile(string $html): ?string
+    {
+        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $dir = $base . '/storage/uploads/contracts/generated';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $name = bin2hex(random_bytes(16)) . '.html';
+        $path = $dir . '/' . $name;
+        if (file_put_contents($path, $html) === false) {
+            return null;
+        }
+
+        return 'storage/uploads/contracts/generated/' . $name;
+    }
+
+    private function upsertCompanyFromPayload(string $cui, array $context, array $payload): void
+    {
+        if (!Database::tableExists('companies')) {
+            return;
+        }
+
+        $existing = Company::findByCui($cui);
+        $companyType = $existing ? $existing->tip_companie : (($context['enroll_type'] ?? '') === 'supplier' ? 'furnizor' : 'client');
+
+        $data = [
+            'denumire' => $existing ? $existing->denumire : '',
+            'tip_firma' => $existing ? $existing->tip_firma : 'SRL',
+            'cui' => $cui,
+            'nr_reg_comertului' => $existing ? $existing->nr_reg_comertului : '',
+            'platitor_tva' => $existing ? (int) $existing->platitor_tva : 0,
+            'adresa' => $existing ? $existing->adresa : '',
+            'localitate' => $existing ? $existing->localitate : '',
+            'judet' => $existing ? $existing->judet : '',
+            'tara' => $existing ? $existing->tara : 'Romania',
+            'email' => $existing ? $existing->email : '',
+            'telefon' => $existing ? $existing->telefon : '',
+            'banca' => $existing ? $existing->banca : null,
+            'iban' => $existing ? $existing->iban : null,
+            'tip_companie' => $companyType,
+            'activ' => $existing ? (int) $existing->activ : 1,
+        ];
+
+        $map = [
+            'denumire' => 'denumire',
+            'nr_reg_comertului' => 'nr_reg_comertului',
+            'adresa' => 'adresa',
+            'localitate' => 'localitate',
+            'judet' => 'judet',
+            'email' => 'email',
+            'telefon' => 'telefon',
+        ];
+        foreach ($map as $input => $field) {
+            $value = trim((string) ($payload[$input] ?? ''));
+            if ($value !== '') {
+                $data[$field] = $value;
+            }
+        }
+
+        Company::save($data);
+    }
+
+    private function ensurePartnerRelation(string $supplierCui, string $clientCui): void
+    {
+        if (!Database::tableExists('partner_relations')) {
+            return;
+        }
+
+        Database::execute(
+            'INSERT IGNORE INTO partner_relations (supplier_cui, client_cui, created_at)
+             VALUES (:supplier, :client, :created_at)',
+            [
+                'supplier' => $supplierCui,
+                'client' => $clientCui,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+    }
+
+    private function ensureCommission(string $supplierCui, string $clientCui, mixed $commission): void
+    {
+        if (!Database::tableExists('commissions')) {
+            return;
+        }
+
+        $existing = Commission::forSupplierClient($supplierCui, $clientCui);
+        if ($existing) {
+            return;
+        }
+        $value = $commission !== null ? (float) $commission : 0.0;
+        Database::execute(
+            'INSERT INTO commissions (supplier_cui, client_cui, commission, created_at, updated_at)
+             VALUES (:supplier, :client, :commission, :created_at, :updated_at)',
+            [
+                'supplier' => $supplierCui,
+                'client' => $clientCui,
+                'commission' => $value,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+    }
+
+    private function updateLinkAfterCompanySave(array $context, string $partnerCui, string $supplierCui, int $nextStep): void
+    {
+        if (!Database::tableExists('enrollment_links')) {
+            return;
+        }
+
+        $linkId = (int) ($context['link']['id'] ?? 0);
+        if ($linkId <= 0) {
+            return;
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+        $stepValue = $nextStep > 0 ? $nextStep : $currentStep;
+        $type = (string) ($context['link']['type'] ?? '');
+
+        $relationSupplier = (string) ($context['link']['relation_supplier_cui'] ?? '');
+        $relationClient = (string) ($context['link']['relation_client_cui'] ?? '');
+        if ($type === 'client' && $supplierCui !== '') {
+            $relationSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
+            $relationClient = $partnerCui;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        Database::execute(
+            'UPDATE enrollment_links
+             SET partner_cui = :partner_cui,
+                 relation_supplier_cui = :relation_supplier_cui,
+                 relation_client_cui = :relation_client_cui,
+                 current_step = :current_step,
+                 uses = uses + 1,
+                 last_used_at = :last_used_at,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
+                'relation_supplier_cui' => $relationSupplier !== '' ? $relationSupplier : null,
+                'relation_client_cui' => $relationClient !== '' ? $relationClient : null,
+                'current_step' => $stepValue,
+                'last_used_at' => $now,
+                'updated_at' => $now,
+                'id' => $linkId,
+            ]
+        );
+    }
+
+    private function touchLink(int $linkId, int $currentStep, bool $incrementUses): void
+    {
+        if ($linkId <= 0 || !Database::tableExists('enrollment_links')) {
+            return;
+        }
+
+        if ($currentStep < 1 || $currentStep > 3) {
+            $currentStep = 1;
+        }
+        $now = date('Y-m-d H:i:s');
+        $sets = [
+            'last_used_at = :last_used_at',
+            'updated_at = :updated_at',
+            'current_step = :current_step',
+        ];
+        if ($incrementUses) {
+            $sets[] = 'uses = uses + 1';
+        }
+
+        $sql = 'UPDATE enrollment_links SET ' . implode(', ', $sets) . ' WHERE id = :id';
+        Database::execute($sql, [
+            'last_used_at' => $now,
+            'updated_at' => $now,
+            'current_step' => $currentStep,
+            'id' => $linkId,
+        ]);
+    }
+
+    private function mergePrefill(array $prefill, array $incoming): array
+    {
+        $map = [
+            'cui' => 'cui',
+            'denumire' => 'denumire',
+            'nr_reg_comertului' => 'nr_reg_comertului',
+            'adresa' => 'adresa',
+            'localitate' => 'localitate',
+            'judet' => 'judet',
+            'telefon' => 'telefon',
+            'email' => 'email',
+        ];
+        foreach ($map as $key => $target) {
+            $value = trim((string) ($incoming[$key] ?? ''));
+            if ($value !== '') {
+                $prefill[$target] = $value;
+            }
+        }
+
+        return $prefill;
+    }
+
+    private function storeUpload(?array $file, string $subdir, array $allowedExtensions): ?string
+    {
+        if (!$file || !isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+            return null;
+        }
+        if (!is_uploaded_file($file['tmp_name'] ?? '')) {
+            return null;
+        }
+        if (isset($file['size']) && (int) $file['size'] > self::MAX_UPLOAD_BYTES) {
+            return null;
+        }
+        $tmp = $file['tmp_name'];
+        if (!is_readable($tmp)) {
+            return null;
+        }
+        $extRaw = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+        $ext = preg_replace('/[^a-z0-9]/i', '', $extRaw);
+        if ($ext === '' || !in_array($ext, $allowedExtensions, true)) {
+            return null;
+        }
+        $ext = '.' . $ext;
+        $name = bin2hex(random_bytes(16)) . $ext;
+        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $dir = $base . '/storage/uploads/' . trim($subdir, '/');
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $target = $dir . '/' . $name;
+        if (!move_uploaded_file($tmp, $target)) {
+            return null;
+        }
+
+        return 'storage/uploads/' . trim($subdir, '/') . '/' . $name;
+    }
+
+    private function streamFile(string $relativePath): void
+    {
+        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $clean = ltrim($relativePath, '/');
+        if (!str_starts_with($clean, 'storage/uploads/')) {
+            Response::abort(404);
+        }
+        $sub = substr($clean, strlen('storage/uploads/'));
+        $path = realpath($base . '/storage/uploads/' . ltrim($sub, '/'));
+        $root = realpath($base . '/storage/uploads');
+        if (!$path || !$root || !str_starts_with($path, $root) || !is_readable($path)) {
+            Response::abort(404);
+        }
+        $filename = basename($path);
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
+        exit;
+    }
+
+    private function throttle(string $hash): bool
+    {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $key = 'public|' . $hash . '|' . $ip;
+        return RateLimiter::hit($key, 60, 600);
+    }
+}

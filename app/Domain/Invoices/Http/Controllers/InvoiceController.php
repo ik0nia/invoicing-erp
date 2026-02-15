@@ -6,22 +6,45 @@ use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Invoices\Services\FgoClient;
+use App\Domain\Invoices\Services\InvoiceAuditService;
 use App\Domain\Invoices\Services\InvoiceXmlParser;
-use App\Domain\Invoices\Services\SagaAhkGenerator;
+use App\Domain\Invoices\Services\SagaExportService;
+use App\Domain\Invoices\Services\PackageLockService;
+use App\Domain\Invoices\Services\PackageTotalsService;
+use App\Domain\Invoices\Services\SagaStatusService;
 use App\Domain\Companies\Models\Company;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
+use App\Domain\Partners\Services\CommissionService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\CompanyName;
 use App\Support\Database;
+use App\Support\Env;
 use App\Support\Response;
 use App\Support\Session;
 
 class InvoiceController
 {
+    private CommissionService $commissionService;
+    private SagaExportService $sagaExportService;
+    private InvoiceAuditService $invoiceAuditService;
+    private PackageLockService $packageLockService;
+    private SagaStatusService $sagaStatusService;
+    private PackageTotalsService $packageTotalsService;
+
+    public function __construct()
+    {
+        $this->commissionService = new CommissionService();
+        $this->sagaStatusService = new SagaStatusService();
+        $this->packageLockService = new PackageLockService();
+        $this->packageTotalsService = new PackageTotalsService();
+        $this->invoiceAuditService = new InvoiceAuditService();
+        $this->sagaExportService = new SagaExportService($this->commissionService, $this->sagaStatusService);
+    }
+
     public function index(): void
     {
         $this->requireInvoiceRole();
@@ -34,6 +57,10 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
+        $sagaToken = (string) Env::get('SAGA_EXPORT_TOKEN', '');
+        if ($sagaToken === '') {
+            $sagaToken = (string) Env::get('STOCK_IMPORT_TOKEN', '');
+        }
         $isSupplierUser = $user ? $user->isSupplierUser() : false;
         $isOperator = $user ? $user->isOperator() : false;
         $canViewPaymentDetails = $user ? $user->canViewPaymentDetails() : false;
@@ -58,7 +85,8 @@ class InvoiceController
             $canUnconfirmPackages = $this->canUnconfirmPackages($user);
             $canDownloadSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
             $hasFgoInvoice = $this->hasFgoInvoice($invoice);
-            $clientLocked = $invoice->packages_confirmed && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
+            $invoiceLocked = $this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed]);
+            $clientLocked = $invoiceLocked && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
             $settings = new SettingsService();
             $fgoSeriesOptions = $settings->get('fgo.series_list', []);
@@ -142,7 +170,7 @@ class InvoiceController
 
             $commissionBase = $invoice->commission_percent ?? $commissionPercent;
             if ($commissionBase !== null) {
-                $clientTotal = $this->applyCommission($invoice->total_with_vat, (float) $commissionBase);
+                $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
             }
 
             Response::view('admin/invoices/show', [
@@ -475,6 +503,9 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
+        $invoiceLock = $this->packageLockService->isInvoiceLocked([
+            'packages_confirmed' => $invoice->packages_confirmed,
+        ]);
         $filePath = $this->invoiceFilePath($invoice);
         if (!$filePath || !file_exists($filePath)) {
             Response::abort(404, 'Fisierul nu a fost gasit.');
@@ -522,7 +553,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (empty($invoice->packages_confirmed)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Pachetele nu sunt confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
         }
@@ -574,7 +605,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (empty($invoice->packages_confirmed)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
         }
 
@@ -749,12 +780,436 @@ class InvoiceController
 
         $packageIds = array_map(static fn ($row) => (int) $row['id'], $rows);
         $totals = $this->packageTotalsForIds($packageIds);
+        $sagaProducts = [];
+        if (Database::tableExists('saga_products')) {
+            $sagaRows = Database::fetchAll('SELECT name_key, cod_saga, stock_qty FROM saga_products');
+            foreach ($sagaRows as $row) {
+                $key = (string) ($row['name_key'] ?? '');
+                if ($key === '') {
+                    continue;
+                }
+                $sagaProducts[$key] = [
+                    'cod_saga' => (string) ($row['cod_saga'] ?? ''),
+                    'stock_qty' => (float) ($row['stock_qty'] ?? 0),
+                ];
+            }
+        }
+        $packageQtyMap = [];
+        $packageSagaMap = [];
+        if (!empty($packageIds) && Database::tableExists('invoice_in_lines')) {
+            $placeholders = [];
+            $params = [];
+            foreach ($packageIds as $index => $id) {
+                $key = 'p' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $id;
+            }
+            $qtyRows = Database::fetchAll(
+                'SELECT package_id, COALESCE(SUM(quantity), 0) AS qty
+                 FROM invoice_in_lines
+                 WHERE package_id IN (' . implode(',', $placeholders) . ')
+                 GROUP BY package_id',
+                $params
+            );
+            foreach ($qtyRows as $row) {
+                $packageQtyMap[(int) $row['package_id']] = (float) ($row['qty'] ?? 0);
+            }
+
+            if (Database::columnExists('invoice_in_lines', 'cod_saga')) {
+                $sagaRows = Database::fetchAll(
+                    'SELECT package_id,
+                            COUNT(*) AS line_count,
+                            SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> \'\' THEN 1 ELSE 0 END) AS saga_count
+                     FROM invoice_in_lines
+                     WHERE package_id IN (' . implode(',', $placeholders) . ')
+                     GROUP BY package_id',
+                    $params
+                );
+                foreach ($sagaRows as $row) {
+                    $packageSagaMap[(int) $row['package_id']] = [
+                        'line_count' => (int) ($row['line_count'] ?? 0),
+                        'saga_count' => (int) ($row['saga_count'] ?? 0),
+                    ];
+                }
+            }
+        }
+        foreach ($rows as &$row) {
+            $labelText = trim((string) ($row['label'] ?? ''));
+            if ($labelText === '') {
+                $labelText = 'Pachet de produse';
+            }
+            $label = $labelText . ' #' . (int) ($row['package_no'] ?? 0);
+            $key = $this->normalizeSagaName($label);
+            $saga = $sagaProducts[$key] ?? null;
+            $qty = $packageQtyMap[(int) ($row['id'] ?? 0)] ?? 0.0;
+            $row['stock_ok'] = $saga && $saga['cod_saga'] !== '' && $saga['stock_qty'] > $qty;
+            $sagaStats = $packageSagaMap[(int) ($row['id'] ?? 0)] ?? null;
+            $row['all_saga'] = $sagaStats
+                ? ($sagaStats['line_count'] > 0 && $sagaStats['saga_count'] >= $sagaStats['line_count'])
+                : false;
+        }
+        unset($row);
 
         Response::view('admin/invoices/confirmed', [
             'packages' => $rows,
             'totals' => $totals,
             'canImportSaga' => $canImportSaga,
             'sagaDebug' => Session::pull('saga_debug'),
+            'sagaToken' => $sagaToken,
+        ]);
+    }
+
+    public function importSagaCsv(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $file = $_FILES['saga_csv'] ?? null;
+        if (!$file || empty($file['tmp_name']) || !is_readable($file['tmp_name'])) {
+            Session::flash('error', 'Fisierul CSV nu a putut fi citit.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $rows = $this->readSagaRowsFromCsv((string) $file['tmp_name']);
+        if (empty($rows)) {
+            Session::flash('error', 'Fisier CSV gol sau invalid.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $header = array_shift($rows);
+        $columns = $this->mapSagaColumns($header);
+        if ($columns['denumire'] === null || $columns['pret_vanz'] === null) {
+            Session::flash('error', 'CSV trebuie sa contina coloanele: denumire, pret_vanz (tva optional).');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $items = [];
+        foreach ($rows as $row) {
+            $name = trim((string) ($row[$columns['denumire']] ?? ''));
+            $pret = $this->parseSagaNumber((string) ($row[$columns['pret_vanz']] ?? ''));
+            $tva = null;
+            if ($columns['tva'] !== null) {
+                $tva = $this->parseSagaNumber((string) ($row[$columns['tva']] ?? ''));
+            }
+
+            if ($name === '' || $pret === null) {
+                continue;
+            }
+
+            $key = $this->normalizeSagaName($name);
+            if ($key === '') {
+                continue;
+            }
+
+            $items[$key] = [
+                'name' => $name,
+                'pret' => $pret,
+                'tva' => $tva,
+            ];
+        }
+
+        if (empty($items)) {
+            Session::flash('error', 'Nu exista linii valide in CSV.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
+        }
+        $this->sagaStatusService->ensureSagaStatusColumn();
+
+        $packages = Database::fetchAll(
+            'SELECT p.id, p.label, p.package_no, p.vat_percent
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE i.packages_confirmed = 1'
+        );
+
+        $updated = 0;
+        $matched = 0;
+        $debugPackages = [];
+
+        foreach ($packages as $package) {
+            $labelText = trim((string) ($package['label'] ?? ''));
+            if ($labelText === '') {
+                $labelText = 'Pachet de produse';
+            }
+            $label = $labelText . ' #' . (int) ($package['package_no'] ?? 0);
+            $key = $this->normalizeSagaName($label);
+            $match = $items[$key] ?? null;
+
+            $debugPackages[] = [
+                'label' => $labelText,
+                'package_no' => (string) ($package['package_no'] ?? ''),
+                'match_key' => $key,
+                'matched' => $match !== null,
+            ];
+
+            if (!$match) {
+                continue;
+            }
+
+            $matched++;
+            $tva = $match['tva'];
+            if ($tva === null) {
+                $tva = (float) ($package['vat_percent'] ?? 0);
+            }
+
+            $value = (float) $match['pret'] * (1 + ((float) $tva / 100));
+            $value = round($value, 2);
+
+            Database::execute(
+                'UPDATE packages SET saga_value = :value WHERE id = :id',
+                [
+                    'value' => $value,
+                    'id' => (int) $package['id'],
+                ]
+            );
+            $updated++;
+        }
+
+        Session::flash('saga_debug', [
+            'header' => $header,
+            'saga_keys' => array_slice(array_keys($items), 0, 20),
+            'saga_keys_count' => count($items),
+            'packages' => $debugPackages,
+        ]);
+
+        $status = 'Import SAGA: ' . $updated . ' pachete actualizate din ' . $matched . ' potrivite.';
+        if ($columns['tva'] === null) {
+            $status .= ' TVA lipsa in CSV - s-a folosit TVA din pachet.';
+        }
+        Session::flash('status', $status);
+        Response::redirect('/admin/pachete-confirmate');
+    }
+
+    public function sagaPackageJson(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
+        if (!$packageId) {
+            Response::abort(400, 'Pachet invalid.');
+        }
+
+        try {
+            $payload = $this->sagaExportService->buildPackagePayload($packageId, null, !empty($_GET['debug']));
+        } catch (\Throwable $exception) {
+            Response::abort(400, $exception->getMessage());
+        }
+
+        $filename = 'pachet_' . (int) ($payload['pachet']['id_doc'] ?? $packageId) . '.json';
+        header('Content-Type: application/json');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
+
+    public function markSagaPending(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensureInvoiceTables()) {
+            Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
+        if (!$packageId) {
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
+            Session::flash('error', 'Lipseste coloana saga_status.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $row = Database::fetchOne(
+            'SELECT p.id, p.package_no, i.packages_confirmed
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE p.id = :id
+             LIMIT 1',
+            ['id' => $packageId]
+        );
+        if (!$row || !$this->packageLockService->isInvoiceLocked($row)) {
+            Session::flash('error', 'Pachetul nu este confirmat.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        if (!Database::tableExists('invoice_in_lines') || !Database::columnExists('invoice_in_lines', 'cod_saga')) {
+            Session::flash('error', 'Nu exista produse cu cod SAGA.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $stats = Database::fetchOne(
+            'SELECT COUNT(*) AS line_count,
+                    SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> \'\' THEN 1 ELSE 0 END) AS saga_count
+             FROM invoice_in_lines
+             WHERE package_id = :id',
+            ['id' => $packageId]
+        );
+        $lineCount = (int) ($stats['line_count'] ?? 0);
+        $sagaCount = (int) ($stats['saga_count'] ?? 0);
+        if ($lineCount === 0 || $sagaCount < $lineCount) {
+            Session::flash('error', 'Nu toate produsele au cod SAGA asociat.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+
+        $this->sagaStatusService->markProcessing($packageId);
+        Session::flash('status', 'Pachet marcat ca processing pentru SAGA.');
+        Response::redirect('/admin/pachete-confirmate');
+    }
+
+    public function apiSagaPackage(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
+        if (!$packageId) {
+            $this->json(['success' => false, 'message' => 'Pachet invalid.'], 400);
+        }
+
+        try {
+            $payload = $this->sagaExportService->buildPackagePayload($packageId, null, !empty($_GET['debug']));
+        } catch (\Throwable $exception) {
+            $this->json(['success' => false, 'message' => $exception->getMessage()], 400);
+        }
+
+        $this->json(['success' => true, 'data' => $payload]);
+    }
+
+    public function apiSagaPending(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        if (!Database::tableExists('invoice_in_lines')) {
+            $this->json(['success' => true, 'count' => 0, 'data' => []]);
+        }
+        if (!Database::columnExists('invoice_in_lines', 'cod_saga')) {
+            $this->json(['success' => true, 'count' => 0, 'data' => []]);
+        }
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
+        }
+
+        $hasSagaStatus = true;
+        $statusSelect = ', p.saga_status';
+        $statusFilter = " AND p.saga_status IN ('processing', 'pending')";
+
+        $packages = Database::fetchAll(
+            "SELECT p.id, p.package_no, p.label, p.vat_percent, p.invoice_in_id{$statusSelect},
+                    i.invoice_number, i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             JOIN (
+                SELECT package_id,
+                       COUNT(*) AS line_count,
+                       SUM(CASE WHEN cod_saga IS NOT NULL AND cod_saga <> '' THEN 1 ELSE 0 END) AS saga_count
+                FROM invoice_in_lines
+                GROUP BY package_id
+             ) l ON l.package_id = p.id
+             WHERE i.packages_confirmed = 1
+               AND l.line_count > 0
+               AND l.saga_count = l.line_count{$statusFilter}
+             ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC"
+        );
+
+        $payloads = [];
+        $debug = !empty($_GET['debug']);
+        foreach ($packages as $package) {
+            try {
+                $payloads[] = $this->sagaExportService->buildPackagePayload((int) $package['id'], $package, $debug);
+            } catch (\Throwable $exception) {
+                continue;
+            }
+        }
+
+        $this->json([
+            'success' => true,
+            'count' => count($payloads),
+            'data' => $payloads,
+        ]);
+    }
+
+    public function apiSagaExecuted(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $payload = $this->readJsonBody();
+        $packageNo = isset($_POST['id_doc']) ? (int) $_POST['id_doc'] : (int) ($payload['id_doc'] ?? 0);
+        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : (int) ($payload['package_id'] ?? 0);
+
+        if (!$packageNo && !$packageId) {
+            $this->json(['success' => false, 'message' => 'Lipseste id_doc sau package_id.'], 400);
+        }
+
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
+        }
+
+        if ($packageId) {
+            $this->sagaStatusService->markExecuted($packageId);
+        } else {
+            $this->sagaStatusService->markExecutedByPackageNo($packageNo);
+        }
+
+        $this->json(['success' => true, 'status' => 'executed']);
+    }
+
+    public function apiSagaImported(): void
+    {
+        $this->requireSagaToken();
+
+        if (!$this->ensureInvoiceTables()) {
+            $this->json(['success' => false, 'message' => 'Schema indisponibila.'], 500);
+        }
+
+        $payload = $this->readJsonBody();
+        $packageNo = isset($_POST['id_pachet']) ? (int) $_POST['id_pachet'] : (int) ($payload['id_pachet'] ?? 0);
+        if (!$packageNo) {
+            $packageNo = isset($_GET['id_pachet']) ? (int) $_GET['id_pachet'] : 0;
+        }
+        if (!$packageNo) {
+            $packageNo = isset($_POST['id_doc']) ? (int) $_POST['id_doc'] : (int) ($payload['id_doc'] ?? 0);
+        }
+        if (!$packageNo) {
+            $packageNo = isset($_GET['id_doc']) ? (int) $_GET['id_doc'] : 0;
+        }
+
+        if (!$packageNo) {
+            $this->json(['success' => false, 'message' => 'Lipseste id_pachet.'], 400);
+        }
+
+        if (!$this->sagaStatusService->ensureSagaStatusColumn()) {
+            $this->json(['success' => false, 'message' => 'Lipseste coloana saga_status.'], 500);
+        }
+
+        $this->sagaStatusService->markImported($packageNo);
+
+        $this->json([
+            'success' => true,
+            'status' => 'imported',
+            'updated' => 1,
+>>>>>>> cursor/filtre-facturi-selectie-multipla-5ce9
         ]);
     }
 
@@ -934,14 +1389,11 @@ class InvoiceController
                 $clientName = $partner ? $partner->denumire : '';
             }
 
-            if ($invoice->commission_percent !== null) {
-                $commissionPercent = (float) $invoice->commission_percent;
-            } else {
-                $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-                if ($commission) {
-                    $commissionPercent = (float) $commission->commission;
-                }
-            }
+            $commissionPercent = $this->commissionService->resolveCommissionPercent(
+                $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null,
+                (string) $invoice->supplier_cui,
+                (string) $clientCui
+            );
         }
 
         $totalWithout = 0.0;
@@ -952,8 +1404,8 @@ class InvoiceController
             $with = (float) ($stat['total_vat'] ?? 0);
 
             if ($commissionPercent !== null) {
-                $without = $this->applyCommission($without, $commissionPercent);
-                $with = $this->applyCommission($with, $commissionPercent);
+                $without = $this->commissionService->applyCommission($without, $commissionPercent);
+                $with = $this->commissionService->applyCommission($with, $commissionPercent);
             }
 
             $totalWithout += $without;
@@ -1157,6 +1609,7 @@ class InvoiceController
         }
 
         $this->generatePackages($invoice->id);
+        $this->invoiceAuditService->recordImportXml($invoice);
 
         Session::flash('status', 'Factura a fost importata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
@@ -1185,15 +1638,25 @@ class InvoiceController
         $errors = [];
 
         if ($supplierName === '' && $supplierCui !== '') {
-            $supplier = Partner::findByCui($supplierCui);
-            if ($supplier) {
-                $supplierName = $supplier->denumire;
+            $supplierCompany = Company::findByCui($supplierCui);
+            if ($supplierCompany) {
+                $supplierName = $supplierCompany->denumire;
+            } else {
+                $supplier = Partner::findByCui($supplierCui);
+                if ($supplier) {
+                    $supplierName = $supplier->denumire;
+                }
             }
         }
         if ($customerName === '' && $customerCui !== '') {
-            $customer = Partner::findByCui($customerCui);
-            if ($customer) {
-                $customerName = $customer->denumire;
+            $customerCompany = Company::findByCui($customerCui);
+            if ($customerCompany) {
+                $customerName = $customerCompany->denumire;
+            } else {
+                $customer = Partner::findByCui($customerCui);
+                if ($customer) {
+                    $customerName = $customer->denumire;
+                }
             }
         }
 
@@ -1335,6 +1798,7 @@ class InvoiceController
         }
 
         $this->generatePackages($invoice->id);
+        $this->invoiceAuditService->recordManualCreate($invoice);
 
         Session::flash('status', 'Factura a fost adaugata manual.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoice->id);
@@ -1416,7 +1880,7 @@ class InvoiceController
         $invoice = $this->guardInvoice($invoiceId);
 
         if ($action === 'generate') {
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi regenerate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1431,7 +1895,7 @@ class InvoiceController
             if ($user && $user->isOperator()) {
                 Response::abort(403, 'Acces interzis.');
             }
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu pot fi sterse.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1453,13 +1917,12 @@ class InvoiceController
         }
 
         if ($action === 'confirm') {
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            if ($invoiceLock) {
                 Session::flash('status', 'Pachetele sunt deja confirmate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
             $this->confirmPackages($invoiceId);
-            $this->storeSagaFiles($invoiceId);
             Session::flash('status', 'Pachetele au fost confirmate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#supplier-request');
         }
@@ -1470,7 +1933,7 @@ class InvoiceController
                 Response::abort(403, 'Acces interzis.');
             }
 
-            if (!$this->isInvoiceConfirmed($invoiceId)) {
+            if (!$invoiceLock) {
                 Session::flash('status', 'Pachetele nu sunt confirmate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -1536,7 +1999,7 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
         }
 
-        if (!$this->isInvoiceConfirmed($invoiceId)) {
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Confirma pachetele inainte de generare.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
@@ -1643,7 +2106,7 @@ class InvoiceController
             }
 
             $stat = $packageStats[$package->id];
-            $total = $this->applyCommission($stat['total_vat'], $commission->commission);
+            $total = $this->commissionService->applyCommission($stat['total_vat'], $commission->commission);
 
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
@@ -1987,120 +2450,6 @@ class InvoiceController
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
-    public function downloadPackageSaga(): void
-    {
-        Auth::requireSagaRole();
-
-        $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
-        if (!$packageId) {
-            Response::redirect('/admin/facturi');
-        }
-
-        $package = Package::find($packageId);
-        if (!$package) {
-            Response::redirect('/admin/facturi');
-        }
-
-        $invoice = $this->guardInvoice($package->invoice_in_id);
-        if (!$invoice || empty($invoice->packages_confirmed)) {
-            Session::flash('error', 'Pachetele nu sunt confirmate.');
-            Response::redirect('/admin/facturi?invoice_id=' . $package->invoice_in_id . '#drag-drop');
-        }
-
-        $lines = InvoiceInLine::forPackage($packageId);
-        $packageStats = $this->packageStats($lines, [$package]);
-        $linesByPackage = $this->groupLinesByPackage($lines, [$package]);
-        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
-
-        $packagesData = $this->buildSagaPackagesData([$package], $linesByPackage, $packageStats, $date);
-        $content = (new SagaAhkGenerator())->buildScript($packagesData, $date);
-        $filename = 'pachet_' . $this->safeFileName((string) $package->package_no) . '.ahk';
-
-        $this->downloadAhk($filename, $content);
-    }
-
-    public function downloadInvoiceSaga(): void
-    {
-        Auth::requireSagaRole();
-
-        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
-        if (!$invoiceId) {
-            Response::redirect('/admin/facturi');
-        }
-
-        $invoice = $this->guardInvoice($invoiceId);
-        if (!$invoice || empty($invoice->packages_confirmed)) {
-            Session::flash('error', 'Pachetele nu sunt confirmate.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
-        }
-
-        $packages = Package::forInvoice($invoiceId);
-        if (empty($packages)) {
-            Session::flash('error', 'Nu exista pachete pentru export.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
-        }
-
-        $lines = InvoiceInLine::forInvoice($invoiceId);
-        $packageStats = $this->packageStats($lines, $packages);
-        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
-        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
-
-        $packagesData = $this->buildSagaPackagesData($packages, $linesByPackage, $packageStats, $date);
-        $content = (new SagaAhkGenerator())->buildScript($packagesData, $date);
-        $filename = 'pachete_' . $this->safeFileName($invoice->invoice_number) . '.ahk';
-
-        $this->downloadAhk($filename, $content);
-    }
-
-    public function downloadSelectedSaga(): void
-    {
-        Auth::requireSagaRole();
-
-        $packageIds = $_POST['package_ids'] ?? [];
-        $packageIds = array_values(array_filter(array_map('intval', (array) $packageIds)));
-
-        if (empty($packageIds)) {
-            Session::flash('error', 'Selecteaza cel putin un pachet.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $user = Auth::user();
-        $suppliers = $user && $user->isSupplierUser() ? $this->allowedSuppliers($user) : null;
-        $packages = $this->fetchConfirmedPackagesByIds($packageIds, $suppliers);
-        if (empty($packages)) {
-            Session::flash('error', 'Nu exista pachete confirmate pentru export.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-        if ($user && $user->isSupplierUser() && count($packages) !== count($packageIds)) {
-            Session::flash('error', 'Nu ai acces la toate pachetele selectate.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $packagesData = [];
-        foreach ($packages as $packageRow) {
-            $package = Package::fromArray($packageRow);
-            $lines = InvoiceInLine::forPackage($package->id);
-            $stats = $this->packageStats($lines, [$package]);
-            $linesByPackage = $this->groupLinesByPackage($lines, [$package]);
-            $date = $this->formatSagaDate($packageRow['packages_confirmed_at'] ?? $packageRow['issue_date'] ?? null);
-
-            $data = $this->buildSagaPackagesData([$package], $linesByPackage, $stats, $date);
-            if (!empty($data[0])) {
-                $packagesData[] = $data[0];
-            }
-        }
-
-        if (empty($packagesData)) {
-            Session::flash('error', 'Nu exista produse pentru pachetele selectate.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $content = (new SagaAhkGenerator())->buildScript($packagesData, $this->formatSagaDate(null));
-        $filename = 'pachete_selectate_' . date('Ymd_His') . '.ahk';
-
-        $this->downloadAhk($filename, $content);
-    }
-
     public function moveLine(): void
     {
         $this->requireInvoiceRole();
@@ -2110,8 +2459,8 @@ class InvoiceController
         $packageId = isset($_POST['package_id']) ? (int) $_POST['package_id'] : 0;
 
         if ($invoiceId && $lineId) {
-            $this->guardInvoice($invoiceId);
-            if ($this->isInvoiceConfirmed($invoiceId)) {
+            $invoice = $this->guardInvoice($invoiceId);
+            if ($this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
                 Session::flash('error', 'Pachetele sunt confirmate si nu mai pot fi modificate.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
@@ -2158,7 +2507,7 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if ($this->isInvoiceConfirmed($invoiceId)) {
+        if ($this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
             Session::flash('error', 'Pachetele sunt confirmate si nu pot fi modificate.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
@@ -3148,23 +3497,12 @@ class InvoiceController
         }
 
         foreach ($packageStats as $packageId => $stat) {
-            $value = $this->applyCommission($stat['total_vat'], $commissionPercent);
+            $value = $this->commissionService->applyCommission($stat['total_vat'], $commissionPercent);
             $totals['packages'][$packageId] = $value;
             $totals['invoice_total'] += $value;
         }
 
         return $totals;
-    }
-
-    private function applyCommission(float $amount, float $percent): float
-    {
-        $factor = 1 + (abs($percent) / 100);
-
-        if ($percent >= 0) {
-            return round($amount * $factor, 2);
-        }
-
-        return round($amount / $factor, 2);
     }
 
     private function lastConfirmedPackageNo(): int
@@ -3203,6 +3541,7 @@ class InvoiceController
             'UPDATE invoices_in SET packages_confirmed = 1, packages_confirmed_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
         );
+        $this->invoiceAuditService->recordPackagesConfirmed($invoiceId, count($packages));
     }
 
     private function renumberPackages(int $invoiceId): void
@@ -3235,88 +3574,12 @@ class InvoiceController
         return $packages;
     }
 
-    private function isInvoiceConfirmed(int $invoiceId): bool
-    {
-        $invoice = InvoiceIn::find($invoiceId);
-
-        return $invoice ? (bool) $invoice->packages_confirmed : false;
-    }
-
     private function unconfirmPackages(int $invoiceId): void
     {
         Database::execute(
             'UPDATE invoices_in SET packages_confirmed = 0, packages_confirmed_at = NULL, updated_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
         );
-        $this->deleteSagaFiles($invoiceId);
-    }
-
-    private function deleteSagaFiles(int $invoiceId): void
-    {
-        $dir = BASE_PATH . '/storage/saga/invoice_' . $invoiceId;
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $items = scandir($dir);
-        if ($items === false) {
-            return;
-        }
-
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') {
-                continue;
-            }
-            $path = $dir . '/' . $item;
-            if (is_file($path)) {
-                @unlink($path);
-            }
-        }
-
-        @rmdir($dir);
-    }
-
-    private function buildSagaPackagesData(array $packages, array $linesByPackage, array $packageStats, string $date): array
-    {
-        $data = [];
-
-        foreach ($packages as $package) {
-            $lines = $linesByPackage[$package->id] ?? [];
-            $items = [];
-
-            foreach ($lines as $line) {
-                $items[] = [
-                    'name' => $line->product_name,
-                    'quantity' => $line->quantity,
-                    'total' => $line->line_total_vat,
-                ];
-            }
-
-            $stat = $packageStats[$package->id] ?? null;
-            $total = $stat ? (float) $stat['total_vat'] : 0.0;
-
-            $data[] = [
-                'package_no' => $package->package_no,
-                'label' => $this->packageLabel($package),
-                'total' => $total,
-                'lines' => $items,
-                'date' => $date,
-            ];
-        }
-
-        return $data;
-    }
-
-    private function formatSagaDate(?string $date): string
-    {
-        if ($date) {
-            $timestamp = strtotime($date);
-            if ($timestamp !== false) {
-                return date('d.m.Y', $timestamp);
-            }
-        }
-
-        return date('d.m.Y');
     }
 
     private function safeFileName(string $value): string
@@ -3324,15 +3587,6 @@ class InvoiceController
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $value);
 
         return $safe !== '' ? $safe : 'document';
-    }
-
-    private function downloadAhk(string $filename, string $content): void
-    {
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . strlen($content));
-        echo $content;
-        exit;
     }
 
     private function fetchRemoteFile(string $url): ?string
@@ -3389,42 +3643,6 @@ class InvoiceController
         $settings->set('order_note.last_no', $next);
     }
 
-    private function storeSagaFiles(int $invoiceId): void
-    {
-        $invoice = InvoiceIn::find($invoiceId);
-        if (!$invoice) {
-            return;
-        }
-
-        $packages = Package::forInvoice($invoiceId);
-        if (empty($packages)) {
-            return;
-        }
-
-        $lines = InvoiceInLine::forInvoice($invoiceId);
-        $packageStats = $this->packageStats($lines, $packages);
-        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
-        $date = $this->formatSagaDate($invoice->packages_confirmed_at ?? $invoice->issue_date);
-        $generator = new SagaAhkGenerator();
-
-        $packagesData = $this->buildSagaPackagesData($packages, $linesByPackage, $packageStats, $date);
-
-        $dir = BASE_PATH . '/storage/saga/invoice_' . $invoiceId;
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-
-        foreach ($packagesData as $packageData) {
-            $fileName = 'pachet_' . $this->safeFileName((string) $packageData['package_no']) . '.ahk';
-            $content = $generator->buildScript([$packageData], $date);
-            file_put_contents($dir . '/' . $fileName, $content);
-        }
-
-        $allFile = 'pachete_' . $this->safeFileName($invoice->invoice_number) . '.ahk';
-        $allContent = $generator->buildScript($packagesData, $date);
-        file_put_contents($dir . '/' . $allFile, $allContent);
-    }
-
     private function fetchConfirmedPackagesByIds(array $packageIds, ?array $supplierCuis = null): array
     {
         if (empty($packageIds) || !Database::tableExists('packages')) {
@@ -3467,30 +3685,13 @@ class InvoiceController
             return [];
         }
 
-        $placeholders = [];
-        $params = [];
-
-        foreach ($packageIds as $index => $id) {
-            $key = 'p' . $index;
-            $placeholders[] = ':' . $key;
-            $params[$key] = $id;
-        }
-
-        $sql = 'SELECT package_id, COUNT(*) AS line_count,
-                       COALESCE(SUM(line_total), 0) AS total,
-                       COALESCE(SUM(line_total_vat), 0) AS total_vat
-                FROM invoice_in_lines
-                WHERE package_id IN (' . implode(',', $placeholders) . ')
-                GROUP BY package_id';
-
-        $rows = Database::fetchAll($sql, $params);
         $totals = [];
-
-        foreach ($rows as $row) {
-            $totals[(int) $row['package_id']] = [
-                'line_count' => (int) $row['line_count'],
-                'total' => (float) $row['total'],
-                'total_vat' => (float) $row['total_vat'],
+        foreach ($packageIds as $packageId) {
+            $data = $this->packageTotalsService->calculatePackageTotals((int) $packageId);
+            $totals[(int) $packageId] = [
+                'line_count' => (int) $data['line_count'],
+                'total' => (float) $data['sum_net'],
+                'total_vat' => (float) $data['sum_gross'],
             ];
         }
 
@@ -3602,7 +3803,7 @@ class InvoiceController
         $clientTotal = null;
 
         if ($commission !== null) {
-            $clientTotal = $this->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
@@ -4294,6 +4495,57 @@ class InvoiceController
         }
     }
 
+    private function requireSagaToken(): void
+    {
+        $token = Env::get('SAGA_EXPORT_TOKEN', '');
+        $provided = $_SERVER['HTTP_X_ERP_TOKEN'] ?? ($_GET['token'] ?? '');
+        if ($token === '' || $provided === '' || !hash_equals($token, (string) $provided)) {
+            $this->json(['success' => false, 'message' => 'Token invalid.'], 403);
+        }
+    }
+
+    private function readJsonBody(): array
+    {
+        $raw = (string) file_get_contents('php://input');
+        if ($raw === '') {
+            return [];
+        }
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : [];
+    }
+
+    private function json(array $payload, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    private function readSagaRowsFromCsv(string $path): array
+    {
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return [];
+        }
+
+        $headerLine = fgets($handle);
+        if ($headerLine === false) {
+            fclose($handle);
+            return [];
+        }
+
+        $delimiter = $this->detectCsvDelimiter($headerLine);
+        $rows = [str_getcsv($headerLine, $delimiter)];
+
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+            $rows[] = $row;
+        }
+
+        fclose($handle);
+
+        return $rows;
+    }
     private function detectCsvDelimiter(string $line): string
     {
         $delimiters = [';' => 0, ',' => 0, "\t" => 0, '|' => 0];
@@ -4315,15 +4567,20 @@ class InvoiceController
 
         foreach ($header as $index => $value) {
             $key = $this->normalizeSagaHeader((string) $value);
-            if (str_contains($key, 'denumire')) {
+
+            if ($columns['denumire'] === null && (str_contains($key, 'denumire') || str_contains($key, 'produs'))) {
                 $columns['denumire'] = $index;
                 continue;
             }
-            if (str_contains($key, 'pret') && str_contains($key, 'vanz')) {
-                $columns['pret_vanz'] = $index;
-                continue;
+
+            if ($columns['pret_vanz'] === null) {
+                if (str_contains($key, 'pret_vanz') || (str_contains($key, 'pret') && str_contains($key, 'vanz')) || $key === 'pret') {
+                    $columns['pret_vanz'] = $index;
+                    continue;
+                }
             }
-            if ($key === 'tva' || str_contains($key, 'tva')) {
+
+            if ($columns['tva'] === null && (str_contains($key, 'tva') || str_contains($key, 'vat'))) {
                 $columns['tva'] = $index;
             }
         }
@@ -4504,7 +4761,6 @@ class InvoiceController
         }
         return max(0, $index - 1);
     }
-
     private function guardInvoice(int $invoiceId): InvoiceIn
     {
         $invoice = InvoiceIn::find($invoiceId);

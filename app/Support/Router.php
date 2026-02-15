@@ -8,17 +8,31 @@ class Router
         'GET' => [],
         'POST' => [],
     ];
+    private array $patternRoutes = [
+        'GET' => [],
+        'POST' => [],
+    ];
 
     public function get(string $path, callable|array $handler): self
     {
-        $this->routes['GET'][$this->normalizePath($path)] = $handler;
+        $normalized = $this->normalizePath($path);
+        if (str_contains($normalized, '{')) {
+            $this->patternRoutes['GET'][] = $this->compilePattern($normalized, $handler);
+        } else {
+            $this->routes['GET'][$normalized] = $handler;
+        }
 
         return $this;
     }
 
     public function post(string $path, callable|array $handler): self
     {
-        $this->routes['POST'][$this->normalizePath($path)] = $handler;
+        $normalized = $this->normalizePath($path);
+        if (str_contains($normalized, '{')) {
+            $this->patternRoutes['POST'][] = $this->compilePattern($normalized, $handler);
+        } else {
+            $this->routes['POST'][$normalized] = $handler;
+        }
 
         return $this;
     }
@@ -30,6 +44,17 @@ class Router
         $path = $this->normalizePath($this->stripBasePath($uri));
 
         $handler = $this->routes[$method][$path] ?? null;
+        if (!$handler) {
+            $match = $this->matchPattern($method, $path);
+            if ($match) {
+                $handler = $match['handler'];
+                foreach ($match['params'] as $key => $value) {
+                    if (!isset($_GET[$key])) {
+                        $_GET[$key] = $value;
+                    }
+                }
+            }
+        }
 
         if (!$handler) {
             Response::abort(404);
@@ -37,6 +62,10 @@ class Router
 
         if ($method === 'POST' && $this->isStockImportRoute($path)) {
             if (!$this->hasValidStockToken()) {
+                Response::abort(403, 'Token invalid.');
+            }
+        } elseif ($method === 'POST' && $this->isSagaApiRoute($path)) {
+            if (!$this->hasValidSagaToken()) {
                 Response::abort(403, 'Token invalid.');
             }
         } elseif ($method === 'POST' && !Csrf::validate($_POST['_token'] ?? null)) {
@@ -71,14 +100,72 @@ class Router
         return $path === '' ? '/' : $path;
     }
 
+    private function compilePattern(string $path, callable|array $handler): array
+    {
+        $paramNames = [];
+        preg_match_all('/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/', $path, $matches);
+        if (!empty($matches[1])) {
+            $paramNames = $matches[1];
+        }
+
+        $placeholder = '__PARAM__';
+        $pattern = preg_replace('/\{[a-zA-Z_][a-zA-Z0-9_]*\}/', $placeholder, $path);
+        $pattern = preg_quote((string) $pattern, '#');
+        $pattern = str_replace($placeholder, '([^/]+)', $pattern);
+
+        return [
+            'regex' => '#^' . $pattern . '$#',
+            'params' => $paramNames,
+            'handler' => $handler,
+        ];
+    }
+
+    private function matchPattern(string $method, string $path): ?array
+    {
+        foreach ($this->patternRoutes[$method] ?? [] as $route) {
+            if (preg_match($route['regex'], $path, $matches)) {
+                array_shift($matches);
+                $params = [];
+                foreach ($route['params'] as $index => $name) {
+                    $params[$name] = $matches[$index] ?? null;
+                }
+                return [
+                    'handler' => $route['handler'],
+                    'params' => $params,
+                ];
+            }
+        }
+
+        return null;
+    }
+
     private function isStockImportRoute(string $path): bool
     {
         return $path === '/api/stock/import';
     }
 
+    private function isSagaApiRoute(string $path): bool
+    {
+        return str_starts_with($path, '/api/saga/');
+    }
+
     private function hasValidStockToken(): bool
     {
         $token = Env::get('STOCK_IMPORT_TOKEN', '');
+        if ($token === '') {
+            return false;
+        }
+        $provided = $_SERVER['HTTP_X_ERP_TOKEN'] ?? ($_GET['token'] ?? '');
+        if ($provided === '') {
+            return false;
+        }
+
+        return hash_equals($token, (string) $provided);
+    }
+
+    private function hasValidSagaToken(): bool
+    {
+        $token = Env::get('SAGA_EXPORT_TOKEN', '');
         if ($token === '') {
             return false;
         }

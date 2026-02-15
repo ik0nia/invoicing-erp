@@ -1,11 +1,6 @@
 <?php
     $title = 'Factura ' . htmlspecialchars($invoice->invoice_number);
     $isPlatform = $isPlatform ?? false;
-    $isOperator = $isOperator ?? false;
-    $canDeleteInvoice = $isPlatform && !$isOperator;
-    $canDeletePackages = !$isOperator;
-    $canDownloadSaga = $canDownloadSaga ?? false;
-    $canViewPaymentDetails = $canViewPaymentDetails ?? false;
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -200,96 +195,94 @@
     </div>
 </div>
 
-<?php if (!empty($canViewPaymentDetails)): ?>
-    <div class="mt-4 grid gap-4 md:grid-cols-3">
-        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <div class="text-slate-500">Incasat client</div>
-            <?php if ($clientTotal !== null): ?>
-                <div class="mt-1 font-semibold text-slate-900">
-                    <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
-                </div>
-                <div class="text-xs text-slate-600">
-                    <?php
-                        $collectedValue = (float) ($collectedTotal ?? 0);
-                        if ($collectedValue <= 0.009) {
-                            echo 'Neincasat';
-                        } elseif ($collectedValue + 0.01 < $clientTotal) {
-                            echo 'Incasat partial';
-                        } else {
-                            echo 'Incasat integral';
-                        }
-                    ?>
-                </div>
-                <?php if (!empty($paymentInRows)): ?>
-                    <div class="mt-3 space-y-1 text-xs text-slate-600">
-                        <?php foreach ($paymentInRows as $row): ?>
-                            <a
-                                href="<?= App\Support\Url::to('admin/incasari/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-in-<?= (int) $row['id'] ?>"
-                                class="block text-blue-700 hover:text-blue-800"
-                            >
-                                Incasare #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
-                                Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
-                            </a>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            <?php else: ?>
-                <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
-            <?php endif; ?>
-        </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <div class="text-slate-500">Platit furnizor</div>
+<div class="mt-4 grid gap-4 md:grid-cols-3">
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <div class="text-slate-500">Incasat client</div>
+        <?php if ($clientTotal !== null): ?>
             <div class="mt-1 font-semibold text-slate-900">
-                <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
+                <?= number_format($collectedTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($clientTotal, 2, '.', ' ') ?> RON
             </div>
             <div class="text-xs text-slate-600">
                 <?php
-                    $paidValue = (float) ($paidTotal ?? 0);
-                    $supplierTotal = (float) $invoice->total_with_vat;
-                    if ($paidValue <= 0.009) {
-                        echo 'Neplatit';
-                    } elseif ($paidValue + 0.01 < $supplierTotal) {
-                        echo 'Platit partial';
+                    $collectedValue = (float) ($collectedTotal ?? 0);
+                    if ($collectedValue <= 0.009) {
+                        echo 'Neincasat';
+                    } elseif ($collectedValue + 0.01 < $clientTotal) {
+                        echo 'Incasat partial';
                     } else {
-                        echo 'Platit integral';
+                        echo 'Incasat integral';
                     }
                 ?>
             </div>
-            <?php if (!empty($paymentOutRows)): ?>
+            <?php if (!empty($isPlatform) && !empty($paymentInRows)): ?>
                 <div class="mt-3 space-y-1 text-xs text-slate-600">
-                    <?php foreach ($paymentOutRows as $row): ?>
+                    <?php foreach ($paymentInRows as $row): ?>
                         <a
-                            href="<?= App\Support\Url::to('admin/plati/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-out-<?= (int) $row['id'] ?>"
+                            href="<?= App\Support\Url::to('admin/incasari/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-in-<?= (int) $row['id'] ?>"
                             class="block text-blue-700 hover:text-blue-800"
                         >
-                            Plata #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                            Incasare #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
                             Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
                         </a>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
+        <?php else: ?>
+            <div class="mt-1 text-sm text-slate-500">Selecteaza clientul pentru total.</div>
+        <?php endif; ?>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+        <div class="text-slate-500">Platit furnizor</div>
+        <div class="mt-1 font-semibold text-slate-900">
+            <?= number_format($paidTotal ?? 0, 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?> RON
         </div>
-        <?php if (!empty($isPlatform)): ?>
-            <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-                <div class="text-slate-500">Actiuni rapide</div>
-                <div class="mt-2 flex flex-wrap gap-2">
+        <div class="text-xs text-slate-600">
+            <?php
+                $paidValue = (float) ($paidTotal ?? 0);
+                $supplierTotal = (float) $invoice->total_with_vat;
+                if ($paidValue <= 0.009) {
+                    echo 'Neplatit';
+                } elseif ($paidValue + 0.01 < $supplierTotal) {
+                    echo 'Platit partial';
+                } else {
+                    echo 'Platit integral';
+                }
+            ?>
+        </div>
+        <?php if (!empty($isPlatform) && !empty($paymentOutRows)): ?>
+            <div class="mt-3 space-y-1 text-xs text-slate-600">
+                <?php foreach ($paymentOutRows as $row): ?>
                     <a
-                        href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
-                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        href="<?= App\Support\Url::to('admin/plati/istoric') ?>?payment_id=<?= (int) $row['id'] ?>#payment-out-<?= (int) $row['id'] ?>"
+                        class="block text-blue-700 hover:text-blue-800"
                     >
-                        Adauga incasare
+                        Plata #<?= (int) $row['id'] ?> · <?= htmlspecialchars($row['paid_at'] ?? '') ?> ·
+                        Alocat <?= number_format((float) ($row['alloc_amount'] ?? 0), 2, '.', ' ') ?> RON
                     </a>
-                    <a
-                        href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
-                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                        Adauga plata
-                    </a>
-                </div>
+                <?php endforeach; ?>
             </div>
         <?php endif; ?>
     </div>
-<?php endif; ?>
+    <?php if (!empty($isPlatform)): ?>
+        <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+            <div class="text-slate-500">Actiuni rapide</div>
+            <div class="mt-2 flex flex-wrap gap-2">
+                <a
+                    href="<?= App\Support\Url::to('admin/incasari/adauga?client_cui=' . urlencode((string) ($selectedClientCui ?? ''))) ?>"
+                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                    Adauga incasare
+                </a>
+                <a
+                    href="<?= App\Support\Url::to('admin/plati/adauga?supplier_cui=' . urlencode((string) ($invoice->supplier_cui ?? ''))) ?>"
+                    class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                    Adauga plata
+                </a>
+            </div>
+        </div>
+    <?php endif; ?>
+</div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>
@@ -391,24 +384,14 @@
                     <div class="text-sm font-semibold text-slate-900">
                         <?= htmlspecialchars($packageLabel) ?>
                     </div>
-                    <?php if (!empty($isConfirmed)): ?>
-                        <?php if ($canDownloadSaga): ?>
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/pachet') ?>">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                                <button class="text-xs font-semibold text-blue-700 hover:text-blue-800">Saga .ahk</button>
-                            </form>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <?php if ($canDeletePackages): ?>
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                                <?= App\Support\Csrf::input() ?>
-                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
-                                <button class="text-xs font-semibold text-red-600 hover:text-red-700">Sterge</button>
-                            </form>
-                        <?php endif; ?>
+                    <?php if (empty($isConfirmed)): ?>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="package_id" value="<?= (int) $package->id ?>">
+                            <button class="text-xs font-semibold text-red-600 hover:text-red-700">Sterge</button>
+                        </form>
                     <?php endif; ?>
                 </div>
                 <?php if (!empty($canRenamePackages)): ?>
@@ -471,6 +454,11 @@
                         <div class="text-xs font-semibold text-slate-500">Fara produse</div>
                     <?php else: ?>
                         <?php foreach ($packageLines as $line): ?>
+                            <?php
+                                $hasSagaStock = !empty($line->cod_saga)
+                                    && $line->stock_saga !== null
+                                    && (float) $line->stock_saga > (float) $line->quantity;
+                            ?>
                             <div
                                 class="cursor-move rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                                 draggable="true"
@@ -479,7 +467,14 @@
                                 data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
                             >
                                 <div class="flex items-start justify-between gap-2">
-                                    <div><?= htmlspecialchars($line->product_name) ?></div>
+                                    <div class="flex items-start gap-2">
+                                        <?php if ($hasSagaStock): ?>
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                                ✔
+                                            </span>
+                                        <?php endif; ?>
+                                        <div><?= htmlspecialchars($line->product_name) ?></div>
+                                    </div>
                                     <?php if (empty($isConfirmed) && $line->quantity > 1): ?>
                                         <button
                                             type="button"
@@ -530,6 +525,11 @@
                 <div class="text-xs font-semibold text-slate-600">Produse fara pachet · <?= (int) $unassignedCount ?></div>
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php foreach ($unassigned as $line): ?>
+                    <?php
+                        $hasSagaStock = !empty($line->cod_saga)
+                            && $line->stock_saga !== null
+                            && (float) $line->stock_saga > (float) $line->quantity;
+                    ?>
                     <div
                         class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
                         draggable="true"
@@ -538,7 +538,14 @@
                         data-vat="<?= htmlspecialchars(number_format($line->tax_percent, 2, '.', '')) ?>"
                     >
                         <div class="flex items-start justify-between gap-2">
-                            <div><?= htmlspecialchars($line->product_name) ?></div>
+                            <div class="flex items-start gap-2">
+                                <?php if ($hasSagaStock): ?>
+                                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                        ✔
+                                    </span>
+                                <?php endif; ?>
+                                <div><?= htmlspecialchars($line->product_name) ?></div>
+                            </div>
                             <?php if (empty($isConfirmed) && $line->quantity > 1): ?>
                                 <button
                                     type="button"
@@ -616,17 +623,6 @@
                             Factura FGO este emisa. Confirmarea nu mai poate fi anulata.
                         </div>
                     <?php endif; ?>
-                </div>
-            <?php endif; ?>
-            <?php if ($canDownloadSaga): ?>
-                <div class="flex justify-end">
-                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/saga/factura') ?>">
-                        <?= App\Support\Csrf::input() ?>
-                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                        <button class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                            Descarca Saga (toate pachetele)
-                        </button>
-                    </form>
                 </div>
             <?php endif; ?>
             <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
@@ -758,7 +754,7 @@
     </form>
 </div>
 
-<?php if (!empty($canDeleteInvoice)): ?>
+<?php if (!empty($isPlatform)): ?>
     <div class="mt-8 flex flex-wrap items-center gap-3">
         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/sterge') ?>">
             <?= App\Support\Csrf::input() ?>

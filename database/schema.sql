@@ -69,6 +69,8 @@ CREATE TABLE partners (
     cui VARCHAR(32) NOT NULL UNIQUE,
     denumire VARCHAR(255) NOT NULL,
     default_commission DECIMAL(6,2) NOT NULL DEFAULT 0,
+    is_supplier TINYINT(1) NOT NULL DEFAULT 0,
+    is_client TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -126,6 +128,7 @@ CREATE TABLE packages (
     label VARCHAR(64) NULL,
     vat_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
     saga_value DECIMAL(12,2) NULL,
+    saga_status VARCHAR(16) NULL,
     created_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=10000;
 
@@ -204,4 +207,141 @@ CREATE TABLE payment_orders (
     invoice_numbers TEXT NULL,
     generated_at DATETIME NULL,
     created_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE audit_log (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    actor_user_id INT NULL,
+    actor_role VARCHAR(32) NULL,
+    ip VARCHAR(64) NULL,
+    user_agent VARCHAR(255) NULL,
+    action VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(32) NOT NULL,
+    entity_id BIGINT NULL,
+    context_json TEXT NULL,
+    INDEX idx_action_created_at (action, created_at),
+    INDEX idx_entity (entity_type, entity_id),
+    INDEX idx_actor (actor_user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE enrollment_links (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    type ENUM('supplier', 'client') NOT NULL,
+    created_by_user_id INT NULL,
+    supplier_cui VARCHAR(32) NULL,
+    partner_cui VARCHAR(32) NULL,
+    relation_supplier_cui VARCHAR(32) NULL,
+    relation_client_cui VARCHAR(32) NULL,
+    commission_percent DECIMAL(8,4) NULL,
+    prefill_json TEXT NULL,
+    permissions_json TEXT NULL,
+    max_uses INT NOT NULL DEFAULT 1,
+    uses INT NOT NULL DEFAULT 0,
+    current_step TINYINT NOT NULL DEFAULT 1,
+    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+    expires_at DATETIME NULL,
+    confirmed_at DATETIME NULL,
+    last_used_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    INDEX idx_enrollment_status (status),
+    INDEX idx_enrollment_supplier (supplier_cui),
+    INDEX idx_enrollment_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE portal_links (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    owner_type ENUM('supplier', 'client') NOT NULL,
+    owner_cui VARCHAR(32) NOT NULL,
+    relation_supplier_cui VARCHAR(32) NULL,
+    relation_client_cui VARCHAR(32) NULL,
+    permissions_json TEXT NULL,
+    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+    expires_at DATETIME NULL,
+    created_by_user_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_portal_status (status),
+    INDEX idx_portal_owner (owner_cui),
+    INDEX idx_portal_created (created_at),
+    INDEX idx_portal_relation (relation_supplier_cui, relation_client_cui)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE partner_relations (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    supplier_cui VARCHAR(32) NOT NULL,
+    client_cui VARCHAR(32) NOT NULL,
+    invoice_inbox_email VARCHAR(128) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY partner_relation_unique (supplier_cui, client_cui)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE partner_contacts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    partner_cui VARCHAR(32) NULL,
+    supplier_cui VARCHAR(32) NULL,
+    client_cui VARCHAR(32) NULL,
+    name VARCHAR(128) NOT NULL,
+    email VARCHAR(128) NULL,
+    phone VARCHAR(64) NULL,
+    role VARCHAR(64) NULL,
+    is_primary TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_contacts_partner (partner_cui),
+    INDEX idx_contacts_relation (supplier_cui, client_cui),
+    INDEX idx_contacts_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE contract_templates (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    template_type VARCHAR(32) NOT NULL,
+    applies_to ENUM('client', 'supplier', 'both') NOT NULL DEFAULT 'both',
+    auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0,
+    doc_kind ENUM('contract', 'acord', 'anexa') NOT NULL DEFAULT 'contract',
+    priority INT NOT NULL DEFAULT 100,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    html_content TEXT NULL,
+    created_by_user_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    INDEX idx_templates_type (template_type),
+    INDEX idx_templates_auto (auto_on_enrollment, applies_to),
+    INDEX idx_templates_active (is_active),
+    INDEX idx_templates_priority (priority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE contracts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    template_id BIGINT UNSIGNED NULL,
+    partner_cui VARCHAR(32) NULL,
+    supplier_cui VARCHAR(32) NULL,
+    client_cui VARCHAR(32) NULL,
+    title VARCHAR(255) NOT NULL,
+    status ENUM('draft', 'generated', 'sent', 'signed_uploaded', 'approved') NOT NULL DEFAULT 'draft',
+    generated_file_path VARCHAR(255) NULL,
+    signed_file_path VARCHAR(255) NULL,
+    metadata_json TEXT NULL,
+    created_by_user_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    INDEX idx_contracts_status (status),
+    INDEX idx_contracts_partner (partner_cui),
+    INDEX idx_contracts_relation (supplier_cui, client_cui),
+    INDEX idx_contracts_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE relation_documents (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    supplier_cui VARCHAR(32) NOT NULL,
+    client_cui VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    metadata_json TEXT NULL,
+    created_by_user_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_relation_docs (supplier_cui, client_cui),
+    INDEX idx_relation_docs_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -20,12 +20,19 @@ class AssociationsController
 
         $partners = Partner::all();
         $associations = Commission::allWithPartners();
+        $relationContacts = [];
+        if (Database::tableExists('partner_contacts')) {
+            $relationContacts = Database::fetchAll(
+                'SELECT * FROM partner_contacts WHERE supplier_cui IS NOT NULL AND client_cui IS NOT NULL ORDER BY created_at DESC'
+            );
+        }
 
         Response::view('admin/associations/index', [
             'partners' => $partners,
             'associations' => $associations,
             'hasPartners' => Database::tableExists('partners'),
             'canDeleteAssociations' => $canDeleteAssociations,
+            'relationContacts' => $relationContacts,
         ]);
     }
 
