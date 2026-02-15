@@ -251,24 +251,6 @@ CREATE TABLE enrollment_links (
     INDEX idx_enrollment_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE portal_links (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    token_hash CHAR(64) NOT NULL UNIQUE,
-    owner_type ENUM('supplier', 'client') NOT NULL,
-    owner_cui VARCHAR(32) NOT NULL,
-    relation_supplier_cui VARCHAR(32) NULL,
-    relation_client_cui VARCHAR(32) NULL,
-    permissions_json TEXT NULL,
-    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
-    expires_at DATETIME NULL,
-    created_by_user_id INT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_portal_status (status),
-    INDEX idx_portal_owner (owner_cui),
-    INDEX idx_portal_created (created_at),
-    INDEX idx_portal_relation (relation_supplier_cui, relation_client_cui)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE partner_relations (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     supplier_cui VARCHAR(32) NOT NULL,

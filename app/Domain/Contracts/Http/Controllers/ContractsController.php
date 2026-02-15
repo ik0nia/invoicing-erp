@@ -142,7 +142,7 @@ class ContractsController
 
     public function approve(): void
     {
-        $this->requireApproveRole();
+        Auth::requireInternalStaff();
 
         $id = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
         if (!$id) {
@@ -215,15 +215,6 @@ class ContractsController
             Response::abort(403, 'Acces interzis.');
         }
         return $user;
-    }
-
-    private function requireApproveRole(): void
-    {
-        Auth::requireLogin();
-        $user = Auth::user();
-        if (!$user || !($user->hasRole('super_admin') || $user->hasRole('admin'))) {
-            Response::abort(403, 'Acces interzis.');
-        }
     }
 
     private function storeGeneratedFile(string $html): ?string

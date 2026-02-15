@@ -1,5 +1,5 @@
 <?php
-    $title = 'Portal partener';
+    $title = 'Wizard partener';
     $context = $context ?? [];
     $prefill = $prefill ?? [];
     $partnerCui = $partnerCui ?? '';
@@ -42,7 +42,7 @@
 
 <div class="max-w-5xl">
     <div>
-        <h1 class="text-2xl font-semibold text-slate-900">Portal partener</h1>
+        <h1 class="text-2xl font-semibold text-slate-900">Wizard partener</h1>
         <p class="mt-1 text-sm text-slate-600">Un singur link pentru date companie, contacte si contracte.</p>
     </div>
 

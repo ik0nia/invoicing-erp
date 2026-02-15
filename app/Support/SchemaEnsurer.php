@@ -32,10 +32,6 @@ class SchemaEnsurer
             self::ensureEnrollmentLinksTable();
         });
 
-        self::runStep('portal_links_table', static function (): void {
-            self::ensurePortalLinksTable();
-        });
-
         self::runStep('partner_relations_table', static function (): void {
             self::ensurePartnerRelationsTable();
         });
@@ -211,42 +207,6 @@ class SchemaEnsurer
                 self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN updated_at DATETIME NULL AFTER created_at', [], 'enrollment_links_updated_at');
                 unset(self::$columnCache['enrollment_links.updated_at']);
             }
-        }
-    }
-
-    public static function ensurePortalLinksTable(): void
-    {
-        if (!self::tableExists('portal_links')) {
-            self::safeExecute(
-                'CREATE TABLE IF NOT EXISTS portal_links (
-                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    token_hash CHAR(64) NOT NULL UNIQUE,
-                    owner_type ENUM("supplier", "client") NOT NULL,
-                    owner_cui VARCHAR(32) NOT NULL,
-                    relation_supplier_cui VARCHAR(32) NULL,
-                    relation_client_cui VARCHAR(32) NULL,
-                    permissions_json TEXT NULL,
-                    status ENUM("active", "disabled") NOT NULL DEFAULT "active",
-                    expires_at DATETIME NULL,
-                    created_by_user_id INT NULL,
-                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    INDEX idx_portal_status (status),
-                    INDEX idx_portal_owner (owner_cui),
-                    INDEX idx_portal_created (created_at),
-                    INDEX idx_portal_relation (relation_supplier_cui, relation_client_cui)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
-                [],
-                'portal_links_create'
-            );
-            unset(self::$tableCache['portal_links']);
-            self::$tableCache['portal_links'] = self::tableExists('portal_links');
-        }
-
-        if (self::tableExists('portal_links')) {
-            self::ensureIndex('portal_links', 'idx_portal_status', 'ALTER TABLE portal_links ADD INDEX idx_portal_status (status)');
-            self::ensureIndex('portal_links', 'idx_portal_owner', 'ALTER TABLE portal_links ADD INDEX idx_portal_owner (owner_cui)');
-            self::ensureIndex('portal_links', 'idx_portal_created', 'ALTER TABLE portal_links ADD INDEX idx_portal_created (created_at)');
-            self::ensureIndex('portal_links', 'idx_portal_relation', 'ALTER TABLE portal_links ADD INDEX idx_portal_relation (relation_supplier_cui, relation_client_cui)');
         }
     }
 

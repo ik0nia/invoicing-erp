@@ -1,7 +1,10 @@
 <?php
+    use App\Support\Auth;
+
     $title = 'Contracte';
     $templates = $templates ?? [];
     $contracts = $contracts ?? [];
+    $canApproveContracts = Auth::isInternalStaff();
     $statusLabels = [
         'draft' => 'Ciorna',
         'generated' => 'Generat',
@@ -32,7 +35,7 @@
         <li>Genereaza (se creeaza fisierul HTML)</li>
         <li>Trimite catre semnare</li>
         <li>Incarca semnat</li>
-        <li>Aprobare (doar super_admin/admin)</li>
+        <li>Aprobare (staff intern: super_admin/admin/contabil/operator)</li>
     </ol>
     <div class="mt-2 text-xs text-blue-700">
         Statusuri: Ciorna, Generat, Trimis, Semnat (incarcat), Aprobat.
@@ -167,16 +170,18 @@
                         </td>
                         <td class="px-3 py-2 text-right">
                             <?php if (($contract['status'] ?? '') !== 'approved'): ?>
-                                <form method="POST" action="<?= App\Support\Url::to('admin/contracts/approve') ?>">
-                                    <?= App\Support\Csrf::input() ?>
-                                    <input type="hidden" name="contract_id" value="<?= (int) $contract['id'] ?>">
-                                    <button
-                                        class="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
-                                        onclick="return confirm('Sigur doriti sa aprobati contractul? Aceasta actiune confirma validitatea documentului.')"
-                                    >
-                                        Aproba contractul
-                                    </button>
-                                </form>
+                                <?php if ($canApproveContracts): ?>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/contracts/approve') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="contract_id" value="<?= (int) $contract['id'] ?>">
+                                        <button
+                                            class="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
+                                            onclick="return confirm('Sigur doriti sa aprobati contractul? Aceasta actiune confirma validitatea documentului.')"
+                                        >
+                                            Aproba contractul
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <span class="text-xs text-slate-400">Aprobat</span>
                             <?php endif; ?>

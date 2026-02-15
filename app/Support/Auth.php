@@ -66,6 +66,22 @@ class Auth
         }
     }
 
+    public static function isInternalStaff(): bool
+    {
+        $user = self::user();
+
+        return $user !== null && $user->hasRole(['super_admin', 'admin', 'contabil', 'operator']);
+    }
+
+    public static function requireInternalStaff(): void
+    {
+        self::requireLogin();
+
+        if (!self::isInternalStaff()) {
+            Response::abort(403, 'Acces interzis.');
+        }
+    }
+
     public static function requireAdminWithoutOperator(): void
     {
         self::requireLogin();
