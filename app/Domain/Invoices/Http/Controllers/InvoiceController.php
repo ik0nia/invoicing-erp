@@ -749,6 +749,10 @@ class InvoiceController
         $user = Auth::user();
         $isPlatform = $user ? $user->isPlatformUser() : false;
         $canImportSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
+        $sagaToken = (string) Env::get('SAGA_EXPORT_TOKEN', '');
+        if ($sagaToken === '') {
+            $sagaToken = (string) Env::get('STOCK_IMPORT_TOKEN', '');
+        }
         $params = [];
         $whereSupplier = '';
 
@@ -1209,7 +1213,6 @@ class InvoiceController
             'success' => true,
             'status' => 'imported',
             'updated' => 1,
->>>>>>> cursor/filtre-facturi-selectie-multipla-5ce9
         ]);
     }
 
