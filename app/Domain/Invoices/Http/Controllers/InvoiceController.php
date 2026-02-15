@@ -863,133 +863,6 @@ class InvoiceController
         ]);
     }
 
-    public function importSagaCsv(): void
-    {
-        Auth::requireAdmin();
-
-        if (!$this->ensureInvoiceTables()) {
-            Response::view('errors/invoices_schema', [], 'layouts/app');
-        }
-
-        $file = $_FILES['saga_csv'] ?? null;
-        if (!$file || empty($file['tmp_name']) || !is_readable($file['tmp_name'])) {
-            Session::flash('error', 'Fisierul CSV nu a putut fi citit.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $rows = $this->readSagaRowsFromCsv((string) $file['tmp_name']);
-        if (empty($rows)) {
-            Session::flash('error', 'Fisier CSV gol sau invalid.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $header = array_shift($rows);
-        $columns = $this->mapSagaColumns($header);
-        if ($columns['denumire'] === null || $columns['pret_vanz'] === null) {
-            Session::flash('error', 'CSV trebuie sa contina coloanele: denumire, pret_vanz (tva optional).');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        $items = [];
-        foreach ($rows as $row) {
-            $name = trim((string) ($row[$columns['denumire']] ?? ''));
-            $pret = $this->parseSagaNumber((string) ($row[$columns['pret_vanz']] ?? ''));
-            $tva = null;
-            if ($columns['tva'] !== null) {
-                $tva = $this->parseSagaNumber((string) ($row[$columns['tva']] ?? ''));
-            }
-
-            if ($name === '' || $pret === null) {
-                continue;
-            }
-
-            $key = $this->normalizeSagaName($name);
-            if ($key === '') {
-                continue;
-            }
-
-            $items[$key] = [
-                'name' => $name,
-                'pret' => $pret,
-                'tva' => $tva,
-            ];
-        }
-
-        if (empty($items)) {
-            Session::flash('error', 'Nu exista linii valide in CSV.');
-            Response::redirect('/admin/pachete-confirmate');
-        }
-
-        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
-            Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
-        }
-        $this->sagaStatusService->ensureSagaStatusColumn();
-
-        $packages = Database::fetchAll(
-            'SELECT p.id, p.label, p.package_no, p.vat_percent
-             FROM packages p
-             JOIN invoices_in i ON i.id = p.invoice_in_id
-             WHERE i.packages_confirmed = 1'
-        );
-
-        $updated = 0;
-        $matched = 0;
-        $debugPackages = [];
-
-        foreach ($packages as $package) {
-            $labelText = trim((string) ($package['label'] ?? ''));
-            if ($labelText === '') {
-                $labelText = 'Pachet de produse';
-            }
-            $label = $labelText . ' #' . (int) ($package['package_no'] ?? 0);
-            $key = $this->normalizeSagaName($label);
-            $match = $items[$key] ?? null;
-
-            $debugPackages[] = [
-                'label' => $labelText,
-                'package_no' => (string) ($package['package_no'] ?? ''),
-                'match_key' => $key,
-                'matched' => $match !== null,
-            ];
-
-            if (!$match) {
-                continue;
-            }
-
-            $matched++;
-            $tva = $match['tva'];
-            if ($tva === null) {
-                $tva = (float) ($package['vat_percent'] ?? 0);
-            }
-
-            $value = (float) $match['pret'] * (1 + ((float) $tva / 100));
-            $value = round($value, 2);
-
-            Database::execute(
-                'UPDATE packages SET saga_value = :value WHERE id = :id',
-                [
-                    'value' => $value,
-                    'id' => (int) $package['id'],
-                ]
-            );
-            $updated++;
-        }
-
-        Session::flash('saga_debug', [
-            'header' => $header,
-            'saga_keys' => array_slice(array_keys($items), 0, 20),
-            'saga_keys_count' => count($items),
-            'packages' => $debugPackages,
-        ]);
-
-        $status = 'Import SAGA: ' . $updated . ' pachete actualizate din ' . $matched . ' potrivite.';
-        if ($columns['tva'] === null) {
-            $status .= ' TVA lipsa in CSV - s-a folosit TVA din pachet.';
-        }
-        Session::flash('status', $status);
-        Response::redirect('/admin/pachete-confirmate');
-    }
-
     public function sagaPackageJson(): void
     {
         Auth::requireAdmin();
@@ -1222,6 +1095,10 @@ class InvoiceController
 
         if (!$this->ensureInvoiceTables()) {
             Response::view('errors/invoices_schema', [], 'layouts/app');
+        }
+
+        if (Database::tableExists('packages') && !Database::columnExists('packages', 'saga_value')) {
+            Database::execute('ALTER TABLE packages ADD COLUMN saga_value DECIMAL(12,2) NULL AFTER vat_percent');
         }
 
         if (!isset($_FILES['saga_csv']) || $_FILES['saga_csv']['error'] !== UPLOAD_ERR_OK) {
