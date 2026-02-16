@@ -16,6 +16,9 @@
     <div class="mt-2 text-xs text-blue-700">
         Foloseste variabilele intre acolade duble, de exemplu: <strong>{{partner.name}}</strong>
     </div>
+    <div class="mt-1 text-xs text-blue-700">
+        Datele despre reprezentant si banca se completeaza din Companii/Inrolare.
+    </div>
     <div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <?php foreach ($variables as $item): ?>
             <div class="flex items-center justify-between gap-2 rounded border border-blue-100 bg-white px-2 py-1 text-xs text-blue-800">

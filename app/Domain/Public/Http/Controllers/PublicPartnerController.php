@@ -141,7 +141,13 @@ class PublicPartnerController
             Response::redirect('/p/' . $token);
         }
 
-        Partner::upsert($cui, $denumire);
+        $partnerProfile = [
+            'representative_name' => trim((string) ($_POST['representative_name'] ?? '')),
+            'representative_function' => trim((string) ($_POST['representative_function'] ?? '')),
+            'bank_account' => trim((string) ($_POST['bank_account'] ?? ($_POST['iban'] ?? ''))),
+            'bank_name' => trim((string) ($_POST['bank_name'] ?? ($_POST['banca'] ?? ''))),
+        ];
+        Partner::upsert($cui, $denumire, $partnerProfile);
         $this->upsertCompanyFromPayload($cui, $context, $_POST);
 
         $linkType = (string) ($context['link']['type'] ?? '');
@@ -692,10 +698,30 @@ class PublicPartnerController
             $data['judet'] = $company->judet;
             $data['telefon'] = $company->telefon;
             $data['email'] = $company->email;
+            $data['representative_name'] = (string) ($company->representative_name ?? '');
+            $data['representative_function'] = (string) ($company->representative_function ?? '');
+            $data['bank_account'] = (string) ($company->bank_account ?? $company->iban ?? '');
+            $data['bank_name'] = (string) ($company->bank_name ?? $company->banca ?? '');
         }
-        if (!$company && $partner) {
-            $data['cui'] = $partner->cui;
-            $data['denumire'] = $partner->denumire;
+        if ($partner) {
+            if (empty($data['cui'])) {
+                $data['cui'] = $partner->cui;
+            }
+            if (empty($data['denumire'])) {
+                $data['denumire'] = $partner->denumire;
+            }
+            if (empty($data['representative_name'])) {
+                $data['representative_name'] = (string) ($partner->representative_name ?? '');
+            }
+            if (empty($data['representative_function'])) {
+                $data['representative_function'] = (string) ($partner->representative_function ?? '');
+            }
+            if (empty($data['bank_account'])) {
+                $data['bank_account'] = (string) ($partner->bank_account ?? '');
+            }
+            if (empty($data['bank_name'])) {
+                $data['bank_name'] = (string) ($partner->bank_name ?? '');
+            }
         }
 
         return $data;
@@ -861,6 +887,7 @@ class PublicPartnerController
         }
 
         $existing = Company::findByCui($cui);
+        $partner = Partner::findByCui($cui);
         $linkType = (string) ($context['link']['type'] ?? 'client');
         $companyType = $existing ? $existing->tip_companie : ($linkType === 'supplier' ? 'furnizor' : 'client');
 
@@ -876,8 +903,12 @@ class PublicPartnerController
             'tara' => $existing ? $existing->tara : 'Romania',
             'email' => $existing ? $existing->email : '',
             'telefon' => $existing ? $existing->telefon : '',
+            'representative_name' => $existing ? ($existing->representative_name ?? null) : ($partner?->representative_name ?? null),
+            'representative_function' => $existing ? ($existing->representative_function ?? null) : ($partner?->representative_function ?? null),
             'banca' => $existing ? $existing->banca : null,
             'iban' => $existing ? $existing->iban : null,
+            'bank_account' => $existing ? ($existing->bank_account ?? null) : ($partner?->bank_account ?? null),
+            'bank_name' => $existing ? ($existing->bank_name ?? null) : ($partner?->bank_name ?? null),
             'tip_companie' => $companyType,
             'activ' => $existing ? (int) $existing->activ : 1,
         ];
@@ -890,12 +921,25 @@ class PublicPartnerController
             'judet' => 'judet',
             'email' => 'email',
             'telefon' => 'telefon',
+            'representative_name' => 'representative_name',
+            'representative_function' => 'representative_function',
+            'bank_account' => 'bank_account',
+            'bank_name' => 'bank_name',
         ];
         foreach ($map as $input => $field) {
             $value = trim((string) ($payload[$input] ?? ''));
             if ($value !== '') {
                 $data[$field] = $value;
             }
+        }
+        if (trim((string) ($data['bank_account'] ?? '')) === '' && trim((string) ($data['iban'] ?? '')) !== '') {
+            $data['bank_account'] = (string) $data['iban'];
+        }
+        if (trim((string) ($data['bank_name'] ?? '')) === '' && trim((string) ($data['banca'] ?? '')) !== '') {
+            $data['bank_name'] = (string) $data['banca'];
+        }
+        if (trim((string) ($data['banca'] ?? '')) === '' && trim((string) ($data['bank_name'] ?? '')) !== '') {
+            $data['banca'] = (string) $data['bank_name'];
         }
 
         Company::save($data);
@@ -1132,6 +1176,10 @@ class PublicPartnerController
             'judet' => 'judet',
             'telefon' => 'telefon',
             'email' => 'email',
+            'representative_name' => 'representative_name',
+            'representative_function' => 'representative_function',
+            'bank_account' => 'bank_account',
+            'bank_name' => 'bank_name',
         ];
         foreach ($map as $key => $target) {
             $value = trim((string) ($incoming[$key] ?? ''));

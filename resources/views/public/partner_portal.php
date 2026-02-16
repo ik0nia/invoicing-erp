@@ -198,6 +198,50 @@
                         >
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-slate-700" for="representative_name">Reprezentant legal (nume)</label>
+                        <input
+                            id="representative_name"
+                            name="representative_name"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['representative_name'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700" for="representative_function">Functie reprezentant</label>
+                        <input
+                            id="representative_function"
+                            name="representative_function"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['representative_function'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700" for="bank_account">Cont bancar (IBAN/cont)</label>
+                        <input
+                            id="bank_account"
+                            name="bank_account"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['bank_account'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700" for="bank_name">Banca</label>
+                        <input
+                            id="bank_name"
+                            name="bank_name"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['bank_name'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-slate-700" for="adresa">Adresa</label>
                         <input
                             id="adresa"

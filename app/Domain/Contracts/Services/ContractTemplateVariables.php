@@ -20,14 +20,26 @@ class ContractTemplateVariables
             ['key' => 'partner.reg_no', 'label' => 'Nr. Reg. Comertului'],
             ['key' => 'partner.bank', 'label' => 'Banca'],
             ['key' => 'partner.iban', 'label' => 'IBAN'],
+            ['key' => 'partner.representative_name', 'label' => 'Reprezentant legal (nume) companie'],
+            ['key' => 'partner.representative_function', 'label' => 'Functie reprezentant companie'],
+            ['key' => 'partner.bank_account', 'label' => 'Cont bancar companie (IBAN/cont)'],
+            ['key' => 'partner.bank_name', 'label' => 'Banca companie'],
             ['key' => 'supplier.name', 'label' => 'Denumire furnizor'],
             ['key' => 'supplier.cui', 'label' => 'CUI furnizor'],
             ['key' => 'supplier.email', 'label' => 'Email furnizor'],
             ['key' => 'supplier.phone', 'label' => 'Telefon furnizor'],
+            ['key' => 'supplier.representative_name', 'label' => 'Reprezentant legal furnizor'],
+            ['key' => 'supplier.representative_function', 'label' => 'Functie reprezentant furnizor'],
+            ['key' => 'supplier.bank_account', 'label' => 'Cont bancar furnizor (IBAN/cont)'],
+            ['key' => 'supplier.bank_name', 'label' => 'Banca furnizor'],
             ['key' => 'client.name', 'label' => 'Denumire client'],
             ['key' => 'client.cui', 'label' => 'CUI client'],
             ['key' => 'client.email', 'label' => 'Email client'],
             ['key' => 'client.phone', 'label' => 'Telefon client'],
+            ['key' => 'client.representative_name', 'label' => 'Reprezentant legal client'],
+            ['key' => 'client.representative_function', 'label' => 'Functie reprezentant client'],
+            ['key' => 'client.bank_account', 'label' => 'Cont bancar client (IBAN/cont)'],
+            ['key' => 'client.bank_name', 'label' => 'Banca client'],
             ['key' => 'relation.supplier_cui', 'label' => 'Relatie - CUI furnizor'],
             ['key' => 'relation.client_cui', 'label' => 'Relatie - CUI client'],
             ['key' => 'relation.invoice_inbox_email', 'label' => 'Email inbox facturi (relatie)'],
@@ -50,34 +62,54 @@ class ContractTemplateVariables
     {
         $vars = [];
 
-        $partner = $partnerCui ? $this->fetchPartner($partnerCui) : [];
-        $supplier = $supplierCui ? $this->fetchPartner($supplierCui) : [];
-        $client = $clientCui ? $this->fetchPartner($clientCui) : [];
         $partnerCompany = $partnerCui ? $this->fetchCompany($partnerCui) : [];
         $supplierCompany = $supplierCui ? $this->fetchCompany($supplierCui) : [];
         $clientCompany = $clientCui ? $this->fetchCompany($clientCui) : [];
+        $partner = $partnerCui ? $this->fetchPartner($partnerCui) : [];
+        $supplier = $supplierCui ? $this->fetchPartner($supplierCui) : [];
+        $client = $clientCui ? $this->fetchPartner($clientCui) : [];
 
-        $vars['partner.name'] = $partner['denumire'] ?? '';
-        $vars['partner.cui'] = $partner['cui'] ?? '';
-        $vars['partner.email'] = $partnerCompany['email'] ?? '';
-        $vars['partner.phone'] = $partnerCompany['telefon'] ?? '';
-        $vars['partner.address'] = $partnerCompany['adresa'] ?? '';
-        $vars['partner.city'] = $partnerCompany['localitate'] ?? '';
-        $vars['partner.county'] = $partnerCompany['judet'] ?? '';
-        $vars['partner.country'] = $partnerCompany['tara'] ?? '';
-        $vars['partner.reg_no'] = $partnerCompany['nr_reg_comertului'] ?? '';
-        $vars['partner.bank'] = $partnerCompany['banca'] ?? '';
-        $vars['partner.iban'] = $partnerCompany['iban'] ?? '';
+        $vars['partner.name'] = $this->firstNonEmpty($partnerCompany['denumire'] ?? '', $partner['denumire'] ?? '');
+        $vars['partner.cui'] = $this->firstNonEmpty($partnerCompany['cui'] ?? '', $partner['cui'] ?? '');
+        $vars['partner.email'] = $this->firstNonEmpty($partnerCompany['email'] ?? '', $partner['email'] ?? '');
+        $vars['partner.phone'] = $this->firstNonEmpty($partnerCompany['telefon'] ?? '', $partner['telefon'] ?? '');
+        $vars['partner.address'] = $this->firstNonEmpty($partnerCompany['adresa'] ?? '', $partner['adresa'] ?? '');
+        $vars['partner.city'] = $this->firstNonEmpty($partnerCompany['localitate'] ?? '', $partner['localitate'] ?? '');
+        $vars['partner.county'] = $this->firstNonEmpty($partnerCompany['judet'] ?? '', $partner['judet'] ?? '');
+        $vars['partner.country'] = $this->firstNonEmpty($partnerCompany['tara'] ?? '', $partner['tara'] ?? '');
+        $vars['partner.reg_no'] = $this->firstNonEmpty($partnerCompany['nr_reg_comertului'] ?? '', $partner['nr_reg_comertului'] ?? '');
+        $vars['partner.bank'] = $this->firstNonEmpty(
+            $partnerCompany['bank_name'] ?? '',
+            $partner['bank_name'] ?? '',
+            $partnerCompany['banca'] ?? ''
+        );
+        $vars['partner.iban'] = $this->firstNonEmpty(
+            $partnerCompany['iban'] ?? '',
+            $partnerCompany['bank_account'] ?? '',
+            $partner['bank_account'] ?? ''
+        );
+        $vars['partner.representative_name'] = $this->firstNonEmpty($partnerCompany['representative_name'] ?? '', $partner['representative_name'] ?? '');
+        $vars['partner.representative_function'] = $this->firstNonEmpty($partnerCompany['representative_function'] ?? '', $partner['representative_function'] ?? '');
+        $vars['partner.bank_account'] = $this->resolveBankAccount($partnerCompany, $partner);
+        $vars['partner.bank_name'] = $this->resolveBankName($partnerCompany, $partner);
 
-        $vars['supplier.name'] = $supplier['denumire'] ?? '';
-        $vars['supplier.cui'] = $supplier['cui'] ?? '';
-        $vars['supplier.email'] = $supplierCompany['email'] ?? '';
-        $vars['supplier.phone'] = $supplierCompany['telefon'] ?? '';
+        $vars['supplier.name'] = $this->firstNonEmpty($supplierCompany['denumire'] ?? '', $supplier['denumire'] ?? '');
+        $vars['supplier.cui'] = $this->firstNonEmpty($supplierCompany['cui'] ?? '', $supplier['cui'] ?? '');
+        $vars['supplier.email'] = $this->firstNonEmpty($supplierCompany['email'] ?? '', $supplier['email'] ?? '');
+        $vars['supplier.phone'] = $this->firstNonEmpty($supplierCompany['telefon'] ?? '', $supplier['telefon'] ?? '');
+        $vars['supplier.representative_name'] = $this->firstNonEmpty($supplierCompany['representative_name'] ?? '', $supplier['representative_name'] ?? '');
+        $vars['supplier.representative_function'] = $this->firstNonEmpty($supplierCompany['representative_function'] ?? '', $supplier['representative_function'] ?? '');
+        $vars['supplier.bank_account'] = $this->resolveBankAccount($supplierCompany, $supplier);
+        $vars['supplier.bank_name'] = $this->resolveBankName($supplierCompany, $supplier);
 
-        $vars['client.name'] = $client['denumire'] ?? '';
-        $vars['client.cui'] = $client['cui'] ?? '';
-        $vars['client.email'] = $clientCompany['email'] ?? '';
-        $vars['client.phone'] = $clientCompany['telefon'] ?? '';
+        $vars['client.name'] = $this->firstNonEmpty($clientCompany['denumire'] ?? '', $client['denumire'] ?? '');
+        $vars['client.cui'] = $this->firstNonEmpty($clientCompany['cui'] ?? '', $client['cui'] ?? '');
+        $vars['client.email'] = $this->firstNonEmpty($clientCompany['email'] ?? '', $client['email'] ?? '');
+        $vars['client.phone'] = $this->firstNonEmpty($clientCompany['telefon'] ?? '', $client['telefon'] ?? '');
+        $vars['client.representative_name'] = $this->firstNonEmpty($clientCompany['representative_name'] ?? '', $client['representative_name'] ?? '');
+        $vars['client.representative_function'] = $this->firstNonEmpty($clientCompany['representative_function'] ?? '', $client['representative_function'] ?? '');
+        $vars['client.bank_account'] = $this->resolveBankAccount($clientCompany, $client);
+        $vars['client.bank_name'] = $this->resolveBankName($clientCompany, $client);
 
         $vars['relation.supplier_cui'] = $supplierCui ?? '';
         $vars['relation.client_cui'] = $clientCui ?? '';
@@ -139,18 +171,31 @@ class ContractTemplateVariables
             return [];
         }
 
-        if (Database::tableExists('companies')) {
-            $row = Database::fetchOne('SELECT cui, denumire FROM companies WHERE cui = :cui LIMIT 1', ['cui' => $cui]);
-            if ($row) {
-                return $row;
-            }
-        }
-
         if (!Database::tableExists('partners')) {
             return [];
         }
 
-        return Database::fetchOne('SELECT cui, denumire FROM partners WHERE cui = :cui LIMIT 1', ['cui' => $cui]) ?? [];
+        $select = [
+            'cui',
+            'denumire',
+            $this->optionalColumn('partners', 'representative_name'),
+            $this->optionalColumn('partners', 'representative_function'),
+            $this->optionalColumn('partners', 'bank_account'),
+            $this->optionalColumn('partners', 'bank_name'),
+            $this->optionalColumn('partners', 'email'),
+            $this->optionalColumn('partners', 'telefon'),
+            $this->optionalColumn('partners', 'adresa'),
+            $this->optionalColumn('partners', 'localitate'),
+            $this->optionalColumn('partners', 'judet'),
+            $this->optionalColumn('partners', 'tara'),
+            $this->optionalColumn('partners', 'nr_reg_comertului'),
+        ];
+
+        return Database::fetchOne(
+            'SELECT ' . implode(', ', $select) . '
+             FROM partners WHERE cui = :cui LIMIT 1',
+            ['cui' => $cui]
+        ) ?? [];
     }
 
     private function fetchCompany(string $cui): array
@@ -160,11 +205,69 @@ class ContractTemplateVariables
             return [];
         }
 
+        $select = [
+            'cui',
+            'denumire',
+            $this->optionalColumn('companies', 'nr_reg_comertului'),
+            $this->optionalColumn('companies', 'adresa'),
+            $this->optionalColumn('companies', 'localitate'),
+            $this->optionalColumn('companies', 'judet'),
+            $this->optionalColumn('companies', 'tara'),
+            $this->optionalColumn('companies', 'email'),
+            $this->optionalColumn('companies', 'telefon'),
+            $this->optionalColumn('companies', 'representative_name'),
+            $this->optionalColumn('companies', 'representative_function'),
+            $this->optionalColumn('companies', 'banca'),
+            $this->optionalColumn('companies', 'iban'),
+            $this->optionalColumn('companies', 'bank_account'),
+            $this->optionalColumn('companies', 'bank_name'),
+        ];
+
         return Database::fetchOne(
-            'SELECT cui, nr_reg_comertului, adresa, localitate, judet, tara, email, telefon, banca, iban
+            'SELECT ' . implode(', ', $select) . '
              FROM companies WHERE cui = :cui LIMIT 1',
             ['cui' => $cui]
         ) ?? [];
+    }
+
+    private function resolveBankAccount(array $company, array $partner): string
+    {
+        $value = $this->firstNonEmpty($company['bank_account'] ?? '', $partner['bank_account'] ?? '');
+        if ($value !== '') {
+            return $value;
+        }
+
+        return $this->firstNonEmpty($company['iban'] ?? '');
+    }
+
+    private function resolveBankName(array $company, array $partner): string
+    {
+        return $this->firstNonEmpty(
+            $company['bank_name'] ?? '',
+            $partner['bank_name'] ?? '',
+            $company['banca'] ?? ''
+        );
+    }
+
+    private function firstNonEmpty(string ...$values): string
+    {
+        foreach ($values as $value) {
+            $trimmed = trim($value);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return '';
+    }
+
+    private function optionalColumn(string $table, string $column): string
+    {
+        if (Database::columnExists($table, $column)) {
+            return $column;
+        }
+
+        return 'NULL AS ' . $column;
     }
 
     private function fetchRelationEmail(?string $supplierCui, ?string $clientCui): string

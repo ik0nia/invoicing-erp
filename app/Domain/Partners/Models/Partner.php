@@ -10,6 +10,10 @@ class Partner
     public int $id;
     public string $cui;
     public string $denumire;
+    public ?string $representative_name = null;
+    public ?string $representative_function = null;
+    public ?string $bank_account = null;
+    public ?string $bank_name = null;
     public float $default_commission = 0.0;
     public bool $is_supplier = false;
     public bool $is_client = false;
@@ -20,6 +24,10 @@ class Partner
         $partner->id = (int) $row['id'];
         $partner->cui = (string) $row['cui'];
         $partner->denumire = CompanyName::normalize((string) $row['denumire']);
+        $partner->representative_name = $row['representative_name'] ?? null;
+        $partner->representative_function = $row['representative_function'] ?? null;
+        $partner->bank_account = $row['bank_account'] ?? null;
+        $partner->bank_name = $row['bank_name'] ?? null;
         $partner->default_commission = (float) ($row['default_commission'] ?? 0);
         $partner->is_supplier = !empty($row['is_supplier']);
         $partner->is_client = !empty($row['is_client']);
@@ -121,7 +129,7 @@ class Partner
         return self::findByCui($cui);
     }
 
-    public static function upsert(string $cui, string $denumire): self
+    public static function upsert(string $cui, string $denumire, array $profile = []): self
     {
         $now = date('Y-m-d H:i:s');
         $denumire = CompanyName::normalize($denumire);
@@ -138,7 +146,44 @@ class Partner
             ]
         );
 
+        if (!empty($profile)) {
+            self::updateProfileFields($cui, $profile);
+        }
+
         return self::findByCui($cui);
+    }
+
+    public static function updateProfileFields(string $cui, array $profile): void
+    {
+        if ($cui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $columns = ['representative_name', 'representative_function', 'bank_account', 'bank_name'];
+        $updates = [];
+        $params = ['cui' => $cui];
+
+        foreach ($columns as $column) {
+            if (!array_key_exists($column, $profile) || !Database::columnExists('partners', $column)) {
+                continue;
+            }
+            $value = trim((string) ($profile[$column] ?? ''));
+            $updates[] = $column . ' = :' . $column;
+            $params[$column] = $value !== '' ? $value : null;
+        }
+
+        if (empty($updates)) {
+            return;
+        }
+        if (Database::columnExists('partners', 'updated_at')) {
+            $updates[] = 'updated_at = :updated_at';
+            $params['updated_at'] = date('Y-m-d H:i:s');
+        }
+
+        Database::execute(
+            'UPDATE partners SET ' . implode(', ', $updates) . ' WHERE cui = :cui',
+            $params
+        );
     }
 
     public static function updateFlags(string $cui, bool $isSupplier, bool $isClient): void

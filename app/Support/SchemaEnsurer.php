@@ -28,6 +28,14 @@ class SchemaEnsurer
             self::ensurePartnerFlags();
         });
 
+        self::runStep('companies_profile_columns', static function (): void {
+            self::ensureCompaniesProfileColumns();
+        });
+
+        self::runStep('partners_profile_columns', static function (): void {
+            self::ensurePartnersProfileColumns();
+        });
+
         self::runStep('enrollment_links_table', static function (): void {
             self::ensureEnrollmentLinksTable();
         });
@@ -144,6 +152,50 @@ class SchemaEnsurer
                 'partners_add_is_client'
             );
             unset(self::$columnCache['partners.is_client']);
+        }
+    }
+
+    public static function ensureCompaniesProfileColumns(): void
+    {
+        if (!self::tableExists('companies')) {
+            return;
+        }
+
+        $columns = [
+            'representative_name' => 'ALTER TABLE companies ADD COLUMN representative_name VARCHAR(128) NULL',
+            'representative_function' => 'ALTER TABLE companies ADD COLUMN representative_function VARCHAR(128) NULL',
+            'bank_account' => 'ALTER TABLE companies ADD COLUMN bank_account VARCHAR(64) NULL',
+            'bank_name' => 'ALTER TABLE companies ADD COLUMN bank_name VARCHAR(128) NULL',
+        ];
+
+        foreach ($columns as $column => $sql) {
+            if (self::columnExists('companies', $column)) {
+                continue;
+            }
+            self::safeExecute($sql, [], 'companies_add_' . $column);
+            unset(self::$columnCache['companies.' . $column]);
+        }
+    }
+
+    public static function ensurePartnersProfileColumns(): void
+    {
+        if (!self::tableExists('partners')) {
+            return;
+        }
+
+        $columns = [
+            'representative_name' => 'ALTER TABLE partners ADD COLUMN representative_name VARCHAR(128) NULL',
+            'representative_function' => 'ALTER TABLE partners ADD COLUMN representative_function VARCHAR(128) NULL',
+            'bank_account' => 'ALTER TABLE partners ADD COLUMN bank_account VARCHAR(64) NULL',
+            'bank_name' => 'ALTER TABLE partners ADD COLUMN bank_name VARCHAR(128) NULL',
+        ];
+
+        foreach ($columns as $column => $sql) {
+            if (self::columnExists('partners', $column)) {
+                continue;
+            }
+            self::safeExecute($sql, [], 'partners_add_' . $column);
+            unset(self::$columnCache['partners.' . $column]);
         }
     }
 
