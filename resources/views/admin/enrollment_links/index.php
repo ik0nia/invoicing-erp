@@ -21,6 +21,7 @@
     ];
     $newLink = $newLink ?? null;
     $userSuppliers = $userSuppliers ?? [];
+    $singleUserSupplierCui = count($userSuppliers) === 1 ? (string) $userSuppliers[0] : '';
     $listPath = $isPendingPage ? 'admin/inrolari' : 'admin/enrollment-links';
 
     $filterParams = [
@@ -114,22 +115,31 @@
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor (pentru client)</label>
-                <?php if (!empty($userSuppliers)): ?>
-                    <select id="supplier-cui" name="supplier_cui" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
-                        <option value="">Selecteaza furnizor</option>
-                        <?php foreach ($userSuppliers as $supplier): ?>
-                            <option value="<?= htmlspecialchars((string) $supplier) ?>"><?= htmlspecialchars((string) $supplier) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                <?php else: ?>
+                <div
+                    class="relative"
+                    data-supplier-picker
+                    data-search-url="<?= App\Support\Url::to('admin/enrollment-links/supplier-search') ?>"
+                    data-info-url="<?= App\Support\Url::to('admin/enrollment-links/supplier-info') ?>"
+                >
                     <input
                         id="supplier-cui"
-                        name="supplier_cui"
                         type="text"
                         class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        placeholder="CUI furnizor"
+                        placeholder="Cauta dupa denumire sau CUI"
+                        autocomplete="off"
+                        data-supplier-display
                     >
-                <?php endif; ?>
+                    <input
+                        type="hidden"
+                        name="supplier_cui"
+                        value="<?= htmlspecialchars($singleUserSupplierCui) ?>"
+                        data-supplier-value
+                    >
+                    <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-supplier-list></div>
+                    <p class="mt-1 text-xs text-slate-500" data-supplier-hint>
+                        Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.
+                    </p>
+                </div>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="commission">Comision (%)</label>
@@ -232,13 +242,7 @@
             <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                 Creeaza link public
             </button>
-            <button
-                type="button"
-                id="openapi-fetch"
-                class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-                Precompletare OpenAPI
-            </button>
+            <p class="text-xs text-slate-500">La creare, datele de precompletare se completeaza automat din OpenAPI pe baza CUI-ului.</p>
         </div>
     </form>
 <?php endif; ?>
@@ -570,51 +574,215 @@
 
 <script>
     (function () {
-        const button = document.getElementById('openapi-fetch');
-        const cuiInput = document.getElementById('prefill-cui');
-        const tokenInput = document.querySelector('input[name="_token"]');
-        if (!button || !cuiInput || !tokenInput) {
-            return;
-        }
-
-        const setValue = (id, value) => {
-            const input = document.getElementById(id);
-            if (!input || value === null || value === undefined || value === '') {
-                return;
-            }
-            input.value = value;
+        const escapeHtml = (value) => {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         };
 
-        button.addEventListener('click', () => {
-            const cui = cuiInput.value.trim();
-            if (!cui) {
-                alert('Completeaza CUI-ul pentru prefill.');
-                return;
+        const supplierPicker = document.querySelector('[data-supplier-picker]');
+        const commissionInput = document.getElementById('commission');
+        if (supplierPicker) {
+            const displayInput = supplierPicker.querySelector('[data-supplier-display]');
+            const hiddenInput = supplierPicker.querySelector('[data-supplier-value]');
+            const list = supplierPicker.querySelector('[data-supplier-list]');
+            const hint = supplierPicker.querySelector('[data-supplier-hint]');
+            const searchUrl = supplierPicker.getAttribute('data-search-url') || '';
+            const infoUrl = supplierPicker.getAttribute('data-info-url') || '';
+            let requestId = 0;
+            let timer = null;
+
+            const setHint = (text) => {
+                if (hint) {
+                    hint.textContent = text;
+                }
+            };
+
+            const formatCommission = (value) => {
+                const num = Number(value);
+                if (!Number.isFinite(num)) {
+                    return '';
+                }
+                return num.toFixed(4).replace(/\.?0+$/, '');
+            };
+
+            const clearList = () => {
+                if (!list) {
+                    return;
+                }
+                list.innerHTML = '';
+                list.classList.add('hidden');
+            };
+
+            const applySelection = (item, applyCommission) => {
+                if (!displayInput || !hiddenInput || !item) {
+                    return;
+                }
+                const cui = String(item.cui || '').replace(/\D+/g, '');
+                const name = String(item.name || '').trim();
+                const label = name && cui ? `${name} - ${cui}` : (String(item.label || cui).trim());
+                hiddenInput.value = cui;
+                displayInput.value = label;
+                if (applyCommission && commissionInput && Object.prototype.hasOwnProperty.call(item, 'default_commission')) {
+                    const commission = formatCommission(item.default_commission);
+                    if (commission !== '') {
+                        commissionInput.value = commission;
+                    }
+                }
+                if (cui !== '') {
+                    setHint(`Selectat: ${label}. Se transmite CUI: ${cui}.`);
+                } else {
+                    setHint('Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.');
+                }
+                clearList();
+            };
+
+            const renderItems = (items) => {
+                if (!list) {
+                    return;
+                }
+                if (!Array.isArray(items) || items.length === 0) {
+                    list.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                    list.classList.remove('hidden');
+                    return;
+                }
+                list.innerHTML = items
+                    .map((item) => {
+                        const name = escapeHtml(item.name || item.cui || '');
+                        const cui = escapeHtml(item.cui || '');
+                        const commission = item.default_commission !== null && item.default_commission !== undefined
+                            ? formatCommission(item.default_commission)
+                            : '';
+                        const commissionHtml = commission !== ''
+                            ? `<div class="text-[11px] text-emerald-700">Comision implicit: ${escapeHtml(commission)}%</div>`
+                            : '';
+                        return `
+                            <button
+                                type="button"
+                                class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                                data-supplier-item
+                                data-cui="${cui}"
+                                data-name="${escapeHtml(item.name || '')}"
+                                data-commission="${commission !== '' ? escapeHtml(commission) : ''}"
+                            >
+                                <div class="font-medium text-slate-900">${name}</div>
+                                <div class="text-xs text-slate-500">${cui}</div>
+                                ${commissionHtml}
+                            </button>
+                        `;
+                    })
+                    .join('');
+                list.classList.remove('hidden');
+            };
+
+            const fetchSuppliers = (term) => {
+                if (!searchUrl) {
+                    return;
+                }
+                const currentRequestId = ++requestId;
+                const url = new URL(searchUrl, window.location.origin);
+                url.searchParams.set('term', term);
+                url.searchParams.set('limit', '15');
+                fetch(url.toString(), { credentials: 'same-origin' })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (currentRequestId !== requestId) {
+                            return;
+                        }
+                        if (!data || data.success !== true) {
+                            renderItems([]);
+                            return;
+                        }
+                        renderItems(data.items || []);
+                    })
+                    .catch(() => {
+                        if (currentRequestId !== requestId) {
+                            return;
+                        }
+                        renderItems([]);
+                    });
+            };
+
+            const resolveSupplierByCui = (cui, applyCommission) => {
+                const normalized = String(cui || '').replace(/\D+/g, '');
+                if (!normalized || !infoUrl) {
+                    return;
+                }
+                const url = new URL(infoUrl, window.location.origin);
+                url.searchParams.set('cui', normalized);
+                fetch(url.toString(), { credentials: 'same-origin' })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (!data || data.success !== true || !data.item) {
+                            return;
+                        }
+                        applySelection(data.item, applyCommission);
+                    })
+                    .catch(() => {});
+            };
+
+            if (displayInput && hiddenInput) {
+                const parentForm = displayInput.closest('form');
+                if (parentForm) {
+                    parentForm.addEventListener('submit', () => {
+                        if (hiddenInput.value.trim() !== '') {
+                            return;
+                        }
+                        const maybeCui = displayInput.value.replace(/\D+/g, '');
+                        if (maybeCui !== '') {
+                            hiddenInput.value = maybeCui;
+                        }
+                    });
+                }
+                displayInput.addEventListener('focus', () => {
+                    fetchSuppliers(displayInput.value.trim());
+                });
+                displayInput.addEventListener('input', () => {
+                    hiddenInput.value = '';
+                    setHint('Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.');
+                    const query = displayInput.value.trim();
+                    if (timer) {
+                        clearTimeout(timer);
+                    }
+                    timer = setTimeout(() => {
+                        fetchSuppliers(query);
+                    }, 200);
+                });
+                displayInput.addEventListener('blur', () => {
+                    window.setTimeout(() => {
+                        clearList();
+                        if (hiddenInput.value.trim() !== '') {
+                            return;
+                        }
+                        const maybeCui = displayInput.value.replace(/\D+/g, '');
+                        if (maybeCui !== '') {
+                            resolveSupplierByCui(maybeCui, true);
+                        }
+                    }, 150);
+                });
             }
-            const body = new URLSearchParams();
-            body.append('_token', tokenInput.value);
-            body.append('cui', cui);
-            fetch('<?= App\Support\Url::to('admin/enrollment-links/lookup') ?>', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-            })
-                .then((response) => response.json())
-                .then((data) => {
-                    if (!data || !data.success) {
-                        alert(data && data.message ? data.message : 'Eroare la OpenAPI.');
+            if (list) {
+                list.addEventListener('click', (event) => {
+                    const target = event.target.closest('[data-supplier-item]');
+                    if (!target) {
                         return;
                     }
-                    const payload = data.data || {};
-                    setValue('prefill-denumire', payload.denumire || '');
-                    setValue('prefill-nr', payload.nr_reg_comertului || '');
-                    setValue('prefill-adresa', payload.adresa || '');
-                    setValue('prefill-localitate', payload.localitate || '');
-                    setValue('prefill-judet', payload.judet || '');
-                    setValue('prefill-telefon', payload.telefon || '');
-                })
-                .catch(() => alert('Eroare la OpenAPI.'));
-        });
+                    const commissionRaw = target.getAttribute('data-commission');
+                    const item = {
+                        cui: target.getAttribute('data-cui') || '',
+                        name: target.getAttribute('data-name') || '',
+                        default_commission: commissionRaw !== null && commissionRaw !== '' ? commissionRaw : null,
+                    };
+                    applySelection(item, true);
+                });
+            }
+            if (hiddenInput && hiddenInput.value.trim() !== '') {
+                resolveSupplierByCui(hiddenInput.value.trim(), true);
+            }
+        }
 
         const copyButton = document.getElementById('enroll-copy');
         const output = document.getElementById('enroll-link-output');

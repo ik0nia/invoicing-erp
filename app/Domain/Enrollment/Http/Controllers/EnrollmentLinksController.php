@@ -132,7 +132,15 @@ class EnrollmentLinksController
         $type = trim((string) ($_POST['type'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $commissionRaw = trim((string) ($_POST['commission_percent'] ?? ''));
-        $commission = $commissionRaw !== '' ? (float) str_replace(',', '.', $commissionRaw) : null;
+        $commission = null;
+        if ($commissionRaw !== '') {
+            $commissionValue = str_replace(',', '.', $commissionRaw);
+            if (!is_numeric($commissionValue)) {
+                Session::flash('error', 'Comision invalid.');
+                Response::redirect('/admin/enrollment-links');
+            }
+            $commission = (float) $commissionValue;
+        }
         $expiresAt = trim((string) ($_POST['expires_at'] ?? ''));
 
         if (!in_array($type, ['supplier', 'client'], true)) {
@@ -158,6 +166,12 @@ class EnrollmentLinksController
             Session::flash('error', 'Completeaza furnizorul pentru client.');
             Response::redirect('/admin/enrollment-links');
         }
+        if ($commission === null && $supplierCui !== '') {
+            $defaultCommission = $this->defaultCommissionForSupplier($supplierCui);
+            if ($defaultCommission !== null) {
+                $commission = $defaultCommission;
+            }
+        }
 
         $prefill = [
             'cui' => preg_replace('/\D+/', '', (string) ($_POST['prefill_cui'] ?? '')),
@@ -169,6 +183,7 @@ class EnrollmentLinksController
             'telefon' => trim((string) ($_POST['prefill_telefon'] ?? '')),
             'email' => trim((string) ($_POST['prefill_email'] ?? '')),
         ];
+        $prefill = $this->enrichPrefillFromOpenApi($prefill);
         $prefill = array_filter($prefill, static fn ($value) => $value !== '' && $value !== null);
         $prefillJson = !empty($prefill) ? json_encode($prefill, JSON_UNESCAPED_UNICODE) : null;
 
@@ -269,6 +284,38 @@ class EnrollmentLinksController
         Session::flash('status', 'Link public creat.');
         Session::flash('public_link', $link);
         Response::redirect('/admin/enrollment-links');
+    }
+
+    public function supplierSearch(): void
+    {
+        $user = $this->requireEnrollmentRole();
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(25, max(1, (int) ($_GET['limit'] ?? 15)));
+        $items = $this->searchSuppliers($user, $term, $limit);
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
+    public function supplierInfo(): void
+    {
+        $user = $this->requireEnrollmentRole();
+        $cui = preg_replace('/\D+/', '', (string) ($_GET['cui'] ?? ''));
+        if ($cui === '') {
+            $this->json(['success' => false, 'message' => 'CUI furnizor invalid.'], 400);
+        }
+
+        $item = $this->findSupplierByCui($user, $cui);
+        if ($item === null) {
+            $this->json(['success' => false, 'message' => 'Furnizorul nu a fost gasit.'], 404);
+        }
+
+        $this->json([
+            'success' => true,
+            'item' => $item,
+        ]);
     }
 
     public function disable(): void
@@ -539,6 +586,207 @@ class EnrollmentLinksController
         }
 
         $this->json(['success' => true, 'data' => $response['data']]);
+    }
+
+    private function searchSuppliers(\App\Domain\Users\Models\User $user, string $term, int $limit): array
+    {
+        if (!Database::tableExists('partners')) {
+            return [];
+        }
+
+        $allowedCuis = $this->allowedSupplierCuisForUser($user);
+        if (is_array($allowedCuis) && empty($allowedCuis)) {
+            return [];
+        }
+
+        $rows = $this->querySuppliers($term, $limit, $allowedCuis, true);
+        if (empty($rows)) {
+            $rows = $this->querySuppliers($term, $limit, $allowedCuis, false);
+        }
+
+        return array_map(fn (array $row) => $this->mapSupplierLookupRow($row), $rows);
+    }
+
+    private function findSupplierByCui(\App\Domain\Users\Models\User $user, string $cui): ?array
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '') {
+            return null;
+        }
+
+        $allowedCuis = $this->allowedSupplierCuisForUser($user);
+        if (is_array($allowedCuis) && !in_array($cui, $allowedCuis, true)) {
+            return null;
+        }
+
+        if (Database::tableExists('partners')) {
+            $selectDefaultCommission = Database::columnExists('partners', 'default_commission')
+                ? 'p.default_commission'
+                : '0 AS default_commission';
+            $row = Database::fetchOne(
+                'SELECT p.cui, p.denumire, ' . $selectDefaultCommission . '
+                 FROM partners p
+                 WHERE p.cui = :cui
+                 LIMIT 1',
+                ['cui' => $cui]
+            );
+            if ($row) {
+                return $this->mapSupplierLookupRow($row);
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $row = Database::fetchOne(
+                'SELECT cui, denumire
+                 FROM companies
+                 WHERE cui = :cui
+                 LIMIT 1',
+                ['cui' => $cui]
+            );
+            if ($row) {
+                return $this->mapSupplierLookupRow([
+                    'cui' => (string) ($row['cui'] ?? ''),
+                    'denumire' => (string) ($row['denumire'] ?? ''),
+                    'default_commission' => null,
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    private function querySuppliers(string $term, int $limit, ?array $allowedCuis, bool $enforceSupplierFlag): array
+    {
+        $selectDefaultCommission = Database::columnExists('partners', 'default_commission')
+            ? 'p.default_commission'
+            : '0 AS default_commission';
+
+        $where = [];
+        $params = [];
+        if ($term !== '') {
+            $where[] = '(p.cui LIKE :term OR p.denumire LIKE :term)';
+            $params['term'] = '%' . $term . '%';
+        }
+        if ($enforceSupplierFlag && Database::columnExists('partners', 'is_supplier')) {
+            $where[] = 'p.is_supplier = 1';
+        }
+        if (is_array($allowedCuis)) {
+            if (empty($allowedCuis)) {
+                return [];
+            }
+            $placeholders = [];
+            foreach (array_values($allowedCuis) as $index => $cui) {
+                $key = 'ac' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $where[] = 'p.cui IN (' . implode(',', $placeholders) . ')';
+        }
+
+        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $sql = 'SELECT p.cui, p.denumire, ' . $selectDefaultCommission . '
+                FROM partners p
+                ' . $whereSql . '
+                ORDER BY p.denumire ASC, p.cui ASC
+                LIMIT ' . (int) $limit;
+
+        return Database::fetchAll($sql, $params);
+    }
+
+    private function mapSupplierLookupRow(array $row): array
+    {
+        $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+        $name = trim((string) ($row['denumire'] ?? $row['name'] ?? ''));
+        if ($name === '') {
+            $name = $cui;
+        }
+
+        $defaultCommission = null;
+        if (array_key_exists('default_commission', $row) && $row['default_commission'] !== null && $row['default_commission'] !== '') {
+            $defaultCommission = (float) $row['default_commission'];
+        }
+
+        return [
+            'cui' => $cui,
+            'name' => $name,
+            'label' => $name . ' - ' . $cui,
+            'default_commission' => $defaultCommission,
+        ];
+    }
+
+    private function allowedSupplierCuisForUser(\App\Domain\Users\Models\User $user): ?array
+    {
+        if (!$user->isSupplierUser()) {
+            return null;
+        }
+        UserSupplierAccess::ensureTable();
+        $rows = UserSupplierAccess::suppliersForUser($user->id);
+        $allowed = [];
+        foreach ($rows as $row) {
+            $cui = preg_replace('/\D+/', '', (string) $row);
+            if ($cui !== '') {
+                $allowed[$cui] = true;
+            }
+        }
+
+        return array_keys($allowed);
+    }
+
+    private function enrichPrefillFromOpenApi(array $prefill): array
+    {
+        $cui = preg_replace('/\D+/', '', (string) ($prefill['cui'] ?? ''));
+        if ($cui === '') {
+            return $prefill;
+        }
+
+        $service = new CompanyLookupService();
+        $response = $service->lookupByCui($cui);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : null;
+        if (!is_array($data)) {
+            return $prefill;
+        }
+
+        $fieldMap = [
+            'cui' => 'cui',
+            'denumire' => 'denumire',
+            'nr_reg_comertului' => 'nr_reg_comertului',
+            'adresa' => 'adresa',
+            'localitate' => 'localitate',
+            'judet' => 'judet',
+            'telefon' => 'telefon',
+            'email' => 'email',
+        ];
+        foreach ($fieldMap as $target => $source) {
+            $currentValue = trim((string) ($prefill[$target] ?? ''));
+            if ($currentValue !== '') {
+                continue;
+            }
+            $candidate = trim((string) ($data[$source] ?? ''));
+            if ($candidate !== '') {
+                $prefill[$target] = $candidate;
+            }
+        }
+        $prefill['cui'] = $cui;
+
+        return $prefill;
+    }
+
+    private function defaultCommissionForSupplier(string $supplierCui): ?float
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '' || !Database::tableExists('partners') || !Database::columnExists('partners', 'default_commission')) {
+            return null;
+        }
+
+        $row = Database::fetchOne(
+            'SELECT default_commission FROM partners WHERE cui = :cui LIMIT 1',
+            ['cui' => $supplierCui]
+        );
+        if (!$row) {
+            return null;
+        }
+
+        return (float) ($row['default_commission'] ?? 0.0);
     }
 
     private function requireEnrollmentRole(): \App\Domain\Users\Models\User
