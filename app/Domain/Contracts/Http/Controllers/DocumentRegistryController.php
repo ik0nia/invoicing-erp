@@ -27,9 +27,20 @@ class DocumentRegistryController
         if (Database::tableExists('document_registry')) {
             $rows = Database::fetchAll('SELECT * FROM document_registry ORDER BY doc_type ASC');
         }
+        $filters = [
+            'doc_type' => $this->sanitizeDocType((string) ($_GET['doc_type'] ?? '')),
+        ];
+        $docTypeOptions = array_values(array_map(
+            static fn (array $row): string => (string) ($row['doc_type'] ?? ''),
+            $rows
+        ));
+        $documents = $this->loadDocuments($filters['doc_type']);
 
         Response::view('admin/contracts/document_registry', [
             'rows' => $rows,
+            'filters' => $filters,
+            'docTypeOptions' => $docTypeOptions,
+            'documents' => $documents,
         ]);
     }
 
@@ -212,5 +223,114 @@ class DocumentRegistryController
         }
 
         return strtoupper(substr($series, 0, 16));
+    }
+
+    private function loadDocuments(string $docType): array
+    {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        $where = [];
+        $params = [];
+        if ($docType !== '') {
+            $where[] = 'doc_type = :doc_type';
+            $params['doc_type'] = $docType;
+        }
+        $whereSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
+
+        $documents = Database::fetchAll(
+            'SELECT id, title, doc_type, contract_date, doc_no, doc_series, doc_full_no, status, partner_cui, supplier_cui, client_cui, created_at
+             FROM contracts'
+            . $whereSql .
+            ' ORDER BY created_at DESC, id DESC LIMIT 500',
+            $params
+        );
+        if (empty($documents)) {
+            return [];
+        }
+
+        $cuiSet = [];
+        foreach ($documents as $index => $document) {
+            $companyCui = $this->resolveCompanyCui($document);
+            $documents[$index]['registry_company_cui'] = $companyCui !== '' ? $companyCui : null;
+            if ($companyCui !== '') {
+                $cuiSet[$companyCui] = true;
+            }
+        }
+
+        $companyNames = $this->fetchCompanyNames(array_keys($cuiSet));
+        foreach ($documents as $index => $document) {
+            $companyCui = (string) ($document['registry_company_cui'] ?? '');
+            $documents[$index]['registry_company_name'] = $companyCui !== '' && isset($companyNames[$companyCui])
+                ? $companyNames[$companyCui]
+                : '—';
+        }
+
+        return $documents;
+    }
+
+    private function resolveCompanyCui(array $document): string
+    {
+        $candidates = [
+            (string) ($document['partner_cui'] ?? ''),
+            (string) ($document['client_cui'] ?? ''),
+            (string) ($document['supplier_cui'] ?? ''),
+        ];
+        foreach ($candidates as $candidate) {
+            $cui = preg_replace('/\D+/', '', $candidate);
+            if ($cui !== '') {
+                return $cui;
+            }
+        }
+
+        return '';
+    }
+
+    private function fetchCompanyNames(array $cuis): array
+    {
+        if (empty($cuis)) {
+            return [];
+        }
+
+        $names = [];
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($cuis) as $index => $cui) {
+            $key = 'c' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+        $inSql = implode(',', $placeholders);
+
+        if (Database::tableExists('companies')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM companies WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '') {
+                    $names[$cui] = $name;
+                }
+            }
+        }
+
+        if (Database::tableExists('partners')) {
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire FROM partners WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($rows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '' && !isset($names[$cui])) {
+                    $names[$cui] = $name;
+                }
+            }
+        }
+
+        return $names;
     }
 }
