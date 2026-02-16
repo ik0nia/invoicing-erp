@@ -843,6 +843,7 @@ class InvoiceController
             if ($labelText === '') {
                 $labelText = 'Pachet de produse';
             }
+            $row['is_storno'] = stripos($labelText, '[STORNO]') !== false;
             $label = $labelText . ' #' . (int) ($row['package_no'] ?? 0);
             $key = $this->normalizeSagaName($label);
             $saga = $sagaProducts[$key] ?? null;

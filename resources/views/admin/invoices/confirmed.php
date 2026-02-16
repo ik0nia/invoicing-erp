@@ -8,7 +8,7 @@
     <div>
         <h1 class="text-xl font-semibold text-slate-900">Pachete confirmate</h1>
         <p class="mt-1 text-sm text-slate-600">
-            Pachetele cu toate produsele asociate sunt evidentiate cu violet.
+            Pachetele cu toate produsele asociate sunt evidentiate cu violet. Pachetele storno sunt evidentiate cu rosu.
         </p>
     </div>
     <a
@@ -134,8 +134,16 @@
                         $totalValue = (float) ($stat['total_vat'] ?? 0);
                         $sagaMismatch = $hasSagaMatch && abs($sagaValueNumeric - $totalValue) > 0.01;
                         $sagaClass = $sagaMismatch ? 'text-rose-600 font-semibold' : 'text-slate-600';
+                        $isStorno = !empty($row['is_storno']);
                     ?>
-                    <?php $rowClass = !empty($row['all_saga']) ? 'border-b border-slate-100 bg-violet-50' : 'border-b border-slate-100'; ?>
+                    <?php
+                        $rowClass = 'border-b border-slate-100';
+                        if ($isStorno) {
+                            $rowClass = 'border-b border-rose-100 bg-rose-50';
+                        } elseif (!empty($row['all_saga'])) {
+                            $rowClass = 'border-b border-slate-100 bg-violet-50';
+                        }
+                    ?>
                     <tr class="<?= $rowClass ?>">
                         <td class="px-3 py-2">
                             <a
@@ -159,12 +167,17 @@
                                     BIFA VERDE
                                 </span>
                             <?php endif; ?>
+                            <?php if ($isStorno): ?>
+                                <span class="mr-1 inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                    STORNO
+                                </span>
+                            <?php endif; ?>
                             <?= htmlspecialchars($label) ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
                             <?= (int) ($stat['line_count'] ?? 0) ?>
                         </td>
-                        <td class="px-3 py-2 text-slate-600">
+                        <td class="px-3 py-2 <?= $isStorno ? 'font-semibold text-rose-700' : 'text-slate-600' ?>">
                             <?= number_format((float) ($stat['total_vat'] ?? 0), 2, '.', ' ') ?> RON
                         </td>
                         <td class="px-3 py-2 hidden <?= $sagaClass ?>" data-saga-col>
