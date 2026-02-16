@@ -1,5 +1,5 @@
 <?php
-    $title = !empty($isPendingPage) ? 'Inrolari in asteptare' : 'Link-uri publice';
+    $title = !empty($isPendingPage) ? 'Inrolari in asteptare' : 'Adauga partener';
     $rows = $rows ?? [];
     $canApproveOnboarding = !empty($canApproveOnboarding);
     $isPendingPage = !empty($isPendingPage);
@@ -44,7 +44,7 @@
 
 <div class="flex items-center justify-between">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900"><?= $isPendingPage ? 'Inrolari in asteptare' : 'Link-uri publice' ?></h1>
+        <h1 class="text-xl font-semibold text-slate-900"><?= $isPendingPage ? 'Inrolari in asteptare' : 'Adauga partener' ?></h1>
         <p class="mt-1 text-sm text-slate-500">
             <?= $isPendingPage ? 'Cereri trimise spre activare manuala de staff intern.' : 'Gestioneaza linkurile publice pentru onboarding si documente.' ?>
         </p>
@@ -52,17 +52,6 @@
 </div>
 
 <?php if (!$isPendingPage): ?>
-    <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        <div class="font-semibold">Ce este un link public?</div>
-        <ul class="mt-2 list-disc space-y-1 pl-5">
-            <li>Linkul public permite completarea datelor, contactelor si accesul la contracte.</li>
-            <li>Este multi-utilizare si poate fi folosit ori de cate ori este nevoie.</li>
-            <li>Pentru furnizor se foloseste la inrolarea unui furnizor.</li>
-            <li>Pentru client se foloseste la inrolarea unui client asociat unui furnizor.</li>
-            <li>Linkul poate fi dezactivat sau regenerat oricand.</li>
-        </ul>
-    </div>
-
     <?php if (!empty($newLink)): ?>
         <div class="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             Link public (afisat o singura data):
