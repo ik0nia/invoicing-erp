@@ -489,9 +489,7 @@
                                         <td class="px-3 py-2 text-slate-600">
                                             <div class="flex flex-wrap gap-3 text-xs font-semibold">
                                                 <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Previzualizeaza</a>
-                                                <?php if ($hasGeneratedPdf || $pdfAvailable): ?>
-                                                    <a href="<?= htmlspecialchars($downloadGenerated) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
-                                                <?php endif; ?>
+                                                <a href="<?= htmlspecialchars($downloadGenerated) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
                                                 <?php if ($hasSigned): ?>
                                                     <a href="<?= htmlspecialchars($downloadSigned) ?>" class="text-blue-700 hover:text-blue-800">Descarca semnat</a>
                                                 <?php endif; ?>

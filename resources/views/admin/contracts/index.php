@@ -185,10 +185,6 @@
                         $statusKey = (string) ($contract['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                         $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
-                        $downloadReady = !empty($contract['signed_upload_path'])
-                            || !empty($contract['signed_file_path'])
-                            || !empty($contract['generated_pdf_path'])
-                            || $pdfAvailable;
                         $docNoDisplay = trim((string) ($contract['doc_full_no'] ?? ''));
                         if ($docNoDisplay === '') {
                             $docNo = (int) ($contract['doc_no'] ?? 0);
@@ -225,11 +221,7 @@
                         </td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($relation !== '' ? $relation : '—') ?></td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?php if ($downloadReady): ?>
-                                <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
-                            <?php else: ?>
-                                —
-                            <?php endif; ?>
+                            <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                         </td>
                         <td class="px-3 py-2 text-right">
                             <?php if (($contract['status'] ?? '') !== 'approved'): ?>
