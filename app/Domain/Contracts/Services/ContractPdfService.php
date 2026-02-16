@@ -155,6 +155,63 @@ class ContractPdfService
         return $relative;
     }
 
+    public function generatePdfBinaryFromHtml(string $html, string $filenamePrefix = 'document'): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $outputDir = $basePath . '/storage/cache/pdf';
+        if (!is_dir($outputDir)) {
+            @mkdir($outputDir, 0775, true);
+        }
+        if (!is_dir($outputDir) || !is_writable($outputDir)) {
+            return '';
+        }
+
+        $safePrefix = strtolower(trim(preg_replace('/[^a-zA-Z0-9_-]+/', '-', $filenamePrefix), '-'));
+        if ($safePrefix === '') {
+            $safePrefix = 'document';
+        }
+        $pdfName = $safePrefix . '-' . bin2hex(random_bytes(8)) . '.pdf';
+        $pdfAbsolute = $outputDir . '/' . $pdfName;
+
+        $generator = '';
+        $binary = $this->resolveWkhtmltopdfPath();
+        $hasWkhtmltopdf = $binary !== '';
+        if ($hasWkhtmltopdf && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, 0)) {
+            $generator = 'wkhtmltopdf';
+        }
+
+        $dompdfStatus = $this->dompdfAvailability(0, false);
+        $hasDompdf = (bool) ($dompdfStatus['available'] ?? false);
+        if ($generator === '' && $hasDompdf && $this->generateWithDompdf($html, $pdfAbsolute, 0)) {
+            $generator = 'dompdf';
+        }
+
+        if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
+            @unlink($pdfAbsolute);
+            Logger::logWarning('template_pdf_tool_missing', [
+                'has_wkhtmltopdf' => $hasWkhtmltopdf,
+                'has_dompdf' => $hasDompdf,
+                'dompdf_reason' => (string) ($dompdfStatus['reason'] ?? ''),
+                'dompdf_missing_extensions' => (array) ($dompdfStatus['missing_extensions'] ?? []),
+            ]);
+
+            return '';
+        }
+
+        $binaryPdf = @file_get_contents($pdfAbsolute);
+        @unlink($pdfAbsolute);
+        if (!is_string($binaryPdf) || $binaryPdf === '') {
+            return '';
+        }
+
+        return $binaryPdf;
+    }
+
     private function generateWithWkhtmltopdf(string $binary, string $html, string $pdfAbsolute, int $contractId): bool
     {
         $tmpHtml = tempnam(sys_get_temp_dir(), 'ctr_pdf_');

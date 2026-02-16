@@ -140,6 +140,12 @@
         <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
             Salveaza modificari
         </button>
+        <a
+            href="<?= App\Support\Url::to('admin/contract-templates/download-draft?id=' . (int) ($template['id'] ?? 0)) ?>"
+            class="rounded border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+        >
+            Descarca PDF draft
+        </a>
     </div>
 </form>
 

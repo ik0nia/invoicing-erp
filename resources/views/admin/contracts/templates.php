@@ -198,6 +198,12 @@
                             >
                                 Editeaza
                             </a>
+                            <a
+                                href="<?= App\Support\Url::to('admin/contract-templates/download-draft?id=' . (int) $template['id']) ?>"
+                                class="ml-3 text-xs font-semibold text-blue-700 hover:text-blue-800"
+                            >
+                                PDF draft
+                            </a>
                             <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/duplicate') ?>" class="inline-block ml-3">
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="id" value="<?= (int) $template['id'] ?>">
