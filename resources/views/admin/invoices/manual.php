@@ -414,22 +414,61 @@
             });
         };
 
-        addButton.addEventListener('click', () => {
+        const appendLine = (focusFirstField = false) => {
             const index = body.querySelectorAll('[data-line-row]').length;
             body.insertAdjacentHTML('beforeend', buildRow(index));
             refreshRemove();
             bindLineInputs();
             requestTotals();
-        });
+            if (focusFirstField) {
+                const rows = body.querySelectorAll('[data-line-row]');
+                const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+                const firstInput = lastRow ? lastRow.querySelector('input[name*="[product_name]"]') : null;
+                if (firstInput) {
+                    firstInput.focus();
+                }
+            }
+        };
 
-        refreshRemove();
+        const handleTaxPercentTab = (event) => {
+            if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+                return;
+            }
+            const row = event.target.closest('[data-line-row]');
+            if (!row) {
+                return;
+            }
+            const rows = Array.from(body.querySelectorAll('[data-line-row]'));
+            const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+            if (lastRow !== row) {
+                return;
+            }
+            event.preventDefault();
+            appendLine(true);
+        };
+
+        addButton.addEventListener('click', () => {
+            appendLine(false);
+        });
 
         const bindLineInputs = () => {
             body.querySelectorAll('input, select').forEach((input) => {
-                input.addEventListener('input', scheduleTotals);
-                input.addEventListener('change', scheduleTotals);
+                if (!input.dataset.totalsInputBound) {
+                    input.addEventListener('input', scheduleTotals);
+                    input.dataset.totalsInputBound = '1';
+                }
+                if (!input.dataset.totalsChangeBound) {
+                    input.addEventListener('change', scheduleTotals);
+                    input.dataset.totalsChangeBound = '1';
+                }
+                if (input.matches('select[name*="[tax_percent]"]') && !input.dataset.taxTabBound) {
+                    input.addEventListener('keydown', handleTaxPercentTab);
+                    input.dataset.taxTabBound = '1';
+                }
             });
         };
+
+        refreshRemove();
 
         const totals = {
             without: document.querySelector('[data-total-without]'),
