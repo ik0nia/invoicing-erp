@@ -581,26 +581,31 @@ class ContractPdfService
             font-size: 12px;
             line-height: 1.45;
         }
-        table.print-layout {
+        .print-document {
             width: 100%;
-            border-collapse: collapse;
-        }
-        table.print-layout thead {
-            display: table-header-group;
-        }
-        table.print-layout tbody {
-            display: table-row-group;
         }
         .print-header {
             border-bottom: 1px solid #cbd5e1;
             padding: 0 0 10px 0;
             margin-bottom: 12px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .print-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             gap: 18px;
+        }
+        .print-logo,
+        .print-logo-fallback,
+        .print-company {
+            display: table-cell;
+            vertical-align: top;
+        }
+        .print-logo,
+        .print-logo-fallback {
+            width: 45%;
         }
         .print-logo img {
             display: block;
@@ -630,26 +635,17 @@ class ContractPdfService
         .print-content {
             width: 100%;
         }
+        .print-content > *:first-child {
+            margin-top: 0;
+        }
     </style>
     ' . $styleBlocks . '
 </head>
 <body>
-    <table class="print-layout">
-        <thead>
-            <tr>
-                <td>
-                    ' . $headerHtml . '
-                </td>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>
-                    <div class="print-content">' . $bodyHtml . '</div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="print-document">
+        ' . $headerHtml . '
+        <div class="print-content">' . $bodyHtml . '</div>
+    </div>
 </body>
 </html>';
     }
