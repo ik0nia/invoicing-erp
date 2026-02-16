@@ -198,6 +198,14 @@
                                 $docNoDisplay = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
                             }
                         }
+                        $contractDateRaw = trim((string) ($contract['contract_date'] ?? ''));
+                        $contractDateDisplay = '—';
+                        if ($contractDateRaw !== '') {
+                            $contractTimestamp = strtotime($contractDateRaw);
+                            $contractDateDisplay = $contractTimestamp !== false
+                                ? date('d.m.Y', $contractTimestamp)
+                                : $contractDateRaw;
+                        }
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
@@ -209,7 +217,7 @@
                                 <span class="text-amber-700">Fara numar</span>
                             <?php endif; ?>
                         </td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['contract_date'] ?? '—')) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                 <?= htmlspecialchars($statusLabel) ?>

@@ -91,6 +91,7 @@ class ContractTemplateVariables
         if ($contractDate === '') {
             $contractDate = date('Y-m-d');
         }
+        $contractDateDisplay = $this->formatDateForDisplay($contractDate);
         $docNo = isset($contractContext['doc_no']) && (int) $contractContext['doc_no'] > 0
             ? (string) (int) $contractContext['doc_no']
             : '';
@@ -103,7 +104,7 @@ class ContractTemplateVariables
 
         $vars['contract.title'] = (string) ($contractContext['title'] ?? '');
         $vars['contract.created_at'] = (string) ($contractContext['created_at'] ?? date('Y-m-d'));
-        $vars['contract.date'] = $contractDate;
+        $vars['contract.date'] = $contractDateDisplay;
         $vars['contract.doc_type'] = $docType;
         $vars['contract.no'] = $docNo;
         $vars['contract.series'] = $docSeries;
@@ -115,6 +116,20 @@ class ContractTemplateVariables
         $vars['date.today'] = date('Y-m-d');
 
         return $vars;
+    }
+
+    private function formatDateForDisplay(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return $value;
+        }
+
+        return date('d.m.Y', $timestamp);
     }
 
     private function fetchPartner(string $cui): array

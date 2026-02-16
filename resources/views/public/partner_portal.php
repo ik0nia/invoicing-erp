@@ -444,6 +444,14 @@
                                                 $docNoDisplay = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
                                             }
                                         }
+                                        $contractDateRaw = trim((string) ($contract['contract_date'] ?? ''));
+                                        $contractDateDisplay = '—';
+                                        if ($contractDateRaw !== '') {
+                                            $contractTimestamp = strtotime($contractDateRaw);
+                                            $contractDateDisplay = $contractTimestamp !== false
+                                                ? date('d.m.Y', $contractTimestamp)
+                                                : $contractDateRaw;
+                                        }
                                         $previewUrl = App\Support\Url::to('p/' . $token . '/preview?id=' . (int) $contract['id']);
                                         $downloadGenerated = App\Support\Url::to('p/' . $token . '/download?kind=generated&id=' . (int) $contract['id']);
                                         $downloadSigned = App\Support\Url::to('p/' . $token . '/download?kind=signed&id=' . (int) $contract['id']);
@@ -458,7 +466,7 @@
                                                 <span class="text-amber-700">Fara numar</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['contract_date'] ?? '—')) ?></td>
+                                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                                         <td class="px-3 py-2 text-slate-600"><?= $isRequired ? 'Da' : 'Nu' ?></td>
                                         <td class="px-3 py-2 text-slate-600">
                                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
