@@ -456,6 +456,51 @@
             }
         };
 
+        const isRowEmptyForEscapeRemove = (row) => {
+            if (!row) {
+                return false;
+            }
+            const productName = String(row.querySelector('input[name*="[product_name]"]')?.value || '').trim();
+            const quantity = String(row.querySelector('input[name*="[quantity]"]')?.value || '').trim();
+            const unitPrice = String(row.querySelector('input[name*="[unit_price]"]')?.value || '').trim();
+            const unitCode = String(row.querySelector('select[name*="[unit_code]"]')?.value || 'BUC').trim().toUpperCase();
+            const taxPercent = String(row.querySelector('select[name*="[tax_percent]"]')?.value || '21').trim();
+            if (productName !== '' || quantity !== '' || unitPrice !== '') {
+                return false;
+            }
+
+            return unitCode === 'BUC' && taxPercent === '21';
+        };
+
+        const handleEscapeRemoveLastEmptyLine = (event) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            const row = event.target.closest('[data-line-row]');
+            if (!row) {
+                return;
+            }
+            const rows = Array.from(body.querySelectorAll('[data-line-row]'));
+            const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+            if (lastRow !== row || rows.length <= 1 || !isRowEmptyForEscapeRemove(row)) {
+                return;
+            }
+
+            event.preventDefault();
+            row.remove();
+            requestTotals();
+            const remainingRows = Array.from(body.querySelectorAll('[data-line-row]'));
+            const remainingLastRow = remainingRows.length > 0 ? remainingRows[remainingRows.length - 1] : null;
+            const focusInput = remainingLastRow
+                ? remainingLastRow.querySelector('input[name*="[product_name]"]')
+                : null;
+            if (focusInput) {
+                focusInput.focus();
+            } else {
+                addButton.focus();
+            }
+        };
+
         const handleTaxPercentTab = (event) => {
             if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
                 return;
@@ -490,6 +535,10 @@
                 if (input.matches('select[name*="[tax_percent]"]') && !input.dataset.taxTabBound) {
                     input.addEventListener('keydown', handleTaxPercentTab);
                     input.dataset.taxTabBound = '1';
+                }
+                if (!input.dataset.escapeLineBound) {
+                    input.addEventListener('keydown', handleEscapeRemoveLastEmptyLine);
+                    input.dataset.escapeLineBound = '1';
                 }
             });
         };
