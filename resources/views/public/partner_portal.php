@@ -274,13 +274,13 @@
                 </div>
                 <?php if (!$isReadOnly): ?>
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                        <button class="rounded border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                             Salveaza date companie
                         </button>
                         <button
                             name="next_step"
                             value="2"
-                            class="rounded border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                         >
                             Salveaza si continua la documente
                         </button>
