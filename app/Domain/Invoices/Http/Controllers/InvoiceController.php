@@ -19,6 +19,7 @@ use App\Domain\Partners\Services\CommissionService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
+use App\Support\Audit;
 use App\Support\Auth;
 use App\Support\CompanyName;
 use App\Support\Database;
@@ -2242,7 +2243,31 @@ class InvoiceController
             ]
         );
 
-        Session::flash('status', 'Factura FGO a fost stornata.');
+        $message = 'Factura FGO a fost stornata.';
+        try {
+            $stornoPackages = $this->createStornoPackagesForInvoice((int) $invoice->id);
+            Audit::record('invoice.storno_packages_created', 'invoice_in', $invoice->id, [
+                'rows_count' => (int) ($stornoPackages['packages_created'] ?? 0),
+                'lines_created' => (int) ($stornoPackages['lines_created'] ?? 0),
+            ]);
+
+            if (($stornoPackages['packages_created'] ?? 0) > 0) {
+                $message .= ' Pachete storno create automat: '
+                    . (int) $stornoPackages['packages_created']
+                    . ' (linii: '
+                    . (int) $stornoPackages['lines_created']
+                    . ').';
+            } else {
+                $message .= ' Nu au fost gasite pachete pentru generare storno.';
+            }
+        } catch (\Throwable $exception) {
+            Audit::record('invoice.storno_packages_failed', 'invoice_in', $invoice->id, [
+                'error' => $exception->getMessage(),
+                'rows_count' => 0,
+            ]);
+            $message .= ' Pachetele storno nu au putut fi generate automat.';
+        }
+        Session::flash('status', $message);
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
@@ -3460,6 +3485,192 @@ class InvoiceController
             'UPDATE invoices_in SET packages_confirmed = 0, packages_confirmed_at = NULL, updated_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
         );
+    }
+
+    private function createStornoPackagesForInvoice(int $invoiceId): array
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('packages') || !Database::tableExists('invoice_in_lines')) {
+            return ['packages_created' => 0, 'lines_created' => 0];
+        }
+
+        $existingStorno = (int) (Database::fetchValue(
+            'SELECT COUNT(*) FROM packages WHERE invoice_in_id = :invoice AND label LIKE :label',
+            ['invoice' => $invoiceId, 'label' => '%[STORNO]%']
+        ) ?? 0);
+        if ($existingStorno > 0) {
+            return ['packages_created' => 0, 'lines_created' => 0];
+        }
+
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($packages)) {
+            return ['packages_created' => 0, 'lines_created' => 0];
+        }
+
+        $pdo = Database::pdo();
+        $hasSagaStatus = Database::columnExists('packages', 'saga_status');
+        $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
+        $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
+        $nextNumber = $this->nextStornoPackageNumber();
+        $now = date('Y-m-d H:i:s');
+        $createdPackages = 0;
+        $createdLines = 0;
+
+        $pdo->beginTransaction();
+        try {
+            foreach ($packages as $package) {
+                $sourceLines = Database::fetchAll(
+                    'SELECT * FROM invoice_in_lines WHERE package_id = :package ORDER BY id ASC',
+                    ['package' => $package->id]
+                );
+                if (empty($sourceLines)) {
+                    continue;
+                }
+
+                $labelBase = trim((string) ($package->label ?? 'Pachet de produse'));
+                $stornoLabel = $this->buildStornoLabel($labelBase);
+
+                if ($hasSagaStatus) {
+                    Database::execute(
+                        'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, saga_status, created_at)
+                         VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :saga_status, :created_at)',
+                        [
+                            'invoice_in_id' => $invoiceId,
+                            'package_no' => $nextNumber,
+                            'label' => $stornoLabel,
+                            'vat_percent' => $package->vat_percent,
+                            'saga_status' => 'pending',
+                            'created_at' => $now,
+                        ]
+                    );
+                } else {
+                    Database::execute(
+                        'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, created_at)
+                         VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :created_at)',
+                        [
+                            'invoice_in_id' => $invoiceId,
+                            'package_no' => $nextNumber,
+                            'label' => $stornoLabel,
+                            'vat_percent' => $package->vat_percent,
+                            'created_at' => $now,
+                        ]
+                    );
+                }
+                $newPackageId = (int) Database::lastInsertId();
+                $createdPackages++;
+                $nextNumber++;
+
+                foreach ($sourceLines as $line) {
+                    $lineNo = $this->buildStornoLineNo((string) ($line['line_no'] ?? ''));
+                    $params = [
+                        'invoice_in_id' => $invoiceId,
+                        'line_no' => $lineNo,
+                        'product_name' => (string) ($line['product_name'] ?? ''),
+                        'quantity' => -1 * (float) ($line['quantity'] ?? 0),
+                        'unit_code' => (string) ($line['unit_code'] ?? ''),
+                        'unit_price' => (float) ($line['unit_price'] ?? 0),
+                        'line_total' => -1 * (float) ($line['line_total'] ?? 0),
+                        'tax_percent' => (float) ($line['tax_percent'] ?? 0),
+                        'line_total_vat' => -1 * (float) ($line['line_total_vat'] ?? 0),
+                        'package_id' => $newPackageId,
+                        'created_at' => $now,
+                    ];
+
+                    if ($hasCodSaga && $hasStockSaga) {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name, cod_saga, stock_saga,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name, :cod_saga, :stock_saga,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            array_merge($params, [
+                                'cod_saga' => $line['cod_saga'] ?? null,
+                                'stock_saga' => isset($line['stock_saga']) ? (float) $line['stock_saga'] : null,
+                            ])
+                        );
+                    } elseif ($hasCodSaga) {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name, cod_saga,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name, :cod_saga,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            array_merge($params, [
+                                'cod_saga' => $line['cod_saga'] ?? null,
+                            ])
+                        );
+                    } else {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            $params
+                        );
+                    }
+                    $createdLines++;
+                }
+            }
+
+            if ($createdPackages > 0) {
+                $this->setLastConfirmedPackageNo($nextNumber - 1);
+            }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $exception;
+        }
+
+        return [
+            'packages_created' => $createdPackages,
+            'lines_created' => $createdLines,
+        ];
+    }
+
+    private function nextStornoPackageNumber(): int
+    {
+        $stored = $this->lastConfirmedPackageNo();
+        $dbMax = 0;
+        if (Database::tableExists('packages')) {
+            $dbMax = (int) (Database::fetchValue('SELECT COALESCE(MAX(package_no), 0) FROM packages') ?? 0);
+        }
+        $base = max($stored, $dbMax);
+
+        return $base + 1;
+    }
+
+    private function buildStornoLabel(string $label): string
+    {
+        $label = trim($label);
+        if ($label === '') {
+            $label = 'Pachet de produse';
+        }
+        $suffix = ' [STORNO]';
+        if (!str_contains($label, '[STORNO]')) {
+            $label .= $suffix;
+        }
+
+        return strlen($label) > 64 ? substr($label, 0, 64) : $label;
+    }
+
+    private function buildStornoLineNo(string $lineNo): string
+    {
+        $lineNo = trim($lineNo);
+        if ($lineNo === '') {
+            $lineNo = 'storno';
+        } else {
+            $lineNo .= 'ST';
+        }
+
+        return strlen($lineNo) > 32 ? substr($lineNo, 0, 32) : $lineNo;
     }
 
     private function safeFileName(string $value): string
