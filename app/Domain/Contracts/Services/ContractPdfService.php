@@ -169,7 +169,7 @@ class ContractPdfService
 
         $command = escapeshellarg($binary)
             . ' --quiet'
-            . ' --footer-center ' . escapeshellarg('[page]/[toPage] pagini')
+            . ' --footer-center ' . escapeshellarg('[page]/[toPage]')
             . ' --footer-font-size ' . escapeshellarg('9')
             . ' --footer-spacing ' . escapeshellarg('4')
             . ' --margin-bottom ' . escapeshellarg('22mm')
@@ -222,7 +222,7 @@ class ContractPdfService
 
             $canvas = $dompdf->getCanvas();
             if ($canvas !== null) {
-                $footerText = '{PAGE_NUM}/{PAGE_COUNT} pagini';
+                $footerText = '{PAGE_NUM}/{PAGE_COUNT}';
                 $fontSize = 9.0;
                 $fontMetrics = $dompdf->getFontMetrics();
                 $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
@@ -581,76 +581,70 @@ class ContractPdfService
             font-size: 12px;
             line-height: 1.45;
         }
-        .print-document {
-            width: 100%;
-        }
-        .print-header {
-            position: fixed;
-            top: -32mm;
+        .erp-pdf-header {
+            position: fixed !important;
+            top: -34mm;
             left: 0;
             right: 0;
-            z-index: 5;
+            z-index: 10;
             border-bottom: 1px solid #cbd5e1;
             padding: 0 0 10px 0;
-            margin-bottom: 12px;
             page-break-inside: avoid;
             break-inside: avoid;
         }
-        .print-header-row {
+        .erp-pdf-header-row {
             display: table;
             width: 100%;
             table-layout: fixed;
             gap: 18px;
         }
-        .print-logo,
-        .print-logo-fallback,
-        .print-company {
+        .erp-pdf-logo,
+        .erp-pdf-logo-fallback,
+        .erp-pdf-company {
             display: table-cell;
             vertical-align: top;
         }
-        .print-logo,
-        .print-logo-fallback {
+        .erp-pdf-logo,
+        .erp-pdf-logo-fallback {
             width: 45%;
         }
-        .print-logo img {
+        .erp-pdf-logo img {
             display: block;
             max-height: 60px;
             width: auto;
             max-width: 260px;
         }
-        .print-logo-fallback {
+        .erp-pdf-logo-fallback {
             font-size: 20px;
             font-weight: 700;
             color: #1d4ed8;
             letter-spacing: 0.3px;
         }
-        .print-company {
+        .erp-pdf-company {
             text-align: right;
             font-size: 11px;
             line-height: 1.4;
             color: #334155;
             max-width: 420px;
         }
-        .print-company .name {
+        .erp-pdf-company .erp-pdf-company-name {
             font-size: 13px;
             font-weight: 700;
             color: #0f172a;
             margin-bottom: 2px;
         }
-        .print-content {
+        .erp-pdf-content {
             width: 100%;
         }
-        .print-content > *:first-child {
+        .erp-pdf-content > *:first-child {
             margin-top: 0;
         }
     </style>
     ' . $styleBlocks . '
 </head>
 <body>
-    <div class="print-document">
-        ' . $headerHtml . '
-        <div class="print-content">' . $bodyHtml . '</div>
-    </div>
+    ' . $headerHtml . '
+    <div class="erp-pdf-content">' . $bodyHtml . '</div>
 </body>
 </html>';
     }
@@ -702,17 +696,17 @@ class ContractPdfService
             }
             $lines[] = implode(' | ', $contact);
         }
-        $companyHtml = '<div class="print-company"><div class="name">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</div>';
+        $companyHtml = '<div class="erp-pdf-company"><div class="erp-pdf-company-name">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</div>';
         foreach ($lines as $line) {
             $companyHtml .= '<div>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         $companyHtml .= '</div>';
 
         $logoHtml = $logoDataUri !== ''
-            ? '<div class="print-logo"><img src="' . htmlspecialchars($logoDataUri, ENT_QUOTES, 'UTF-8') . '" alt="Logo"></div>'
-            : '<div class="print-logo-fallback">ERP Platforma</div>';
+            ? '<div class="erp-pdf-logo"><img src="' . htmlspecialchars($logoDataUri, ENT_QUOTES, 'UTF-8') . '" alt="Logo"></div>'
+            : '<div class="erp-pdf-logo-fallback">ERP Platforma</div>';
 
-        return '<div class="print-header"><div class="print-header-row">' . $logoHtml . $companyHtml . '</div></div>';
+        return '<div class="erp-pdf-header"><div class="erp-pdf-header-row">' . $logoHtml . $companyHtml . '</div></div>';
     }
 
     private function resolveLogoDataUri(string $logoPath): string
