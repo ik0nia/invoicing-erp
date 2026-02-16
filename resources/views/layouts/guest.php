@@ -1,13 +1,22 @@
 <?php
     $settings = new App\Domain\Settings\Services\SettingsService();
     $brandingLogo = (string) $settings->get('branding.logo_path', '');
-    $logoUrl = null;
-    if ($brandingLogo !== '') {
-        $absolutePath = BASE_PATH . '/' . ltrim($brandingLogo, '/');
-        if (file_exists($absolutePath)) {
-            $logoUrl = App\Support\Url::asset($brandingLogo);
+    $brandingLogoDark = (string) $settings->get('branding.logo_dark_path', '');
+    $resolveLogoUrl = static function (string $path): ?string {
+        $path = trim($path);
+        if ($path === '') {
+            return null;
         }
-    }
+        $absolutePath = BASE_PATH . '/' . ltrim($path, '/');
+        if (!file_exists($absolutePath)) {
+            return null;
+        }
+
+        return App\Support\Url::asset($path);
+    };
+    $logoUrl = $resolveLogoUrl($brandingLogo);
+    $logoDarkUrl = $resolveLogoUrl($brandingLogoDark);
+    $hasDualLogos = $logoUrl !== null && $logoDarkUrl !== null && $logoUrl !== $logoDarkUrl;
 ?>
 <!DOCTYPE html>
 <html lang="ro">
@@ -80,14 +89,22 @@
         }
         .dark-mode .dark-toggle-track { background-color: #1f2937 !important; }
         .dark-mode .dark-toggle-knob { background-color: #e2e8f0 !important; }
+        .brand-logo-dark { display: none; }
+        .dark-mode .brand-logo-light { display: none !important; }
+        .dark-mode .brand-logo-dark { display: block !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
             <a href="<?= App\Support\Url::to('/') ?>" class="inline-flex items-center gap-3">
-                <?php if ($logoUrl): ?>
+                <?php if ($hasDualLogos): ?>
+                    <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="brand-logo-light h-9 w-auto">
+                    <img src="<?= htmlspecialchars($logoDarkUrl ?? '') ?>" alt="Logo ERP dark mode" class="brand-logo-dark h-9 w-auto">
+                <?php elseif ($logoUrl): ?>
                     <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="h-9 w-auto">
+                <?php elseif ($logoDarkUrl): ?>
+                    <img src="<?= htmlspecialchars($logoDarkUrl) ?>" alt="Logo ERP" class="h-9 w-auto">
                 <?php else: ?>
                     <div class="text-lg font-semibold text-blue-700">ERP Intern</div>
                 <?php endif; ?>

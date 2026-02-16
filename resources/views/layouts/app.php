@@ -4,16 +4,23 @@ use App\Domain\Settings\Services\SettingsService;
 use App\Support\Auth;
 
 $settings = new SettingsService();
-$brandingLogo = $settings->get('branding.logo_path');
-$logoUrl = null;
-
-if ($brandingLogo) {
-    $absolutePath = BASE_PATH . '/' . ltrim($brandingLogo, '/');
-
-    if (file_exists($absolutePath)) {
-        $logoUrl = App\Support\Url::asset($brandingLogo);
+$brandingLogo = (string) $settings->get('branding.logo_path', '');
+$brandingLogoDark = (string) $settings->get('branding.logo_dark_path', '');
+$resolveLogoUrl = static function (string $path): ?string {
+    $path = trim($path);
+    if ($path === '') {
+        return null;
     }
-}
+    $absolutePath = BASE_PATH . '/' . ltrim($path, '/');
+    if (!file_exists($absolutePath)) {
+        return null;
+    }
+
+    return App\Support\Url::asset($path);
+};
+$logoUrl = $resolveLogoUrl($brandingLogo);
+$logoDarkUrl = $resolveLogoUrl($brandingLogoDark);
+$hasDualLogos = $logoUrl !== null && $logoDarkUrl !== null && $logoUrl !== $logoDarkUrl;
 $user = Auth::user();
 $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
@@ -277,6 +284,9 @@ if ($isPlatformUser) {
         .dark-mode .bg-rose-50 { background-color: #2a0b1b !important; }
         .dark-mode .dark-toggle-track { background-color: #1f2937 !important; }
         .dark-mode .dark-toggle-knob { background-color: #e2e8f0 !important; }
+        .brand-logo-dark { display: none; }
+        .dark-mode .brand-logo-light { display: none !important; }
+        .dark-mode .brand-logo-dark { display: block !important; }
 
         body.sidebar-open #sidebar {
             transform: translateX(0);
@@ -304,8 +314,13 @@ if ($isPlatformUser) {
         >
             <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
                 <a href="<?= App\Support\Url::to('admin/dashboard') ?>" class="inline-flex items-center gap-3">
-                    <?php if ($logoUrl): ?>
+                    <?php if ($hasDualLogos): ?>
+                        <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="brand-logo-light h-12 w-auto">
+                        <img src="<?= htmlspecialchars($logoDarkUrl ?? '') ?>" alt="Logo ERP dark mode" class="brand-logo-dark h-12 w-auto">
+                    <?php elseif ($logoUrl): ?>
                         <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="h-12 w-auto">
+                    <?php elseif ($logoDarkUrl): ?>
+                        <img src="<?= htmlspecialchars($logoDarkUrl) ?>" alt="Logo ERP" class="h-12 w-auto">
                     <?php else: ?>
                         <span class="text-lg font-semibold text-blue-700">ERP Intern</span>
                     <?php endif; ?>
