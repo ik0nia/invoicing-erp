@@ -16,9 +16,10 @@
     $token = $token ?? '';
     $error = $error ?? '';
     $currentStep = (int) ($currentStep ?? 1);
-    if ($currentStep < 1 || $currentStep > 3) {
+    if ($currentStep < 1 || $currentStep > 4) {
         $currentStep = 1;
     }
+    $maxStep = 4;
     $onboardingStatus = (string) ($onboardingStatus ?? 'draft');
     $pdfAvailable = !empty($pdfAvailable);
     $permissions = $context['permissions'] ?? [
@@ -61,6 +62,14 @@
         'approved' => 'bg-emerald-100 text-emerald-700',
     ];
     $contactDepartments = $contactDepartments ?? ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
+    $linkType = (string) ($context['link']['type'] ?? 'client');
+    $isSupplierFlow = $linkType === 'supplier';
+    $stepLabels = [
+        1 => 'Pasul 1/4 - Instructiuni onboarding',
+        2 => 'Pasul 2/4 - Date firma',
+        3 => 'Pasul 3/4 - Date de contact',
+        4 => 'Pasul 4/4 - Documente si confirmare',
+    ];
     $companyDisplayName = trim((string) ($prefill['denumire'] ?? ($company?->denumire ?? '')));
     $title = $companyDisplayName !== ''
         ? ('Inrolare partener: ' . $companyDisplayName)
@@ -108,9 +117,9 @@
         <?php endif; ?>
 
         <div class="mt-4 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
-            <div class="text-sm font-semibold text-slate-700">Navigare pasi: <?= (int) $currentStep ?>/3</div>
+            <div class="text-sm font-semibold text-slate-700">Navigare pasi: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
             <div class="mt-3 flex flex-wrap gap-2">
-                <?php foreach ([1 => 'Pasul 1/3 - Date companie si contacte', 2 => 'Pasul 2/3 - Documente', 3 => 'Pasul 3/3 - Confirmare finala'] as $step => $label): ?>
+                <?php foreach ($stepLabels as $step => $label): ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) $step ?>">
@@ -124,10 +133,38 @@
             </div>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
-            <div class="text-base font-semibold text-slate-800">Pasul 1/3: Date companie + contacte</div>
+        <?php if ($currentStep === 1): ?>
+            <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
+                <div class="text-base font-semibold text-slate-800">Pasul 1/4: Instructiuni onboarding</div>
+                <?php if ($isSupplierFlow): ?>
+                    <p class="mt-1 text-sm text-slate-600">
+                        Acest link este pentru onboarding <strong>furnizor</strong>. In pasii urmatori vei completa datele firmei,
+                        datele de contact, apoi vei descarca si incarca documentele semnate pentru activare.
+                    </p>
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                        <li>Pasul 2: completeaza datele companiei (reprezentant legal, banca, IBAN).</li>
+                        <li>Pasul 3: adauga persoanele de contact relevante (ex. financiar-contabil).</li>
+                        <li>Pasul 4: descarca documentele, semneaza, incarca si trimite spre activare.</li>
+                    </ul>
+                <?php else: ?>
+                    <p class="mt-1 text-sm text-slate-600">
+                        Acest link este pentru onboarding <strong>client</strong>. Relatia cu furnizorul este preconfigurata in link.
+                        Urmareste pasii de mai jos pentru completare si trimitere spre activare.
+                    </p>
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                        <li>Pasul 2: verifica si completeaza datele companiei.</li>
+                        <li>Pasul 3: adauga contacte operationale si financiar-contabile.</li>
+                        <li>Pasul 4: gestioneaza documentele obligatorii si confirma trimiterea.</li>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($currentStep === 2): ?>
+        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
+            <div class="text-base font-semibold text-slate-800">Pasul 2/4: Date firma</div>
             <p class="mt-1 text-sm text-slate-500">
-                Salvati datele firmei, apoi adaugati persoanele de contact. Pentru onboarding client, relatia este fixa pe furnizorul din link.
+                Completeaza datele de identificare ale companiei. Pentru a continua, profilul firmei trebuie sa fie complet.
             </p>
 
             <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-4">
@@ -279,111 +316,121 @@
                         </button>
                         <button
                             name="next_step"
-                            value="2"
+                            value="3"
                             class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                         >
-                            Salveaza si continua la documente
+                            Salveaza si continua la contacte
                         </button>
                     </div>
                 <?php endif; ?>
             </form>
-
-            <div class="mt-6 border-t border-slate-100 pt-4">
-                <div class="text-sm font-semibold text-slate-700">Contacte companie</div>
-                <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Daca doriti sa primiti facturile pe o alta adresa de e-mail decat cea generala a companiei, adaugati un contact
-                    in departamentul <strong>Financiar-contabil</strong> cu datele de contact dedicate.
-                </div>
-                <?php if ($partnerCui === ''): ?>
-                    <div class="mt-2 text-sm text-slate-500">Salvati datele companiei pentru a adauga contacte.</div>
-                <?php else: ?>
-                    <div class="mt-3 overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 text-slate-600">
-                                <tr>
-                                    <th class="px-3 py-2">Nume</th>
-                                    <th class="px-3 py-2">Departament</th>
-                                    <th class="px-3 py-2">Email</th>
-                                    <th class="px-3 py-2">Telefon</th>
-                                    <th class="px-3 py-2"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($contacts) && empty($relationContacts)): ?>
-                                    <tr>
-                                        <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
-                                    </tr>
-                                <?php else: ?>
-                                    <?php foreach ($contacts as $contact): ?>
-                                        <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-right">
-                                                <?php if (!$isReadOnly): ?>
-                                                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
-                                                        <?= App\Support\Csrf::input() ?>
-                                                        <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
-                                                        <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    <?php foreach ($relationContacts as $contact): ?>
-                                        <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-right">
-                                                <?php if (!$isReadOnly): ?>
-                                                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
-                                                        <?= App\Support\Csrf::input() ?>
-                                                        <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
-                                                        <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <?php if (!$isReadOnly): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-5">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
-                            <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
-                            <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
-                                <?php foreach ($contactDepartments as $department): ?>
-                                    <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                            <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                            <div class="md:col-span-5">
-                                <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                                    Adauga contact
-                                </button>
-                            </div>
-                        </form>
-                    <?php endif; ?>
-                <?php endif; ?>
-            </div>
         </div>
+        <?php endif; ?>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
-            <div class="text-base font-semibold text-slate-800">Pasul 2/3: Documente obligatorii</div>
+        <?php if ($currentStep === 3): ?>
+            <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
+                <div class="text-base font-semibold text-slate-800">Pasul 3/4: Date de contact</div>
+                <p class="mt-1 text-sm text-slate-500">
+                    Adauga persoanele de contact pentru relationarea operationala si financiar-contabila.
+                </p>
+                <div class="mt-6 border-t border-slate-100 pt-4">
+                    <div class="text-sm font-semibold text-slate-700">Contacte companie</div>
+                    <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Daca doriti sa primiti facturile pe o alta adresa de e-mail decat cea generala a companiei, adaugati un contact
+                        in departamentul <strong>Financiar-contabil</strong> cu datele de contact dedicate.
+                    </div>
+                    <?php if ($partnerCui === ''): ?>
+                        <div class="mt-2 text-sm text-slate-500">Salvati datele companiei in Pasul 2 pentru a adauga contacte.</div>
+                    <?php else: ?>
+                        <div class="mt-3 overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 text-slate-600">
+                                    <tr>
+                                        <th class="px-3 py-2">Nume</th>
+                                        <th class="px-3 py-2">Departament</th>
+                                        <th class="px-3 py-2">Email</th>
+                                        <th class="px-3 py-2">Telefon</th>
+                                        <th class="px-3 py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($contacts) && empty($relationContacts)): ?>
+                                        <tr>
+                                            <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($contacts as $contact): ?>
+                                            <tr class="border-t border-slate-100">
+                                                <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-right">
+                                                    <?php if (!$isReadOnly): ?>
+                                                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
+                                                            <?= App\Support\Csrf::input() ?>
+                                                            <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
+                                                            <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        <?php foreach ($relationContacts as $contact): ?>
+                                            <tr class="border-t border-slate-100">
+                                                <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-right">
+                                                    <?php if (!$isReadOnly): ?>
+                                                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
+                                                            <?= App\Support\Csrf::input() ?>
+                                                            <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
+                                                            <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <?php if (!$isReadOnly): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-5">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
+                                <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
+                                <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
+                                    <?php foreach ($contactDepartments as $department): ?>
+                                        <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
+                                <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">
+                                <div class="md:col-span-5">
+                                    <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                        Adauga contact
+                                    </button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($currentStep === 4): ?>
+        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-4">
+            <div class="text-base font-semibold text-slate-800">Pasul 4/4: Documente si confirmare</div>
             <p class="mt-1 text-sm text-slate-500">
-                Pentru a continua, incarcati documentele semnate obligatorii.
+                Descarca documentele generate, incarca semnaturile obligatorii si trimite inrolarea spre activare.
             </p>
 
             <?php if ($partnerCui === ''): ?>
-                <div class="mt-4 text-sm text-slate-500">Salvati mai intai datele companiei (Pasul 1).</div>
+                <div class="mt-4 text-sm text-slate-500">Salvati mai intai datele companiei (Pasul 2).</div>
             <?php else: ?>
                 <?php
                     $registryMissing = [];
@@ -399,7 +446,7 @@
                 <div class="mt-4 rounded border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     Progres documente obligatorii: <strong><?= $requiredSigned ?>/<?= $requiredTotal ?></strong>.
                     <?php if (!$allRequiredSigned): ?>
-                        Pentru a continua la Pasul 3, incarcati toate semnaturile obligatorii.
+                        Pentru a finaliza inrolarea, incarcati toate semnaturile obligatorii.
                     <?php else: ?>
                         Toate documentele obligatorii sunt semnate.
                     <?php endif; ?>
@@ -618,8 +665,8 @@
             <?php endif; ?>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
-            <div class="text-base font-semibold text-slate-800">Pasul 3/3: Confirmare finala</div>
+        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-4-confirmare">
+            <div class="text-base font-semibold text-slate-800">Pasul 4/4: Confirmare finala</div>
             <p class="mt-1 text-sm text-slate-500">
                 Verificati datele si trimiteti cererea spre activare. Activarea este manuala si poate fi facuta doar de angajati interni.
             </p>
@@ -657,7 +704,7 @@
             <?php else: ?>
                 <?php if (!$allRequiredSigned): ?>
                     <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Pentru a continua, incarcati documentele semnate obligatorii din Pasul 2.
+                        Pentru a continua, incarcati documentele semnate obligatorii din sectiunea de mai sus.
                     </div>
                 <?php endif; ?>
                 <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/submit-activation') ?>" class="mt-4">
@@ -676,6 +723,32 @@
                     </div>
                 </form>
             <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
+            <div>
+                <?php if ($currentStep > 1): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="step" value="<?= (int) ($currentStep - 1) ?>">
+                        <button class="rounded border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">
+                            &larr; Pasul anterior (<?= (int) ($currentStep - 1) ?>/<?= (int) $maxStep ?>)
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
+            <div>
+                <?php if (!$isReadOnly && $currentStep < $maxStep): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="step" value="<?= (int) ($currentStep + 1) ?>">
+                        <button class="rounded bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
+                            Pasul urmator (<?= (int) ($currentStep + 1) ?>/<?= (int) $maxStep ?>) &rarr;
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 </div>

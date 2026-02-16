@@ -22,6 +22,7 @@ class PublicPartnerController
     private const SIGNED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
     private const EDITABLE_ONBOARDING_STATUSES = ['draft', 'waiting_signature', 'rejected'];
     private const CONTACT_DEPARTMENTS = ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
+    private const WIZARD_MAX_STEP = 4;
 
     public function index(): void
     {
@@ -56,17 +57,17 @@ class PublicPartnerController
         $scope = $this->resolveScope($context, $partnerCui);
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
         if ($partnerCui === '' && $currentStep > 1) {
             $currentStep = 1;
         }
         if ($partnerCui !== '' && $currentStep > 1 && !$this->hasMandatoryCompanyProfile($partnerCui)) {
-            $currentStep = 1;
+            $currentStep = 2;
         }
         if (in_array($onboardingStatus, ['submitted', 'approved'], true)) {
-            $currentStep = 3;
+            $currentStep = self::WIZARD_MAX_STEP;
         }
 
         if ($partnerCui !== '' && $currentStep >= 2) {
@@ -74,10 +75,6 @@ class PublicPartnerController
         }
         $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
         $documentsProgress = $this->buildDocumentsProgress($contracts);
-        if ($currentStep === 3 && !$documentsProgress['all_signed'] && !in_array($onboardingStatus, ['submitted', 'approved'], true)) {
-            $currentStep = 2;
-        }
-
         if (!in_array($onboardingStatus, ['submitted', 'approved'], true)) {
             $this->syncOnboardingStatus(
                 (int) ($context['link']['id'] ?? 0),
@@ -153,11 +150,11 @@ class PublicPartnerController
 
         if ($legalRepresentativeName === '' || $legalRepresentativeRole === '' || $bankName === '' || $iban === '') {
             Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-1');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-2');
         }
         if (!$this->isValidIban($iban)) {
             Session::flash('error', 'IBAN invalid. Folositi un IBAN cu lungime intre 15 si 34 caractere.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-1');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-2');
         }
 
         $payload = $_POST;
@@ -191,7 +188,7 @@ class PublicPartnerController
         }
 
         $nextStep = isset($_POST['next_step']) ? (int) $_POST['next_step'] : 0;
-        if ($nextStep < 1 || $nextStep > 3) {
+        if ($nextStep < 1 || $nextStep > self::WIZARD_MAX_STEP) {
             $nextStep = 0;
         }
         $this->updateLinkAfterCompanySave($context, $cui, $supplierCui, $nextStep);
@@ -299,7 +296,7 @@ class PublicPartnerController
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(3, $currentStep)), true);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'rows_count' => 1,
         ]);
@@ -338,7 +335,7 @@ class PublicPartnerController
 
         Database::execute('DELETE FROM partner_contacts WHERE id = :id', ['id' => $id]);
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(3, $currentStep)), true);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.delete', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'rows_count' => 1,
         ]);
@@ -365,7 +362,7 @@ class PublicPartnerController
         }
 
         $step = isset($_POST['step']) ? (int) $_POST['step'] : 1;
-        if ($step < 1 || $step > 3) {
+        if ($step < 1 || $step > self::WIZARD_MAX_STEP) {
             $step = 1;
         }
 
@@ -376,23 +373,15 @@ class PublicPartnerController
             Session::flash('error', 'Completeaza datele companiei pentru a continua.');
             $step = 1;
         }
-        if ($step > 1 && $partnerCui !== '' && !$this->hasMandatoryCompanyProfile($partnerCui)) {
+        if ($step > 2 && $partnerCui !== '' && !$this->hasMandatoryCompanyProfile($partnerCui)) {
             Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
-            $step = 1;
+            $step = 2;
         }
-        if ($step === 2 && $partnerCui !== '') {
+        if ($step === self::WIZARD_MAX_STEP && !in_array($status, ['submitted', 'approved'], true)) {
             $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
-        }
-        if ($step === 3 && !in_array($status, ['submitted', 'approved'], true)) {
-            $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
-            $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
-            if (!$documentsProgress['all_signed']) {
-                Session::flash('error', 'Pentru a continua, incarcati documentele semnate obligatorii.');
-                $step = 2;
-            }
         }
         if (in_array($status, ['submitted', 'approved'], true)) {
-            $step = 3;
+            $step = self::WIZARD_MAX_STEP;
         }
 
         $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
@@ -492,7 +481,7 @@ class PublicPartnerController
         }
         if ($path === '') {
             Session::flash('error', 'Documentul generat este indisponibil momentan. Un angajat poate verifica configurarea serverului.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
@@ -528,7 +517,7 @@ class PublicPartnerController
         $allowedContracts = $this->allowedContractsById($scope);
         if (empty($allowedContracts)) {
             Session::flash('error', 'Nu exista documente disponibile pentru incarcare.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         $savedContractIds = [];
@@ -542,7 +531,7 @@ class PublicPartnerController
             $path = $this->storeUpload($_FILES['all_signed_file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
             if ($path === null) {
                 Session::flash('error', 'Fisier invalid. Acceptat: PDF/JPG/JPEG/PNG, maxim 20MB.');
-                Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+                Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
             }
 
             $targetContractIds = $this->requiredUploadTargetContractIds($allowedContracts);
@@ -592,7 +581,7 @@ class PublicPartnerController
 
         if (empty($savedContractIds)) {
             Session::flash('error', 'Nu am putut procesa fisierele. Verificati selectia documentelor si fisierele incarcate.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
@@ -623,7 +612,7 @@ class PublicPartnerController
             }
             Session::flash('status', $message);
         }
-        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
     }
 
     public function submitForActivation(): void
@@ -651,12 +640,12 @@ class PublicPartnerController
             Response::redirect('/p/' . $token);
         }
         if (Database::tableExists('companies') && !Company::findByCui($partnerCui)) {
-            Session::flash('error', 'Datele companiei nu sunt complete. Salvati Pasul 1 inainte de trimitere.');
+            Session::flash('error', 'Datele companiei nu sunt complete. Salvati Pasul 2 inainte de trimitere.');
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
         if (!$this->hasMandatoryCompanyProfile($partnerCui)) {
-            Session::flash('error', 'Completati reprezentantul legal, functia, banca si IBAN-ul in Pasul 1.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
+            Session::flash('error', 'Completati reprezentantul legal, functia, banca si IBAN-ul in Pasul 2.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
         }
 
         $scope = $this->resolveScope($context, $partnerCui);
@@ -664,12 +653,12 @@ class PublicPartnerController
         $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
         if (!$documentsProgress['all_signed']) {
             Session::flash('error', 'Pentru a continua, incarcati documentele semnate obligatorii.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         if (empty($_POST['checkbox_confirmed'])) {
             Session::flash('error', 'Bifati confirmarea datelor pentru a trimite inrolarea spre activare.');
-            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-3');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         $linkId = (int) ($context['link']['id'] ?? 0);
@@ -690,7 +679,7 @@ class PublicPartnerController
                 'onboarding_status' => 'submitted',
                 'submitted_at' => $now,
                 'checkbox_confirmed' => 1,
-                'current_step' => 3,
+                'current_step' => self::WIZARD_MAX_STEP,
                 'updated_at' => $now,
                 'id' => $linkId,
             ]
@@ -701,7 +690,7 @@ class PublicPartnerController
         ]);
 
         Session::flash('status', 'Trimis. Un angajat va activa inrolarea.');
-        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-3');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
     }
 
     private function resolveContext(string $token): ?array
@@ -1098,7 +1087,7 @@ class PublicPartnerController
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
         $stepValue = $nextStep > 0 ? $nextStep : $currentStep;
@@ -1150,7 +1139,7 @@ class PublicPartnerController
             return;
         }
 
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
         $now = date('Y-m-d H:i:s');
