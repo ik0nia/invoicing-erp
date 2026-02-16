@@ -54,7 +54,19 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="template-kind">Tip document</label>
+            <label class="block text-sm font-medium text-slate-700" for="template-doc-type">Doc type (indexare)</label>
+            <input
+                id="template-doc-type"
+                name="doc_type"
+                type="text"
+                value="<?= htmlspecialchars((string) ($template['doc_type'] ?? $template['template_type'] ?? '')) ?>"
+                placeholder="ex: client_agreement"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-kind">Categorie document</label>
             <select
                 id="template-kind"
                 name="doc_kind"
@@ -96,6 +108,10 @@
         <label class="inline-flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="auto_on_enrollment" class="rounded border-slate-300" <?= !empty($template['auto_on_enrollment']) ? 'checked' : '' ?>>
             Creeaza automat la inrolare
+        </label>
+        <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="required_onboarding" class="rounded border-slate-300" <?= !empty($template['required_onboarding']) ? 'checked' : '' ?>>
+            Obligatoriu la onboarding
         </label>
         <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="is_active" class="rounded border-slate-300" <?= !empty($template['is_active']) ? 'checked' : '' ?>>

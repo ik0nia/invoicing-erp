@@ -52,14 +52,20 @@ class ContractTemplatesController
 
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         $name = trim((string) ($_POST['name'] ?? ''));
+        $docType = trim((string) ($_POST['doc_type'] ?? ''));
         $docKind = trim((string) ($_POST['doc_kind'] ?? ''));
         $appliesTo = trim((string) ($_POST['applies_to'] ?? 'both'));
         $auto = !empty($_POST['auto_on_enrollment']) ? 1 : 0;
+        $requiredOnboarding = !empty($_POST['required_onboarding']) ? 1 : 0;
         $priority = isset($_POST['priority']) ? (int) $_POST['priority'] : 100;
         $isActive = !empty($_POST['is_active']) ? 1 : 0;
         $html = (string) ($_POST['html_content'] ?? '');
 
-        if ($name === '' || $docKind === '') {
+        if ($docType === '') {
+            $docType = $docKind;
+        }
+
+        if ($name === '' || $docKind === '' || $docType === '') {
             Session::flash('error', 'Completeaza numele si tipul template-ului.');
             Response::redirect('/admin/contract-templates');
         }
@@ -69,9 +75,11 @@ class ContractTemplatesController
                 'UPDATE contract_templates
                  SET name = :name,
                      template_type = :type,
+                     doc_type = :doc_type,
                      doc_kind = :doc_kind,
                      applies_to = :applies_to,
                      auto_on_enrollment = :auto_on,
+                     required_onboarding = :required_onboarding,
                      priority = :priority,
                      is_active = :is_active,
                      html_content = :html,
@@ -79,10 +87,12 @@ class ContractTemplatesController
                  WHERE id = :id',
                 [
                     'name' => $name,
-                    'type' => $docKind,
+                    'type' => $docType,
+                    'doc_type' => $docType,
                     'doc_kind' => $docKind,
                     'applies_to' => in_array($appliesTo, ['client', 'supplier', 'both'], true) ? $appliesTo : 'both',
                     'auto_on' => $auto,
+                    'required_onboarding' => $requiredOnboarding,
                     'priority' => $priority,
                     'is_active' => $isActive,
                     'html' => $html,
@@ -95,14 +105,41 @@ class ContractTemplatesController
         }
 
         Database::execute(
-            'INSERT INTO contract_templates (name, template_type, doc_kind, applies_to, auto_on_enrollment, priority, is_active, html_content, created_by_user_id, created_at)
-             VALUES (:name, :type, :doc_kind, :applies_to, :auto_on, :priority, :is_active, :html, :user_id, :created_at)',
+            'INSERT INTO contract_templates (
+                name,
+                template_type,
+                doc_type,
+                doc_kind,
+                applies_to,
+                auto_on_enrollment,
+                required_onboarding,
+                priority,
+                is_active,
+                html_content,
+                created_by_user_id,
+                created_at
+            ) VALUES (
+                :name,
+                :type,
+                :doc_type,
+                :doc_kind,
+                :applies_to,
+                :auto_on,
+                :required_onboarding,
+                :priority,
+                :is_active,
+                :html,
+                :user_id,
+                :created_at
+            )',
             [
                 'name' => $name,
-                'type' => $docKind,
+                'type' => $docType,
+                'doc_type' => $docType,
                 'doc_kind' => $docKind,
                 'applies_to' => in_array($appliesTo, ['client', 'supplier', 'both'], true) ? $appliesTo : 'both',
                 'auto_on' => $auto,
+                'required_onboarding' => $requiredOnboarding,
                 'priority' => $priority,
                 'is_active' => $isActive,
                 'html' => $html,
@@ -124,14 +161,20 @@ class ContractTemplatesController
         }
 
         $name = trim((string) ($_POST['name'] ?? ''));
+        $docType = trim((string) ($_POST['doc_type'] ?? ''));
         $docKind = trim((string) ($_POST['doc_kind'] ?? ''));
         $appliesTo = trim((string) ($_POST['applies_to'] ?? 'both'));
         $auto = !empty($_POST['auto_on_enrollment']) ? 1 : 0;
+        $requiredOnboarding = !empty($_POST['required_onboarding']) ? 1 : 0;
         $priority = isset($_POST['priority']) ? (int) $_POST['priority'] : 100;
         $isActive = !empty($_POST['is_active']) ? 1 : 0;
         $html = (string) ($_POST['html_content'] ?? '');
 
-        if ($name === '' || $docKind === '') {
+        if ($docType === '') {
+            $docType = $docKind;
+        }
+
+        if ($name === '' || $docKind === '' || $docType === '') {
             Session::flash('error', 'Completeaza numele si tipul documentului.');
             Response::redirect('/admin/contract-templates/edit?id=' . $id);
         }
@@ -140,9 +183,11 @@ class ContractTemplatesController
             'UPDATE contract_templates
              SET name = :name,
                  template_type = :type,
+                 doc_type = :doc_type,
                  doc_kind = :doc_kind,
                  applies_to = :applies_to,
                  auto_on_enrollment = :auto_on,
+                 required_onboarding = :required_onboarding,
                  priority = :priority,
                  is_active = :is_active,
                  html_content = :html,
@@ -150,10 +195,12 @@ class ContractTemplatesController
              WHERE id = :id',
             [
                 'name' => $name,
-                'type' => $docKind,
+                'type' => $docType,
+                'doc_type' => $docType,
                 'doc_kind' => $docKind,
                 'applies_to' => in_array($appliesTo, ['client', 'supplier', 'both'], true) ? $appliesTo : 'both',
                 'auto_on' => $auto,
+                'required_onboarding' => $requiredOnboarding,
                 'priority' => $priority,
                 'is_active' => $isActive,
                 'html' => $html,
@@ -181,14 +228,41 @@ class ContractTemplatesController
         }
 
         Database::execute(
-            'INSERT INTO contract_templates (name, template_type, doc_kind, applies_to, auto_on_enrollment, priority, is_active, html_content, created_by_user_id, created_at)
-             VALUES (:name, :type, :doc_kind, :applies_to, :auto_on, :priority, :is_active, :html, :user_id, :created_at)',
+            'INSERT INTO contract_templates (
+                name,
+                template_type,
+                doc_type,
+                doc_kind,
+                applies_to,
+                auto_on_enrollment,
+                required_onboarding,
+                priority,
+                is_active,
+                html_content,
+                created_by_user_id,
+                created_at
+            ) VALUES (
+                :name,
+                :type,
+                :doc_type,
+                :doc_kind,
+                :applies_to,
+                :auto_on,
+                :required_onboarding,
+                :priority,
+                :is_active,
+                :html,
+                :user_id,
+                :created_at
+            )',
             [
                 'name' => (string) ($template['name'] ?? '') . ' (copie)',
-                'type' => (string) ($template['doc_kind'] ?? $template['template_type'] ?? ''),
+                'type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
+                'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
                 'doc_kind' => (string) ($template['doc_kind'] ?? 'contract'),
                 'applies_to' => (string) ($template['applies_to'] ?? 'both'),
                 'auto_on' => !empty($template['auto_on_enrollment']) ? 1 : 0,
+                'required_onboarding' => !empty($template['required_onboarding']) ? 1 : 0,
                 'priority' => (int) ($template['priority'] ?? 100),
                 'is_active' => !empty($template['is_active']) ? 1 : 0,
                 'html' => (string) ($template['html_content'] ?? ''),
@@ -224,7 +298,12 @@ class ContractTemplatesController
             $partnerCui !== '' ? $partnerCui : null,
             $supplierCui !== '' ? $supplierCui : null,
             $clientCui !== '' ? $clientCui : null,
-            ['title' => (string) ($template['name'] ?? ''), 'created_at' => date('Y-m-d')]
+            [
+                'title' => (string) ($template['name'] ?? ''),
+                'created_at' => date('Y-m-d'),
+                'contract_date' => date('Y-m-d'),
+                'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? 'contract'),
+            ]
         );
         $rendered = $renderer->render((string) ($template['html_content'] ?? ''), $vars);
 

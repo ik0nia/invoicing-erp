@@ -3,6 +3,7 @@
 namespace App\Domain\Enrollment\Http\Controllers;
 
 use App\Domain\Companies\Services\CompanyLookupService;
+use App\Domain\Partners\Models\Partner;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Audit;
@@ -18,10 +19,13 @@ class EnrollmentLinksController
     public function index(): void
     {
         $user = $this->requireEnrollmentRole();
+        $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+        $isPendingPage = str_starts_with($currentPath, '/admin/inrolari');
 
         $filters = [
             'status' => trim((string) ($_GET['status'] ?? '')),
             'type' => trim((string) ($_GET['type'] ?? '')),
+            'onboarding_status' => trim((string) ($_GET['onboarding_status'] ?? '')),
             'supplier_cui' => trim((string) ($_GET['supplier_cui'] ?? '')),
             'partner_cui' => trim((string) ($_GET['partner_cui'] ?? '')),
             'relation_supplier_cui' => trim((string) ($_GET['relation_supplier_cui'] ?? '')),
@@ -29,6 +33,9 @@ class EnrollmentLinksController
             'page' => (int) ($_GET['page'] ?? 1),
             'per_page' => (int) ($_GET['per_page'] ?? 50),
         ];
+        if ($isPendingPage && $filters['onboarding_status'] === '') {
+            $filters['onboarding_status'] = 'submitted';
+        }
         $allowedPerPage = [25, 50, 100];
         if (!in_array($filters['per_page'], $allowedPerPage, true)) {
             $filters['per_page'] = 50;
@@ -46,6 +53,11 @@ class EnrollmentLinksController
         if ($filters['type'] !== '') {
             $where[] = 'type = :type';
             $params['type'] = $filters['type'];
+        }
+        $hasOnboardingStatus = Database::columnExists('enrollment_links', 'onboarding_status');
+        if ($filters['onboarding_status'] !== '' && $hasOnboardingStatus) {
+            $where[] = 'onboarding_status = :onboarding_status';
+            $params['onboarding_status'] = $filters['onboarding_status'];
         }
         $hasPartnerCui = Database::columnExists('enrollment_links', 'partner_cui');
         $hasRelationSupplier = Database::columnExists('enrollment_links', 'relation_supplier_cui');
@@ -101,7 +113,16 @@ class EnrollmentLinksController
             'pagination' => $pagination,
             'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
+            'canApproveOnboarding' => Auth::isInternalStaff(),
+            'isPendingPage' => $isPendingPage,
         ]);
+    }
+
+    public function pending(): void
+    {
+        Auth::requireInternalStaff();
+        $_GET['onboarding_status'] = trim((string) ($_GET['onboarding_status'] ?? 'submitted'));
+        $this->index();
     }
 
     public function create(): void
@@ -176,6 +197,11 @@ class EnrollmentLinksController
                 uses,
                 current_step,
                 status,
+                onboarding_status,
+                submitted_at,
+                approved_at,
+                approved_by_user_id,
+                checkbox_confirmed,
                 expires_at,
                 last_used_at,
                 created_at,
@@ -195,6 +221,11 @@ class EnrollmentLinksController
                 0,
                 :current_step,
                 :status,
+                :onboarding_status,
+                :submitted_at,
+                :approved_at,
+                :approved_by_user_id,
+                :checkbox_confirmed,
                 :expires_at,
                 :last_used_at,
                 :created_at,
@@ -214,6 +245,11 @@ class EnrollmentLinksController
                 'max_uses' => 0,
                 'current_step' => 1,
                 'status' => 'active',
+                'onboarding_status' => 'draft',
+                'submitted_at' => null,
+                'approved_at' => null,
+                'approved_by_user_id' => null,
+                'checkbox_confirmed' => 0,
                 'expires_at' => $expiresAt !== '' ? ($expiresAt . ' 23:59:59') : null,
                 'last_used_at' => null,
                 'created_at' => date('Y-m-d H:i:s'),
@@ -287,6 +323,66 @@ class EnrollmentLinksController
         Session::flash('status', 'Link public regenerat.');
         Session::flash('public_link', $link);
         Response::redirect('/admin/enrollment-links');
+    }
+
+    public function approveOnboarding(): void
+    {
+        Auth::requireInternalStaff();
+        $user = Auth::user();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id <= 0) {
+            Response::redirect('/admin/inrolari');
+        }
+
+        $row = Database::fetchOne('SELECT * FROM enrollment_links WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$row) {
+            Response::abort(404, 'Inrolare inexistenta.');
+        }
+
+        if (!Database::columnExists('enrollment_links', 'onboarding_status')) {
+            Response::abort(500, 'Coloanele onboarding lipsesc.');
+        }
+
+        $status = (string) ($row['onboarding_status'] ?? 'draft');
+        if ($status !== 'submitted') {
+            Session::flash('error', 'Inrolarea nu este in status trimis.');
+            Response::redirect('/admin/inrolari');
+        }
+
+        $now = date('Y-m-d H:i:s');
+        Database::execute(
+            'UPDATE enrollment_links
+             SET onboarding_status = :onboarding_status,
+                 approved_at = :approved_at,
+                 approved_by_user_id = :approved_by_user_id,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'onboarding_status' => 'approved',
+                'approved_at' => $now,
+                'approved_by_user_id' => $user ? (int) $user->id : null,
+                'updated_at' => $now,
+                'id' => $id,
+            ]
+        );
+
+        $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
+        if ($partnerCui !== '') {
+            Partner::updateFlags(
+                $partnerCui,
+                (string) ($row['type'] ?? '') === 'supplier',
+                (string) ($row['type'] ?? '') === 'client'
+            );
+        }
+
+        Audit::record('onboarding.approved', 'enrollment_link', $id, [
+            'rows_count' => 1,
+            'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
+        ]);
+
+        Session::flash('status', 'Inrolarea a fost aprobata si activata.');
+        Response::redirect('/admin/inrolari');
     }
 
     public function lookup(): void

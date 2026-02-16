@@ -35,7 +35,8 @@
 <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
     <div class="font-semibold">Inrolare automata</div>
     <div class="mt-1">
-        Pentru a genera automat documente la inrolare, bifeaza „Creeaza automat la inrolare” si seteaza „Se aplica la”.
+        Pentru a genera automat documente la inrolare, bifeaza „Creeaza automat la inrolare”, marcheaza „Obligatoriu la onboarding”
+        si seteaza „Se aplica la”.
         Prioritatea controleaza ordinea documentelor create.
     </div>
 </div>
@@ -55,7 +56,18 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="template-kind">Tip document</label>
+            <label class="block text-sm font-medium text-slate-700" for="template-doc-type">Doc type (indexare)</label>
+            <input
+                id="template-doc-type"
+                name="doc_type"
+                type="text"
+                placeholder="ex: client_agreement"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-kind">Categorie document</label>
             <select
                 id="template-kind"
                 name="doc_kind"
@@ -97,6 +109,10 @@
             Creeaza automat la inrolare
         </label>
         <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="required_onboarding" class="rounded border-slate-300">
+            Obligatoriu la onboarding
+        </label>
+        <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="is_active" class="rounded border-slate-300" checked>
             Activ
         </label>
@@ -122,9 +138,11 @@
         <thead class="bg-slate-50 text-slate-600">
             <tr>
                 <th class="px-3 py-2">Nume</th>
-                <th class="px-3 py-2">Tip document</th>
+                <th class="px-3 py-2">Doc type</th>
+                <th class="px-3 py-2">Categorie</th>
                 <th class="px-3 py-2">Se aplica la</th>
                 <th class="px-3 py-2">Automat la inrolare</th>
+                <th class="px-3 py-2">Obligatoriu</th>
                 <th class="px-3 py-2">Prioritate</th>
                 <th class="px-3 py-2">Activ</th>
                 <th class="px-3 py-2">Creat</th>
@@ -134,7 +152,7 @@
         <tbody>
             <?php if (empty($templates)): ?>
                 <tr>
-                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="10" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista modele de contract active. Creati un model pentru a putea genera contracte.
                     </td>
                 </tr>
@@ -142,17 +160,21 @@
                 <?php foreach ($templates as $template): ?>
                     <?php
                         $docKind = (string) ($template['doc_kind'] ?? 'contract');
+                        $docType = (string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind);
                         $applies = (string) ($template['applies_to'] ?? 'both');
                         $auto = !empty($template['auto_on_enrollment']);
+                        $required = !empty($template['required_onboarding']);
                         $active = !empty($template['is_active']);
                         $appliesLabel = $applies === 'supplier' ? 'Furnizor' : ($applies === 'client' ? 'Client' : 'Ambele');
-                        $docLabel = $docKind === 'acord' ? 'Acord' : ($docKind === 'anexa' ? 'Anexa' : 'Contract');
+                        $categoryLabel = $docKind === 'acord' ? 'Acord' : ($docKind === 'anexa' ? 'Anexa' : 'Contract');
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($template['name'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($docLabel) ?></td>
+                        <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars($docType) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($categoryLabel) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($appliesLabel) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= $auto ? 'Da' : 'Nu' ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= $required ? 'Da' : 'Nu' ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= (int) ($template['priority'] ?? 100) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= $active ? 'Da' : 'Nu' ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($template['created_at'] ?? '')) ?></td>

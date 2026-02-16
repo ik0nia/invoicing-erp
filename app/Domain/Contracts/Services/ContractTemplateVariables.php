@@ -33,6 +33,9 @@ class ContractTemplateVariables
             ['key' => 'relation.invoice_inbox_email', 'label' => 'Email inbox facturi (relatie)'],
             ['key' => 'contract.title', 'label' => 'Titlu contract'],
             ['key' => 'contract.created_at', 'label' => 'Data creare contract'],
+            ['key' => 'contract.date', 'label' => 'Data contract'],
+            ['key' => 'contract.doc_type', 'label' => 'Tip document (doc_type)'],
+            ['key' => 'doc.type', 'label' => 'Tip document (shortcut)'],
             ['key' => 'date.today', 'label' => 'Data curenta'],
         ];
     }
@@ -74,8 +77,20 @@ class ContractTemplateVariables
         $vars['relation.client_cui'] = $clientCui ?? '';
         $vars['relation.invoice_inbox_email'] = $this->fetchRelationEmail($supplierCui, $clientCui);
 
+        $docType = trim((string) ($contractContext['doc_type'] ?? ''));
+        if ($docType === '') {
+            $docType = 'contract';
+        }
+        $contractDate = trim((string) ($contractContext['contract_date'] ?? $contractContext['created_at'] ?? ''));
+        if ($contractDate === '') {
+            $contractDate = date('Y-m-d');
+        }
+
         $vars['contract.title'] = (string) ($contractContext['title'] ?? '');
         $vars['contract.created_at'] = (string) ($contractContext['created_at'] ?? date('Y-m-d'));
+        $vars['contract.date'] = $contractDate;
+        $vars['contract.doc_type'] = $docType;
+        $vars['doc.type'] = $docType;
         $vars['date.today'] = date('Y-m-d');
 
         return $vars;

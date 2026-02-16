@@ -22,7 +22,7 @@ class ContractOnboardingService
                 return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
             }
 
-            $templates = $this->templateService->getAutoTemplatesForEnrollment($linkType);
+            $templates = $this->templateService->getRequiredOnboardingTemplates($linkType);
             if (empty($templates)) {
                 Logger::logWarning('contract_template_missing', ['role' => $linkType]);
                 return ['created_count' => 0, 'total_templates' => 0, 'has_templates' => false];
@@ -42,20 +42,50 @@ class ContractOnboardingService
 
                 $title = (string) ($template['name'] ?? '');
                 $docKind = (string) ($template['doc_kind'] ?? '');
+                $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
+                if ($docType === '') {
+                    $docType = 'contract';
+                }
                 $meta = json_encode([
                     'doc_kind' => $docKind,
                 ], JSON_UNESCAPED_UNICODE);
 
                 Database::execute(
-                    'INSERT INTO contracts (template_id, partner_cui, supplier_cui, client_cui, title, status, metadata_json, created_at)
-                     VALUES (:template_id, :partner_cui, :supplier_cui, :client_cui, :title, :status, :meta, :created_at)',
+                    'INSERT INTO contracts (
+                        template_id,
+                        partner_cui,
+                        supplier_cui,
+                        client_cui,
+                        title,
+                        doc_type,
+                        contract_date,
+                        status,
+                        required_onboarding,
+                        metadata_json,
+                        created_at
+                    ) VALUES (
+                        :template_id,
+                        :partner_cui,
+                        :supplier_cui,
+                        :client_cui,
+                        :title,
+                        :doc_type,
+                        :contract_date,
+                        :status,
+                        :required_onboarding,
+                        :meta,
+                        :created_at
+                    )',
                     [
                         'template_id' => $templateId,
                         'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
                         'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
                         'client_cui' => $clientCui !== '' ? $clientCui : null,
                         'title' => $title !== '' ? $title : 'Contract',
+                        'doc_type' => $docType,
+                        'contract_date' => date('Y-m-d'),
                         'status' => 'draft',
+                        'required_onboarding' => 1,
                         'meta' => $meta,
                         'created_at' => date('Y-m-d H:i:s'),
                     ]
@@ -64,6 +94,7 @@ class ContractOnboardingService
                 $titles[] = [
                     'title' => $title !== '' ? $title : 'Contract',
                     'doc_kind' => $docKind !== '' ? $docKind : 'contract',
+                    'doc_type' => $docType,
                 ];
             }
 

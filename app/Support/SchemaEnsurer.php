@@ -161,12 +161,18 @@ class SchemaEnsurer
                     status ENUM("active", "disabled") NOT NULL DEFAULT "active",
                     expires_at DATETIME NULL,
                     confirmed_at DATETIME NULL,
+                    onboarding_status ENUM("draft", "waiting_signature", "submitted", "approved", "rejected") NOT NULL DEFAULT "draft",
+                    submitted_at DATETIME NULL,
+                    approved_at DATETIME NULL,
+                    approved_by_user_id INT NULL,
+                    checkbox_confirmed TINYINT(1) NOT NULL DEFAULT 0,
                     last_used_at DATETIME NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NULL,
                     INDEX idx_enrollment_status (status),
                     INDEX idx_enrollment_supplier (supplier_cui),
-                    INDEX idx_enrollment_created (created_at)
+                    INDEX idx_enrollment_created (created_at),
+                    INDEX idx_enrollment_onboarding (onboarding_status)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
                 [],
                 'enrollment_links_create'
@@ -207,6 +213,47 @@ class SchemaEnsurer
                 self::safeExecute('ALTER TABLE enrollment_links ADD COLUMN updated_at DATETIME NULL AFTER created_at', [], 'enrollment_links_updated_at');
                 unset(self::$columnCache['enrollment_links.updated_at']);
             }
+            if (!self::columnExists('enrollment_links', 'onboarding_status')) {
+                self::safeExecute(
+                    'ALTER TABLE enrollment_links ADD COLUMN onboarding_status ENUM("draft", "waiting_signature", "submitted", "approved", "rejected") NOT NULL DEFAULT "draft" AFTER confirmed_at',
+                    [],
+                    'enrollment_links_onboarding_status'
+                );
+                unset(self::$columnCache['enrollment_links.onboarding_status']);
+            }
+            if (!self::columnExists('enrollment_links', 'submitted_at')) {
+                self::safeExecute(
+                    'ALTER TABLE enrollment_links ADD COLUMN submitted_at DATETIME NULL AFTER onboarding_status',
+                    [],
+                    'enrollment_links_submitted_at'
+                );
+                unset(self::$columnCache['enrollment_links.submitted_at']);
+            }
+            if (!self::columnExists('enrollment_links', 'approved_at')) {
+                self::safeExecute(
+                    'ALTER TABLE enrollment_links ADD COLUMN approved_at DATETIME NULL AFTER submitted_at',
+                    [],
+                    'enrollment_links_approved_at'
+                );
+                unset(self::$columnCache['enrollment_links.approved_at']);
+            }
+            if (!self::columnExists('enrollment_links', 'approved_by_user_id')) {
+                self::safeExecute(
+                    'ALTER TABLE enrollment_links ADD COLUMN approved_by_user_id INT NULL AFTER approved_at',
+                    [],
+                    'enrollment_links_approved_by'
+                );
+                unset(self::$columnCache['enrollment_links.approved_by_user_id']);
+            }
+            if (!self::columnExists('enrollment_links', 'checkbox_confirmed')) {
+                self::safeExecute(
+                    'ALTER TABLE enrollment_links ADD COLUMN checkbox_confirmed TINYINT(1) NOT NULL DEFAULT 0 AFTER approved_by_user_id',
+                    [],
+                    'enrollment_links_checkbox_confirmed'
+                );
+                unset(self::$columnCache['enrollment_links.checkbox_confirmed']);
+            }
+            self::ensureIndex('enrollment_links', 'idx_enrollment_onboarding', 'ALTER TABLE enrollment_links ADD INDEX idx_enrollment_onboarding (onboarding_status)');
         }
     }
 
@@ -279,8 +326,10 @@ class SchemaEnsurer
                     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(128) NOT NULL,
                     template_type VARCHAR(32) NOT NULL,
+                    doc_type VARCHAR(64) NULL,
                     applies_to ENUM("client", "supplier", "both") NOT NULL DEFAULT "both",
                     auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0,
+                    required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
                     doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract",
                     priority INT NOT NULL DEFAULT 100,
                     is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -289,6 +338,7 @@ class SchemaEnsurer
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME NULL,
                     INDEX idx_templates_type (template_type),
+                    INDEX idx_templates_doc_type (doc_type),
                     INDEX idx_templates_auto (auto_on_enrollment, applies_to),
                     INDEX idx_templates_active (is_active),
                     INDEX idx_templates_priority (priority)
@@ -313,9 +363,17 @@ class SchemaEnsurer
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0 AFTER applies_to', [], 'contract_templates_auto');
                 unset(self::$columnCache['contract_templates.auto_on_enrollment']);
             }
+            if (!self::columnExists('contract_templates', 'required_onboarding')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN required_onboarding TINYINT(1) NOT NULL DEFAULT 0 AFTER auto_on_enrollment', [], 'contract_templates_required');
+                unset(self::$columnCache['contract_templates.required_onboarding']);
+            }
             if (!self::columnExists('contract_templates', 'doc_kind')) {
-                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract" AFTER auto_on_enrollment', [], 'contract_templates_doc_kind');
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract" AFTER required_onboarding', [], 'contract_templates_doc_kind');
                 unset(self::$columnCache['contract_templates.doc_kind']);
+            }
+            if (!self::columnExists('contract_templates', 'doc_type')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN doc_type VARCHAR(64) NULL AFTER template_type', [], 'contract_templates_doc_type');
+                unset(self::$columnCache['contract_templates.doc_type']);
             }
             if (!self::columnExists('contract_templates', 'priority')) {
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN priority INT NOT NULL DEFAULT 100 AFTER doc_kind', [], 'contract_templates_priority');
@@ -325,6 +383,25 @@ class SchemaEnsurer
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER priority', [], 'contract_templates_active');
                 unset(self::$columnCache['contract_templates.is_active']);
             }
+            if (self::columnExists('contract_templates', 'doc_type')) {
+                self::safeExecute(
+                    'UPDATE contract_templates
+                     SET doc_type = COALESCE(NULLIF(doc_type, ""), NULLIF(template_type, ""), NULLIF(doc_kind, ""), "contract")
+                     WHERE doc_type IS NULL OR doc_type = ""',
+                    [],
+                    'contract_templates_doc_type_backfill'
+                );
+            }
+            if (self::columnExists('contract_templates', 'required_onboarding') && self::columnExists('contract_templates', 'auto_on_enrollment')) {
+                self::safeExecute(
+                    'UPDATE contract_templates
+                     SET required_onboarding = 1
+                     WHERE auto_on_enrollment = 1 AND required_onboarding = 0',
+                    [],
+                    'contract_templates_required_backfill'
+                );
+            }
+            self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
         }
     }
 
@@ -339,9 +416,14 @@ class SchemaEnsurer
                     supplier_cui VARCHAR(32) NULL,
                     client_cui VARCHAR(32) NULL,
                     title VARCHAR(255) NOT NULL,
+                    doc_type VARCHAR(64) NOT NULL DEFAULT "contract",
+                    contract_date DATE NULL,
+                    required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
                     status ENUM("draft", "generated", "sent", "signed_uploaded", "approved") NOT NULL DEFAULT "draft",
                     generated_file_path VARCHAR(255) NULL,
+                    generated_pdf_path VARCHAR(255) NULL,
                     signed_file_path VARCHAR(255) NULL,
+                    signed_upload_path VARCHAR(255) NULL,
                     metadata_json TEXT NULL,
                     created_by_user_id INT NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -349,7 +431,8 @@ class SchemaEnsurer
                     INDEX idx_contracts_status (status),
                     INDEX idx_contracts_partner (partner_cui),
                     INDEX idx_contracts_relation (supplier_cui, client_cui),
-                    INDEX idx_contracts_created (created_at)
+                    INDEX idx_contracts_created (created_at),
+                    INDEX idx_contracts_doc_date (doc_type, contract_date)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
                 [],
                 'contracts_create'
@@ -363,6 +446,87 @@ class SchemaEnsurer
             self::ensureIndex('contracts', 'idx_contracts_partner', 'ALTER TABLE contracts ADD INDEX idx_contracts_partner (partner_cui)');
             self::ensureIndex('contracts', 'idx_contracts_relation', 'ALTER TABLE contracts ADD INDEX idx_contracts_relation (supplier_cui, client_cui)');
             self::ensureIndex('contracts', 'idx_contracts_created', 'ALTER TABLE contracts ADD INDEX idx_contracts_created (created_at)');
+            if (!self::columnExists('contracts', 'doc_type')) {
+                self::safeExecute(
+                    'ALTER TABLE contracts ADD COLUMN doc_type VARCHAR(64) NOT NULL DEFAULT "contract" AFTER title',
+                    [],
+                    'contracts_doc_type'
+                );
+                unset(self::$columnCache['contracts.doc_type']);
+            }
+            if (!self::columnExists('contracts', 'contract_date')) {
+                self::safeExecute(
+                    'ALTER TABLE contracts ADD COLUMN contract_date DATE NULL AFTER doc_type',
+                    [],
+                    'contracts_contract_date'
+                );
+                unset(self::$columnCache['contracts.contract_date']);
+            }
+            if (!self::columnExists('contracts', 'required_onboarding')) {
+                self::safeExecute(
+                    'ALTER TABLE contracts ADD COLUMN required_onboarding TINYINT(1) NOT NULL DEFAULT 0 AFTER contract_date',
+                    [],
+                    'contracts_required_onboarding'
+                );
+                unset(self::$columnCache['contracts.required_onboarding']);
+            }
+            if (!self::columnExists('contracts', 'generated_pdf_path')) {
+                self::safeExecute(
+                    'ALTER TABLE contracts ADD COLUMN generated_pdf_path VARCHAR(255) NULL AFTER generated_file_path',
+                    [],
+                    'contracts_generated_pdf_path'
+                );
+                unset(self::$columnCache['contracts.generated_pdf_path']);
+            }
+            if (!self::columnExists('contracts', 'signed_upload_path')) {
+                self::safeExecute(
+                    'ALTER TABLE contracts ADD COLUMN signed_upload_path VARCHAR(255) NULL AFTER signed_file_path',
+                    [],
+                    'contracts_signed_upload_path'
+                );
+                unset(self::$columnCache['contracts.signed_upload_path']);
+            }
+            if (self::columnExists('contracts', 'doc_type')) {
+                if (self::tableExists('contract_templates')) {
+                    $hasTemplateDocType = self::columnExists('contract_templates', 'doc_type');
+                    $templateDocTypeSql = $hasTemplateDocType ? 'NULLIF(t.doc_type, "")' : 'NULL';
+                    self::safeExecute(
+                        'UPDATE contracts c
+                         LEFT JOIN contract_templates t ON t.id = c.template_id
+                         SET c.doc_type = COALESCE(NULLIF(c.doc_type, ""), ' . $templateDocTypeSql . ', NULLIF(t.template_type, ""), NULLIF(t.doc_kind, ""), "contract")
+                         WHERE c.doc_type IS NULL OR c.doc_type = ""',
+                        [],
+                        'contracts_doc_type_backfill'
+                    );
+                } else {
+                    self::safeExecute(
+                        'UPDATE contracts SET doc_type = "contract" WHERE doc_type IS NULL OR doc_type = ""',
+                        [],
+                        'contracts_doc_type_default'
+                    );
+                }
+            }
+            if (self::columnExists('contracts', 'contract_date')) {
+                self::safeExecute(
+                    'UPDATE contracts
+                     SET contract_date = DATE(created_at)
+                     WHERE contract_date IS NULL',
+                    [],
+                    'contracts_contract_date_backfill'
+                );
+            }
+            if (self::columnExists('contracts', 'signed_upload_path') && self::columnExists('contracts', 'signed_file_path')) {
+                self::safeExecute(
+                    'UPDATE contracts
+                     SET signed_upload_path = signed_file_path
+                     WHERE (signed_upload_path IS NULL OR signed_upload_path = "")
+                       AND signed_file_path IS NOT NULL
+                       AND signed_file_path <> ""',
+                    [],
+                    'contracts_signed_upload_backfill'
+                );
+            }
+            self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
         }
     }
 

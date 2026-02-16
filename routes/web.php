@@ -40,6 +40,7 @@ $router->post('/p/{token}/set-step', [PublicPartnerController::class, 'setStep']
 $router->get('/p/{token}/preview', [PublicPartnerController::class, 'preview']);
 $router->get('/p/{token}/download', [PublicPartnerController::class, 'download']);
 $router->post('/p/{token}/upload-signed', [PublicPartnerController::class, 'uploadSigned']);
+$router->post('/p/{token}/submit-activation', [PublicPartnerController::class, 'submitForActivation']);
 
 $router->get('/admin/dashboard', [DashboardController::class, 'index']);
 

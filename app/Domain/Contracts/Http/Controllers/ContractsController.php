@@ -2,9 +2,8 @@
 
 namespace App\Domain\Contracts\Http\Controllers;
 
+use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Users\Models\UserSupplierAccess;
-use App\Domain\Contracts\Services\ContractTemplateVariables;
-use App\Domain\Contracts\Services\TemplateRenderer;
 use App\Support\Auth;
 use App\Support\Audit;
 use App\Support\Database;
@@ -48,6 +47,7 @@ class ContractsController
         Response::view('admin/contracts/index', [
             'templates' => $templates,
             'contracts' => $contracts,
+            'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
         ]);
     }
 
@@ -60,6 +60,7 @@ class ContractsController
         $partnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
+        $contractDate = trim((string) ($_POST['contract_date'] ?? ''));
 
         if ($title === '') {
             Session::flash('error', 'Completeaza titlul contractului.');
@@ -67,46 +68,64 @@ class ContractsController
         }
 
         $template = $templateId > 0 ? Database::fetchOne('SELECT * FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $templateId]) : null;
-        $html = $template['html_content'] ?? '';
-        if ($html === '') {
-            $html = '<html><body><h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1></body></html>';
+        $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $template['doc_kind'] ?? ''));
+        if ($docType === '') {
+            $docType = 'contract';
         }
-        $variablesService = new ContractTemplateVariables();
-        $renderer = new TemplateRenderer();
-        $vars = $variablesService->buildVariables(
-            $partnerCui !== '' ? $partnerCui : null,
-            $supplierCui !== '' ? $supplierCui : null,
-            $clientCui !== '' ? $clientCui : null,
-            ['title' => $title, 'created_at' => date('Y-m-d')]
-        );
-        $html = $renderer->render($html, $vars);
-
-        $path = $this->storeGeneratedFile($html);
-        if ($path === null) {
-            Session::flash('error', 'Nu pot genera fisierul.');
-            Response::redirect('/admin/contracts');
+        if ($contractDate === '') {
+            $contractDate = date('Y-m-d');
         }
 
         Database::execute(
-            'INSERT INTO contracts (template_id, partner_cui, supplier_cui, client_cui, title, status, generated_file_path, created_by_user_id, created_at)
-             VALUES (:template_id, :partner_cui, :supplier_cui, :client_cui, :title, :status, :path, :user_id, :created_at)',
+            'INSERT INTO contracts (
+                template_id,
+                partner_cui,
+                supplier_cui,
+                client_cui,
+                title,
+                doc_type,
+                contract_date,
+                required_onboarding,
+                status,
+                created_by_user_id,
+                created_at
+            ) VALUES (
+                :template_id,
+                :partner_cui,
+                :supplier_cui,
+                :client_cui,
+                :title,
+                :doc_type,
+                :contract_date,
+                :required_onboarding,
+                :status,
+                :user_id,
+                :created_at
+            )',
             [
                 'template_id' => $templateId ?: null,
                 'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
                 'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
                 'client_cui' => $clientCui !== '' ? $clientCui : null,
                 'title' => $title,
+                'doc_type' => $docType,
+                'contract_date' => $contractDate,
+                'required_onboarding' => 0,
                 'status' => 'generated',
-                'path' => $path,
                 'user_id' => $user ? $user->id : null,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
         );
 
         $contractId = (int) Database::lastInsertId();
+        $pdfPath = (new ContractPdfService())->generatePdfForContract($contractId);
         Audit::record('contract.generated', 'contract', $contractId ?: null, []);
 
-        Session::flash('status', 'Contract generat.');
+        if ($pdfPath === '') {
+            Session::flash('status', 'Contract generat. PDF indisponibil momentan (verifica wkhtmltopdf).');
+        } else {
+            Session::flash('status', 'Contract generat.');
+        }
         Response::redirect('/admin/contracts');
     }
 
@@ -126,7 +145,12 @@ class ContractsController
         }
 
         Database::execute(
-            'UPDATE contracts SET signed_file_path = :path, status = :status, updated_at = :now WHERE id = :id',
+            'UPDATE contracts
+             SET signed_file_path = :path,
+                 signed_upload_path = :path,
+                 status = :status,
+                 updated_at = :now
+             WHERE id = :id',
             [
                 'path' => $path,
                 'status' => 'signed_uploaded',
@@ -186,9 +210,18 @@ class ContractsController
             }
         }
 
-        $path = (string) ($row['signed_file_path'] ?? $row['generated_file_path'] ?? '');
+        $path = (string) ($row['signed_upload_path'] ?? '');
         if ($path === '') {
-            Response::abort(404, 'Fisier lipsa.');
+            $path = (string) ($row['signed_file_path'] ?? '');
+        }
+        if ($path === '') {
+            $path = (string) ($row['generated_pdf_path'] ?? '');
+        }
+        if ($path === '') {
+            $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+        }
+        if ($path === '') {
+            Response::abort(503, 'PDF indisponibil momentan. Verifica configurarea wkhtmltopdf.');
         }
         $this->streamFile($path);
     }
@@ -215,22 +248,6 @@ class ContractsController
             Response::abort(403, 'Acces interzis.');
         }
         return $user;
-    }
-
-    private function storeGeneratedFile(string $html): ?string
-    {
-        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $dir = $base . '/storage/uploads/contracts/generated';
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-        $name = bin2hex(random_bytes(16)) . '.html';
-        $path = $dir . '/' . $name;
-        if (file_put_contents($path, $html) === false) {
-            return null;
-        }
-
-        return 'storage/uploads/contracts/generated/' . $name;
     }
 
     private function storeUpload(?array $file, string $subdir): ?string
@@ -282,7 +299,9 @@ class ContractsController
             Response::abort(404);
         }
         $filename = basename($path);
-        header('Content-Type: application/octet-stream');
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $contentType = $ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+        header('Content-Type: ' . $contentType);
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Content-Length: ' . filesize($path));
         readfile($path);

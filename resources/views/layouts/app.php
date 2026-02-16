@@ -19,6 +19,7 @@ $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
 $isOperator = $user?->isOperator() ?? false;
+$isInternalStaff = $user?->hasRole(['super_admin', 'admin', 'contabil', 'operator']) ?? false;
 $canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
 $userFirstName = '';
 if ($user && !empty($user->name)) {
@@ -70,6 +71,13 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
         ],
     ];
+    if ($isInternalStaff) {
+        $menuSections['Inrolare'][] = [
+            'label' => 'Inrolari in asteptare',
+            'path' => '/admin/inrolari',
+            'active' => str_starts_with($currentPath, '/admin/inrolari'),
+        ];
+    }
 }
 
 if ($isPlatformUser || $isOperator || $isSupplierUser) {

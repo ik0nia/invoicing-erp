@@ -4,6 +4,7 @@
     $title = 'Contracte';
     $templates = $templates ?? [];
     $contracts = $contracts ?? [];
+    $pdfAvailable = !empty($pdfAvailable);
     $canApproveContracts = Auth::isInternalStaff();
     $statusLabels = [
         'draft' => 'Ciorna',
@@ -32,7 +33,7 @@
     <div class="font-semibold">Flux contracte</div>
     <ol class="mt-2 list-decimal space-y-1 pl-5">
         <li>Contract in <strong>Ciorna</strong></li>
-        <li>Genereaza (se creeaza fisierul HTML)</li>
+        <li>Genereaza PDF contract</li>
         <li>Trimite catre semnare</li>
         <li>Incarca semnat</li>
         <li>Aprobare (staff intern: super_admin/admin/contabil/operator)</li>
@@ -44,6 +45,13 @@
         [1] Ciorna &rarr; [2] Generat &rarr; [3] Semnat &rarr; [4] Aprobat
     </div>
 </div>
+
+<?php if (!$pdfAvailable): ?>
+    <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        Generarea PDF nu este disponibila (wkhtmltopdf lipsa). Contractele pot fi salvate, dar download-ul PDF va fi indisponibil
+        pana la configurarea utilitarului pe server.
+    </div>
+<?php endif; ?>
 
 <form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <?= App\Support\Csrf::input() ?>
@@ -96,6 +104,16 @@
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="contract-date">Data contract</label>
+            <input
+                id="contract-date"
+                name="contract_date"
+                type="date"
+                value="<?= htmlspecialchars(date('Y-m-d')) ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
     </div>
 
     <div class="mt-4">
@@ -128,6 +146,8 @@
         <thead class="bg-slate-50 text-slate-600">
             <tr>
                 <th class="px-3 py-2">Titlu</th>
+                <th class="px-3 py-2">Doc type</th>
+                <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
                 <th class="px-3 py-2">Relatie</th>
                 <th class="px-3 py-2">Descarcare</th>
@@ -137,7 +157,7 @@
         <tbody>
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="5" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -152,9 +172,15 @@
                         $statusKey = (string) ($contract['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                         $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
+                        $downloadReady = !empty($contract['signed_upload_path'])
+                            || !empty($contract['signed_file_path'])
+                            || !empty($contract['generated_pdf_path'])
+                            || $pdfAvailable;
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
+                        <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['contract_date'] ?? '—')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                 <?= htmlspecialchars($statusLabel) ?>
@@ -162,7 +188,7 @@
                         </td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($relation !== '' ? $relation : '—') ?></td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?php if (!empty($contract['signed_file_path']) || !empty($contract['generated_file_path'])): ?>
+                            <?php if ($downloadReady): ?>
                                 <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                             <?php else: ?>
                                 —
