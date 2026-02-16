@@ -40,16 +40,17 @@
     }
     $paginationParams = $filterParams;
     $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 50);
+    $createFormMarginClass = !empty($newLink) ? 'mt-4 ' : '';
 ?>
 
-<div class="flex items-center justify-between">
-    <div>
-        <h1 class="text-xl font-semibold text-slate-900"><?= $isPendingPage ? 'Inrolari in asteptare' : 'Adauga partener' ?></h1>
-        <p class="mt-1 text-sm text-slate-500">
-            <?= $isPendingPage ? 'Cereri trimise spre activare manuala de staff intern.' : 'Gestioneaza linkurile publice pentru onboarding si documente.' ?>
-        </p>
+<?php if ($isPendingPage): ?>
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold text-slate-900">Inrolari in asteptare</h1>
+            <p class="mt-1 text-sm text-slate-500">Cereri trimise spre activare manuala de staff intern.</p>
+        </div>
     </div>
-</div>
+<?php endif; ?>
 
 <?php if (!$isPendingPage): ?>
     <?php if (!empty($newLink)): ?>
@@ -75,7 +76,12 @@
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/create') ?>" class="mt-4 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 p-5 shadow-sm ring-1 ring-blue-100">
+    <form
+        id="create-enrollment-link-form"
+        method="POST"
+        action="<?= App\Support\Url::to('admin/enrollment-links/create') ?>"
+        class="<?= $createFormMarginClass ?>rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 p-5 shadow-sm ring-1 ring-blue-100"
+    >
         <?= App\Support\Csrf::input() ?>
         <div class="mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
             <div class="text-sm font-semibold text-blue-900">Creeaza rapid un link nou pentru onboarding</div>
@@ -241,7 +247,11 @@
         <p id="prefill-lookup-status" class="mt-2 text-xs text-slate-500"></p>
 
         <div class="mt-4 flex flex-wrap items-center gap-2">
-            <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button
+                id="create-link-submit"
+                disabled
+                class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
+            >
                 Creeaza link public
             </button>
             <p class="text-xs text-slate-500">La creare, datele de precompletare se completeaza automat din OpenAPI pe baza CUI-ului.</p>
@@ -585,7 +595,10 @@
                 .replace(/'/g, '&#039;');
         };
 
+        let refreshCreateSubmitState = () => {};
         const supplierPicker = document.querySelector('[data-supplier-picker]');
+        const createLinkSubmitButton = document.getElementById('create-link-submit');
+        const prefillCuiField = document.getElementById('prefill-cui');
         const commissionInput = document.getElementById('commission');
         if (supplierPicker) {
             const displayInput = supplierPicker.querySelector('[data-supplier-display]');
@@ -659,6 +672,7 @@
                     setHint(defaultSupplierHint);
                 }
                 clearList();
+                updateCreateSubmitState();
             };
 
             const renderItems = (items) => {
@@ -750,6 +764,37 @@
                 return checked ? String(checked.value || 'supplier') : 'supplier';
             };
 
+            const hasCommissionValue = () => {
+                if (!commissionInput) {
+                    return false;
+                }
+                const raw = String(commissionInput.value || '').trim().replace(',', '.');
+                if (raw === '') {
+                    return false;
+                }
+
+                return Number.isFinite(Number(raw));
+            };
+
+            const hasPrefillCuiValue = () => {
+                if (!prefillCuiField) {
+                    return false;
+                }
+
+                return String(prefillCuiField.value || '').trim() !== '';
+            };
+
+            const updateCreateSubmitState = () => {
+                if (!createLinkSubmitButton) {
+                    return;
+                }
+                const requiresSupplier = selectedLinkType() === 'client';
+                const supplierSelected = !requiresSupplier || (hiddenInput && hiddenInput.value.trim() !== '');
+                const canSubmit = hasCommissionValue() && hasPrefillCuiValue() && supplierSelected;
+                createLinkSubmitButton.disabled = !canSubmit;
+            };
+            refreshCreateSubmitState = updateCreateSubmitState;
+
             const syncSupplierState = () => {
                 const requiresSupplier = selectedLinkType() === 'client';
                 if (supplierWrapper) {
@@ -769,11 +814,13 @@
                     }
                     clearList();
                     setHint('Pentru link de tip furnizor, acest camp nu este obligatoriu.');
+                    updateCreateSubmitState();
                     return;
                 }
                 if (hiddenInput && hiddenInput.value.trim() === '') {
                     setHint(defaultSupplierHint);
                 }
+                updateCreateSubmitState();
             };
 
             if (displayInput && hiddenInput) {
@@ -805,6 +852,7 @@
                     }
                     hiddenInput.value = '';
                     setHint(defaultSupplierHint);
+                    updateCreateSubmitState();
                     const query = displayInput.value.trim();
                     if (timer) {
                         clearTimeout(timer);
@@ -849,13 +897,18 @@
                     input.addEventListener('change', syncSupplierState);
                 });
             }
+            if (commissionInput) {
+                commissionInput.addEventListener('input', updateCreateSubmitState);
+                commissionInput.addEventListener('blur', updateCreateSubmitState);
+            }
             syncSupplierState();
             if (selectedLinkType() === 'client' && hiddenInput && hiddenInput.value.trim() !== '') {
                 resolveSupplierByCui(hiddenInput.value.trim(), true);
             }
+            updateCreateSubmitState();
         }
 
-        const prefillCuiInput = document.getElementById('prefill-cui');
+        const prefillCuiInput = prefillCuiField;
         if (prefillCuiInput) {
             const prefillStatus = document.getElementById('prefill-lookup-status');
             const lookupUrl = prefillCuiInput.getAttribute('data-lookup-url') || '';
@@ -965,14 +1018,18 @@
                     lastLookupCui = '';
                     setPrefillStatus('');
                 }
+                refreshCreateSubmitState();
             });
 
             prefillCuiInput.addEventListener('blur', () => {
                 const sanitized = digitsOnly(prefillCuiInput.value);
                 prefillCuiInput.value = sanitized;
                 lookupCompanyByCui(sanitized);
+                refreshCreateSubmitState();
             });
         }
+
+        refreshCreateSubmitState();
 
         const copyButton = document.getElementById('enroll-copy');
         const output = document.getElementById('enroll-link-output');
