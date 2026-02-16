@@ -103,6 +103,8 @@ $router->post('/admin/facturi/redenumeste-pachet', [InvoiceController::class, 'r
 $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']);
 $router->post('/admin/facturi/print-storno', [InvoiceController::class, 'printStornoInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);
+$router->post('/admin/facturi/refacere', [InvoiceController::class, 'rebuildInvoice']);
+$router->post('/admin/facturi/refacere/genereaza', [InvoiceController::class, 'generateAdjustmentInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
 
 $router->get('/admin/incasari', [PaymentsController::class, 'indexIn']);
