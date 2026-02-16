@@ -54,7 +54,7 @@
     </div>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="">
     <div class="grid gap-4 md:grid-cols-2">

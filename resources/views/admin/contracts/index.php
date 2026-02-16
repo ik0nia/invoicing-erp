@@ -53,7 +53,7 @@
     </div>
 <?php endif; ?>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
@@ -123,7 +123,7 @@
     </div>
 </form>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <div class="flex flex-wrap items-center gap-3">
         <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>

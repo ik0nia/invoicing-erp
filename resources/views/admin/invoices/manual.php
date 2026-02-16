@@ -34,7 +34,7 @@
     }
 ?>
 
-<div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
             <h1 class="text-xl font-semibold text-slate-900">Adauga factura manual</h1>

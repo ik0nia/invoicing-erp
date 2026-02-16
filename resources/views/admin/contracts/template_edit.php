@@ -47,7 +47,7 @@
     </div>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/update') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/update') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
     <div class="grid gap-4 md:grid-cols-2">
@@ -166,7 +166,7 @@
         : '';
 ?>
 
-<div class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div class="text-sm font-semibold text-slate-700">Stampila / Semnatura (optional)</div>
     <p class="mt-1 text-xs text-slate-500">
         Stampila este specifica acestui model. O poti insera in document cu variabila {{stamp.image}}.
@@ -226,7 +226,7 @@
     <?php endif; ?>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/preview') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/preview') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
     <div class="text-sm font-semibold text-slate-700">Previzualizare</div>

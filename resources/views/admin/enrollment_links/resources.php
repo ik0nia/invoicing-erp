@@ -17,7 +17,7 @@
     </div>
 </div>
 
-<div class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+<div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm ring-1 ring-blue-100">
     <div class="text-sm font-semibold text-slate-800">Adauga fisier onboarding</div>
     <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/resources/upload') ?>" enctype="multipart/form-data" class="mt-4 grid gap-4 md:grid-cols-4">
         <?= App\Support\Csrf::input() ?>

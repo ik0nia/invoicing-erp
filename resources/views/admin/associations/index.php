@@ -84,7 +84,7 @@
     <?php endif; ?>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/comision-default') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/comision-default') ?>" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
 
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -132,7 +132,7 @@
     </div>
 </form>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/salveaza') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/salveaza') ?>" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
 
     <div class="grid gap-4 md:grid-cols-3">
@@ -229,7 +229,7 @@
     </table>
 </div>
 
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div>
         <h2 class="text-lg font-semibold text-slate-900">Contacte relatie</h2>
         <p class="mt-1 text-sm text-slate-600">Contacte asociate relatiei furnizor-client.</p>

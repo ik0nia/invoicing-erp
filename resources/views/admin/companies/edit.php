@@ -13,7 +13,7 @@
     </a>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/companii/save') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/companii/save') ?>" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
 
     <div class="grid gap-4 md:grid-cols-2">
@@ -222,7 +222,7 @@
     </div>
 </form>
 
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-lg font-semibold text-slate-900">Contacte</h2>
