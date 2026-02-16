@@ -13,6 +13,8 @@ class ContractPdfService
     private ContractTemplateVariables $variablesService;
     private ?string $wkhtmltopdfPath = null;
     private bool $wkhtmltopdfChecked = false;
+    private ?string $dompdfAutoloadPath = null;
+    private bool $dompdfChecked = false;
 
     public function __construct(
         ?TemplateRenderer $renderer = null,
@@ -24,7 +26,7 @@ class ContractPdfService
 
     public function isPdfGenerationAvailable(): bool
     {
-        return $this->resolveWkhtmltopdfPath() !== '';
+        return $this->resolveWkhtmltopdfPath() !== '' || $this->isDompdfAvailable();
     }
 
     public function renderHtmlForContract(array $contract, string $renderContext = 'admin'): string
@@ -90,13 +92,6 @@ class ContractPdfService
             return '';
         }
 
-        $binary = $this->resolveWkhtmltopdfPath();
-        if ($binary === '') {
-            $this->storeHtmlFallback($contractId, $html);
-            Logger::logWarning('contract_pdf_tool_missing', ['contract_id' => $contractId]);
-            return '';
-        }
-
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $outputDir = $basePath . '/storage/uploads/contracts';
         if (!is_dir($outputDir)) {
@@ -105,38 +100,19 @@ class ContractPdfService
 
         $pdfName = 'contract-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.pdf';
         $pdfAbsolute = $outputDir . '/' . $pdfName;
-        $tmpHtml = tempnam(sys_get_temp_dir(), 'ctr_pdf_');
-        if ($tmpHtml === false) {
-            return '';
+        $generator = '';
+        $binary = $this->resolveWkhtmltopdfPath();
+        if ($binary !== '' && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, $contractId)) {
+            $generator = 'wkhtmltopdf';
+        }
+        if ($generator === '' && $this->isDompdfAvailable() && $this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
+            $generator = 'dompdf';
         }
 
-        if (file_put_contents($tmpHtml, $html) === false) {
-            @unlink($tmpHtml);
-            return '';
-        }
-
-        $command = escapeshellarg($binary)
-            . ' --quiet'
-            . ' --footer-center ' . escapeshellarg('[page]/[toPage] pagini')
-            . ' --footer-font-size ' . escapeshellarg('9')
-            . ' --footer-spacing ' . escapeshellarg('4')
-            . ' --margin-bottom ' . escapeshellarg('22mm')
-            . ' '
-            . escapeshellarg($tmpHtml)
-            . ' '
-            . escapeshellarg($pdfAbsolute)
-            . ' 2>&1';
-
-        $output = shell_exec($command);
-        @unlink($tmpHtml);
-
-        if (!is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
+        if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
             @unlink($pdfAbsolute);
             $this->storeHtmlFallback($contractId, $html);
-            Logger::logWarning('contract_pdf_generation_failed', [
-                'contract_id' => $contractId,
-                'output' => is_string($output) ? $output : '',
-            ]);
+            Logger::logWarning('contract_pdf_tool_missing', ['contract_id' => $contractId]);
             return '';
         }
 
@@ -157,10 +133,110 @@ class ContractPdfService
         );
         Audit::record('contract.pdf_generated', 'contract', $contractId, [
             'rows_count' => 1,
-            'generator' => 'wkhtmltopdf',
+            'generator' => $generator,
         ]);
 
         return $relative;
+    }
+
+    private function generateWithWkhtmltopdf(string $binary, string $html, string $pdfAbsolute, int $contractId): bool
+    {
+        $tmpHtml = tempnam(sys_get_temp_dir(), 'ctr_pdf_');
+        if ($tmpHtml === false) {
+            return false;
+        }
+
+        if (file_put_contents($tmpHtml, $html) === false) {
+            @unlink($tmpHtml);
+            return false;
+        }
+
+        $command = escapeshellarg($binary)
+            . ' --quiet'
+            . ' --footer-center ' . escapeshellarg('[page]/[toPage] pagini')
+            . ' --footer-font-size ' . escapeshellarg('9')
+            . ' --footer-spacing ' . escapeshellarg('4')
+            . ' --margin-bottom ' . escapeshellarg('22mm')
+            . ' '
+            . escapeshellarg($tmpHtml)
+            . ' '
+            . escapeshellarg($pdfAbsolute)
+            . ' 2>&1';
+
+        $output = shell_exec($command);
+        @unlink($tmpHtml);
+
+        if (!is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
+            @unlink($pdfAbsolute);
+            Logger::logWarning('contract_pdf_generation_failed', [
+                'contract_id' => $contractId,
+                'generator' => 'wkhtmltopdf',
+                'output' => is_string($output) ? $output : '',
+            ]);
+            return false;
+        }
+
+        return true;
+    }
+
+    private function generateWithDompdf(string $html, string $pdfAbsolute, int $contractId): bool
+    {
+        if (!$this->ensureDompdfLoaded()) {
+            return false;
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $tempDir = $basePath . '/storage/cache/dompdf/tmp';
+        $fontDir = $basePath . '/storage/cache/dompdf/fonts';
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0775, true);
+        }
+        if (!is_dir($fontDir)) {
+            @mkdir($fontDir, 0775, true);
+        }
+
+        try {
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', true);
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('chroot', $basePath);
+            $options->set('tempDir', $tempDir);
+            $options->set('fontDir', $fontDir);
+            $options->set('fontCache', $fontDir);
+            $options->set('defaultFont', 'DejaVu Sans');
+
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+
+            $canvas = $dompdf->getCanvas();
+            if ($canvas !== null) {
+                $footerText = '{PAGE_NUM}/{PAGE_COUNT} pagini';
+                $fontSize = 9.0;
+                $fontMetrics = $dompdf->getFontMetrics();
+                $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
+                $textWidth = $this->measureTextWidth($fontMetrics, $footerText, $font, $fontSize);
+                $x = max(12.0, ((float) $canvas->get_width() - $textWidth) / 2.0);
+                $y = (float) $canvas->get_height() - 24.0;
+                $canvas->page_text($x, $y, $footerText, $font, $fontSize, [0, 0, 0]);
+            }
+
+            $binaryPdf = $dompdf->output();
+            if ($binaryPdf === '') {
+                return false;
+            }
+
+            return file_put_contents($pdfAbsolute, $binaryPdf) !== false;
+        } catch (\Throwable $exception) {
+            Logger::logWarning('contract_pdf_generation_failed', [
+                'contract_id' => $contractId,
+                'generator' => 'dompdf',
+                'output' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     private function resolveWkhtmltopdfPath(): string
@@ -194,6 +270,68 @@ class ContractPdfService
 
         $this->wkhtmltopdfPath = '';
         return '';
+    }
+
+    private function isDompdfAvailable(): bool
+    {
+        return $this->resolveDompdfAutoloadPath() !== '';
+    }
+
+    private function ensureDompdfLoaded(): bool
+    {
+        $autoloadPath = $this->resolveDompdfAutoloadPath();
+        if ($autoloadPath === '') {
+            return false;
+        }
+        if (!class_exists(\Dompdf\Dompdf::class, false)) {
+            /** @noinspection PhpIncludeInspection */
+            require_once $autoloadPath;
+        }
+
+        return class_exists(\Dompdf\Dompdf::class, false);
+    }
+
+    private function resolveDompdfAutoloadPath(): string
+    {
+        if ($this->dompdfChecked) {
+            return $this->dompdfAutoloadPath ?? '';
+        }
+        $this->dompdfChecked = true;
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $candidates = [
+            $basePath . '/app/Support/Dompdf/autoload.inc.php',
+            $basePath . '/app/Support/dompdf/autoload.inc.php',
+            $basePath . '/app/Support/Dompdf/vendor/autoload.php',
+            $basePath . '/app/Support/dompdf/vendor/autoload.php',
+        ];
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate) && is_readable($candidate)) {
+                $this->dompdfAutoloadPath = $candidate;
+                return $candidate;
+            }
+        }
+
+        $this->dompdfAutoloadPath = '';
+        return '';
+    }
+
+    private function measureTextWidth(object $fontMetrics, string $text, $font, float $fontSize): float
+    {
+        if (method_exists($fontMetrics, 'getTextWidth')) {
+            $width = $fontMetrics->getTextWidth($text, $font, $fontSize);
+            if (is_numeric($width)) {
+                return (float) $width;
+            }
+        }
+        if (method_exists($fontMetrics, 'get_text_width')) {
+            $width = $fontMetrics->get_text_width($text, $font, $fontSize);
+            if (is_numeric($width)) {
+                return (float) $width;
+            }
+        }
+
+        return max(20.0, strlen($text) * $fontSize * 0.55);
     }
 
     private function resolveContractDate(array $contract): string
