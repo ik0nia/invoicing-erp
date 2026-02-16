@@ -300,36 +300,80 @@ class ContractPdfService
 
     private function isDompdfAvailable(): bool
     {
-        return $this->resolveDompdfAutoloadPath() !== '';
+        return $this->ensureDompdfLoaded(false);
     }
 
-    private function ensureDompdfLoaded(): bool
+    private function ensureDompdfLoaded(bool $logFailures = true): bool
     {
-        $autoloadPath = $this->resolveDompdfAutoloadPath();
-        if ($autoloadPath === '') {
-            $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-            Logger::logWarning('dompdf_autoload_missing', [
-                'checked' => $this->dompdfAutoloadCandidates($basePath),
-            ]);
-            return false;
+        if (class_exists(\Dompdf\Dompdf::class, false)) {
+            return true;
         }
-        if (!class_exists(\Dompdf\Dompdf::class, false)) {
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $candidates = $this->dompdfAutoloadCandidates($basePath);
+        $autoloadPath = $this->resolveDompdfAutoloadPath();
+        $attemptedPaths = [];
+        $failedIncludes = [];
+
+        if ($autoloadPath !== '') {
+            $attemptedPaths[] = $autoloadPath;
             $loaded = @include_once $autoloadPath;
             if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
-                Logger::logWarning('dompdf_autoload_failed', [
-                    'autoload_path' => $autoloadPath,
-                ]);
-                return false;
+                $failedIncludes[] = $autoloadPath;
             }
         }
+
         if (!class_exists(\Dompdf\Dompdf::class, false)) {
-            Logger::logWarning('dompdf_class_missing', [
-                'autoload_path' => $autoloadPath,
+            foreach ($candidates as $candidate) {
+                if ($candidate === $autoloadPath) {
+                    continue;
+                }
+                if (!is_file($candidate) || !is_readable($candidate)) {
+                    continue;
+                }
+
+                $attemptedPaths[] = $candidate;
+                $loaded = @include_once $candidate;
+                if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
+                    $failedIncludes[] = $candidate;
+                    continue;
+                }
+
+                if (class_exists(\Dompdf\Dompdf::class, false)) {
+                    $this->dompdfAutoloadPath = $candidate;
+                    break;
+                }
+            }
+        }
+
+        if (class_exists(\Dompdf\Dompdf::class, false)) {
+            return true;
+        }
+
+        if (!$logFailures) {
+            return false;
+        }
+
+        if (empty($attemptedPaths)) {
+            Logger::logWarning('dompdf_autoload_missing', [
+                'checked' => $candidates,
             ]);
             return false;
         }
 
-        return true;
+        if (!empty($failedIncludes)) {
+            Logger::logWarning('dompdf_autoload_failed', [
+                'autoload_path' => $failedIncludes[0],
+                'checked' => $failedIncludes,
+            ]);
+        }
+
+        Logger::logWarning('dompdf_class_missing', [
+            'autoload_path' => $autoloadPath !== '' ? $autoloadPath : ($attemptedPaths[0] ?? ''),
+            'checked' => $attemptedPaths,
+        ]);
+
+        return false;
     }
 
     private function resolveDompdfAutoloadPath(): string

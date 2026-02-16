@@ -443,10 +443,6 @@ class SchemaEnsurer
         }
 
         if (self::tableExists('contract_templates')) {
-            self::ensureIndex('contract_templates', 'idx_templates_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_type (template_type)');
-            self::ensureIndex('contract_templates', 'idx_templates_auto', 'ALTER TABLE contract_templates ADD INDEX idx_templates_auto (auto_on_enrollment, applies_to)');
-            self::ensureIndex('contract_templates', 'idx_templates_active', 'ALTER TABLE contract_templates ADD INDEX idx_templates_active (is_active)');
-            self::ensureIndex('contract_templates', 'idx_templates_priority', 'ALTER TABLE contract_templates ADD INDEX idx_templates_priority (priority)');
             if (!self::columnExists('contract_templates', 'applies_to')) {
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN applies_to ENUM("client", "supplier", "both") NOT NULL DEFAULT "both" AFTER template_type', [], 'contract_templates_applies_to');
                 unset(self::$columnCache['contract_templates.applies_to']);
@@ -511,8 +507,24 @@ class SchemaEnsurer
                     'contract_templates_required_backfill'
                 );
             }
-            self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
-            self::ensureIndex('contract_templates', 'idx_templates_stamp_path', 'ALTER TABLE contract_templates ADD INDEX idx_templates_stamp_path (stamp_image_path)');
+            if (self::columnExists('contract_templates', 'template_type')) {
+                self::ensureIndex('contract_templates', 'idx_templates_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_type (template_type)');
+            }
+            if (self::columnExists('contract_templates', 'auto_on_enrollment') && self::columnExists('contract_templates', 'applies_to')) {
+                self::ensureIndex('contract_templates', 'idx_templates_auto', 'ALTER TABLE contract_templates ADD INDEX idx_templates_auto (auto_on_enrollment, applies_to)');
+            }
+            if (self::columnExists('contract_templates', 'is_active')) {
+                self::ensureIndex('contract_templates', 'idx_templates_active', 'ALTER TABLE contract_templates ADD INDEX idx_templates_active (is_active)');
+            }
+            if (self::columnExists('contract_templates', 'priority')) {
+                self::ensureIndex('contract_templates', 'idx_templates_priority', 'ALTER TABLE contract_templates ADD INDEX idx_templates_priority (priority)');
+            }
+            if (self::columnExists('contract_templates', 'doc_type')) {
+                self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
+            }
+            if (self::columnExists('contract_templates', 'stamp_image_path')) {
+                self::ensureIndex('contract_templates', 'idx_templates_stamp_path', 'ALTER TABLE contract_templates ADD INDEX idx_templates_stamp_path (stamp_image_path)');
+            }
         }
     }
 
@@ -558,10 +570,18 @@ class SchemaEnsurer
         }
 
         if (self::tableExists('contracts')) {
-            self::ensureIndex('contracts', 'idx_contracts_status', 'ALTER TABLE contracts ADD INDEX idx_contracts_status (status)');
-            self::ensureIndex('contracts', 'idx_contracts_partner', 'ALTER TABLE contracts ADD INDEX idx_contracts_partner (partner_cui)');
-            self::ensureIndex('contracts', 'idx_contracts_relation', 'ALTER TABLE contracts ADD INDEX idx_contracts_relation (supplier_cui, client_cui)');
-            self::ensureIndex('contracts', 'idx_contracts_created', 'ALTER TABLE contracts ADD INDEX idx_contracts_created (created_at)');
+            if (self::columnExists('contracts', 'status')) {
+                self::ensureIndex('contracts', 'idx_contracts_status', 'ALTER TABLE contracts ADD INDEX idx_contracts_status (status)');
+            }
+            if (self::columnExists('contracts', 'partner_cui')) {
+                self::ensureIndex('contracts', 'idx_contracts_partner', 'ALTER TABLE contracts ADD INDEX idx_contracts_partner (partner_cui)');
+            }
+            if (self::columnExists('contracts', 'supplier_cui') && self::columnExists('contracts', 'client_cui')) {
+                self::ensureIndex('contracts', 'idx_contracts_relation', 'ALTER TABLE contracts ADD INDEX idx_contracts_relation (supplier_cui, client_cui)');
+            }
+            if (self::columnExists('contracts', 'created_at')) {
+                self::ensureIndex('contracts', 'idx_contracts_created', 'ALTER TABLE contracts ADD INDEX idx_contracts_created (created_at)');
+            }
             if (!self::columnExists('contracts', 'doc_type')) {
                 self::safeExecute(
                     'ALTER TABLE contracts ADD COLUMN doc_type VARCHAR(64) NOT NULL DEFAULT "contract" AFTER title',
@@ -642,8 +662,9 @@ class SchemaEnsurer
                     'contracts_signed_upload_backfill'
                 );
             }
-            self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
-            self::ensureIndex('contracts', 'idx_contracts_doc_no', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_no (doc_type, doc_no)');
+            if (self::columnExists('contracts', 'doc_type') && self::columnExists('contracts', 'contract_date')) {
+                self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
+            }
         }
     }
 
