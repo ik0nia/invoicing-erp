@@ -332,7 +332,7 @@ class ContractPdfService
 
     private function ensureDompdfLoaded(bool $logFailures = true): bool
     {
-        if (class_exists(\Dompdf\Dompdf::class, false)) {
+        if ($this->dompdfClassExists()) {
             return true;
         }
 
@@ -345,12 +345,16 @@ class ContractPdfService
         if ($autoloadPath !== '') {
             $attemptedPaths[] = $autoloadPath;
             $loaded = @include_once $autoloadPath;
-            if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
+            if ($loaded === false && !$this->dompdfClassExists()) {
                 $failedIncludes[] = $autoloadPath;
+            }
+            if ($this->dompdfClassExists()) {
+                $this->dompdfAutoloadPath = $autoloadPath;
+                return true;
             }
         }
 
-        if (!class_exists(\Dompdf\Dompdf::class, false)) {
+        if (!$this->dompdfClassExists()) {
             foreach ($candidates as $candidate) {
                 if ($candidate === $autoloadPath) {
                     continue;
@@ -361,19 +365,19 @@ class ContractPdfService
 
                 $attemptedPaths[] = $candidate;
                 $loaded = @include_once $candidate;
-                if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
+                if ($loaded === false && !$this->dompdfClassExists()) {
                     $failedIncludes[] = $candidate;
                     continue;
                 }
 
-                if (class_exists(\Dompdf\Dompdf::class, false)) {
+                if ($this->dompdfClassExists()) {
                     $this->dompdfAutoloadPath = $candidate;
                     break;
                 }
             }
         }
 
-        if (class_exists(\Dompdf\Dompdf::class, false)) {
+        if ($this->dompdfClassExists()) {
             return true;
         }
 
@@ -401,6 +405,15 @@ class ContractPdfService
         ]);
 
         return false;
+    }
+
+    private function dompdfClassExists(): bool
+    {
+        if (class_exists(\Dompdf\Dompdf::class, false)) {
+            return true;
+        }
+
+        return class_exists(\Dompdf\Dompdf::class);
     }
 
     private function resolveDompdfAutoloadPath(): string
