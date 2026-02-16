@@ -33,6 +33,7 @@ class ContractTemplateVariables
             ['key' => 'company.legal_representative_role', 'label' => 'Functie reprezentant companie (contract)'],
             ['key' => 'company.bank', 'label' => 'Banca companie (contract)'],
             ['key' => 'company.iban', 'label' => 'IBAN companie (contract)'],
+            ['key' => 'contacts.table', 'label' => 'Tabel contacte companie (HTML)'],
             ['key' => 'stamp.image', 'label' => 'Imagine stampila model (HTML img)'],
             ['key' => 'stamp.url', 'label' => 'URL stampila model (protejat/admin)'],
             ['key' => 'supplier.name', 'label' => 'Denumire furnizor'],
@@ -165,6 +166,7 @@ class ContractTemplateVariables
         $vars['relation.supplier_cui'] = $supplierCui ?? '';
         $vars['relation.client_cui'] = $clientCui ?? '';
         $vars['relation.invoice_inbox_email'] = $this->fetchRelationEmail($supplierCui, $clientCui);
+        $vars['contacts.table'] = $this->buildContactsTableVariable($partnerCui, $supplierCui, $clientCui);
         $stampVars = $this->resolveStampVariables(
             isset($contractContext['template_id']) ? (int) $contractContext['template_id'] : 0,
             trim((string) ($contractContext['render_context'] ?? 'admin'))
@@ -471,6 +473,133 @@ class ContractTemplateVariables
             $partner['bank_name'] ?? '',
             $company['banca'] ?? ''
         );
+    }
+
+    private function buildContactsTableVariable(?string $partnerCui, ?string $supplierCui, ?string $clientCui): string
+    {
+        $contacts = $this->fetchContactsForVariable($partnerCui, $supplierCui, $clientCui);
+
+        $tableStyle = 'width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;';
+        $headerStyle = 'border:1px solid #cbd5e1;padding:6px 8px;background:#f8fafc;text-align:left;font-weight:600;color:#0f172a;';
+        $cellStyle = 'border:1px solid #cbd5e1;padding:6px 8px;color:#334155;vertical-align:top;';
+
+        $html = '<table style="' . $tableStyle . '">'
+            . '<thead><tr>'
+            . '<th style="' . $headerStyle . '">Nume</th>'
+            . '<th style="' . $headerStyle . '">Departament</th>'
+            . '<th style="' . $headerStyle . '">E-mail</th>'
+            . '<th style="' . $headerStyle . '">Telefon</th>'
+            . '</tr></thead><tbody>';
+
+        if (empty($contacts)) {
+            $html .= '<tr><td colspan="4" style="' . $cellStyle . '">Nu exista contacte inregistrate.</td></tr>';
+            return $html . '</tbody></table>';
+        }
+
+        foreach ($contacts as $contact) {
+            $name = trim((string) ($contact['name'] ?? ''));
+            $role = trim((string) ($contact['role'] ?? ''));
+            $email = trim((string) ($contact['email'] ?? ''));
+            $phone = trim((string) ($contact['phone'] ?? ''));
+
+            $html .= '<tr>'
+                . '<td style="' . $cellStyle . '">' . htmlspecialchars($name !== '' ? $name : '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                . '<td style="' . $cellStyle . '">' . htmlspecialchars($role !== '' ? $role : '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                . '<td style="' . $cellStyle . '">' . htmlspecialchars($email !== '' ? $email : '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                . '<td style="' . $cellStyle . '">' . htmlspecialchars($phone !== '' ? $phone : '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                . '</tr>';
+        }
+
+        return $html . '</tbody></table>';
+    }
+
+    private function fetchContactsForVariable(?string $partnerCui, ?string $supplierCui, ?string $clientCui): array
+    {
+        if (!Database::tableExists('partner_contacts')) {
+            return [];
+        }
+
+        $partnerCui = $this->normalizeCui($partnerCui);
+        $supplierCui = $this->normalizeCui($supplierCui);
+        $clientCui = $this->normalizeCui($clientCui);
+        $orderBy = $this->contactsOrderByForVariable();
+
+        $rows = [];
+        if ($partnerCui !== '') {
+            $rows = array_merge(
+                $rows,
+                Database::fetchAll(
+                    'SELECT id, name, role, email, phone, created_at
+                     FROM partner_contacts
+                     WHERE partner_cui = :partner
+                     ORDER BY ' . $orderBy,
+                    ['partner' => $partnerCui]
+                )
+            );
+        }
+
+        if ($supplierCui !== '' && $clientCui !== '') {
+            $rows = array_merge(
+                $rows,
+                Database::fetchAll(
+                    'SELECT id, name, role, email, phone, created_at
+                     FROM partner_contacts
+                     WHERE supplier_cui = :supplier
+                       AND client_cui = :client
+                     ORDER BY ' . $orderBy,
+                    [
+                        'supplier' => $supplierCui,
+                        'client' => $clientCui,
+                    ]
+                )
+            );
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $contacts = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $role = trim((string) ($row['role'] ?? ''));
+            $email = trim((string) ($row['email'] ?? ''));
+            $phone = trim((string) ($row['phone'] ?? ''));
+
+            if ($name === '' && $role === '' && $email === '' && $phone === '') {
+                continue;
+            }
+
+            $fingerprint = strtolower($name) . '|' . strtolower($role) . '|' . strtolower($email) . '|' . strtolower($phone);
+            if (isset($seen[$fingerprint])) {
+                continue;
+            }
+            $seen[$fingerprint] = true;
+
+            $contacts[] = [
+                'name' => $name,
+                'role' => $role,
+                'email' => $email,
+                'phone' => $phone,
+            ];
+        }
+
+        return $contacts;
+    }
+
+    private function contactsOrderByForVariable(): string
+    {
+        if (Database::columnExists('partner_contacts', 'is_primary')) {
+            return 'is_primary DESC, created_at ASC, id ASC';
+        }
+
+        return 'created_at ASC, id ASC';
+    }
+
+    private function normalizeCui(?string $value): string
+    {
+        return preg_replace('/\D+/', '', (string) $value);
     }
 
     private function firstNonEmpty(string ...$values): string
