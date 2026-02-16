@@ -843,7 +843,8 @@ class InvoiceController
             if ($labelText === '') {
                 $labelText = 'Pachet de produse';
             }
-            $row['is_storno'] = stripos($labelText, '[STORNO]') !== false;
+            $packageTotalVat = (float) (($totals[(int) ($row['id'] ?? 0)]['total_vat'] ?? 0.0));
+            $row['is_storno'] = $packageTotalVat < 0;
             $label = $labelText . ' #' . (int) ($row['package_no'] ?? 0);
             $key = $this->normalizeSagaName($label);
             $saga = $sagaProducts[$key] ?? null;
@@ -3494,14 +3495,6 @@ class InvoiceController
             return ['packages_created' => 0, 'lines_created' => 0];
         }
 
-        $existingStorno = (int) (Database::fetchValue(
-            'SELECT COUNT(*) FROM packages WHERE invoice_in_id = :invoice AND label LIKE :label',
-            ['invoice' => $invoiceId, 'label' => '%[STORNO]%']
-        ) ?? 0);
-        if ($existingStorno > 0) {
-            return ['packages_created' => 0, 'lines_created' => 0];
-        }
-
         $packages = Package::forInvoice($invoiceId);
         if (empty($packages)) {
             return ['packages_created' => 0, 'lines_created' => 0];
@@ -3511,7 +3504,6 @@ class InvoiceController
         $hasSagaStatus = Database::columnExists('packages', 'saga_status');
         $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
         $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
-        $nextNumber = $this->nextStornoPackageNumber();
         $now = date('Y-m-d H:i:s');
         $createdPackages = 0;
         $createdLines = 0;
@@ -3527,8 +3519,19 @@ class InvoiceController
                     continue;
                 }
 
-                $labelBase = trim((string) ($package->label ?? 'Pachet de produse'));
-                $stornoLabel = $this->buildStornoLabel($labelBase);
+                $sourceTotalVat = 0.0;
+                foreach ($sourceLines as $sourceLine) {
+                    $sourceTotalVat += (float) ($sourceLine['line_total_vat'] ?? 0);
+                }
+                if ($sourceTotalVat <= 0.0) {
+                    continue;
+                }
+
+                $stornoLabel = $package->label;
+                $stornoPackageNo = (int) $package->package_no;
+                if ($stornoPackageNo <= 0) {
+                    $stornoPackageNo = $package->id;
+                }
 
                 if ($hasSagaStatus) {
                     Database::execute(
@@ -3536,7 +3539,7 @@ class InvoiceController
                          VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :saga_status, :created_at)',
                         [
                             'invoice_in_id' => $invoiceId,
-                            'package_no' => $nextNumber,
+                            'package_no' => $stornoPackageNo,
                             'label' => $stornoLabel,
                             'vat_percent' => $package->vat_percent,
                             'saga_status' => 'pending',
@@ -3549,7 +3552,7 @@ class InvoiceController
                          VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :created_at)',
                         [
                             'invoice_in_id' => $invoiceId,
-                            'package_no' => $nextNumber,
+                            'package_no' => $stornoPackageNo,
                             'label' => $stornoLabel,
                             'vat_percent' => $package->vat_percent,
                             'created_at' => $now,
@@ -3558,7 +3561,6 @@ class InvoiceController
                 }
                 $newPackageId = (int) Database::lastInsertId();
                 $createdPackages++;
-                $nextNumber++;
 
                 foreach ($sourceLines as $line) {
                     $lineNo = $this->buildStornoLineNo((string) ($line['line_no'] ?? ''));
@@ -3618,10 +3620,6 @@ class InvoiceController
                     $createdLines++;
                 }
             }
-
-            if ($createdPackages > 0) {
-                $this->setLastConfirmedPackageNo($nextNumber - 1);
-            }
             $pdo->commit();
         } catch (\Throwable $exception) {
             if ($pdo->inTransaction()) {
@@ -3634,32 +3632,6 @@ class InvoiceController
             'packages_created' => $createdPackages,
             'lines_created' => $createdLines,
         ];
-    }
-
-    private function nextStornoPackageNumber(): int
-    {
-        $stored = $this->lastConfirmedPackageNo();
-        $dbMax = 0;
-        if (Database::tableExists('packages')) {
-            $dbMax = (int) (Database::fetchValue('SELECT COALESCE(MAX(package_no), 0) FROM packages') ?? 0);
-        }
-        $base = max($stored, $dbMax);
-
-        return $base + 1;
-    }
-
-    private function buildStornoLabel(string $label): string
-    {
-        $label = trim($label);
-        if ($label === '') {
-            $label = 'Pachet de produse';
-        }
-        $suffix = ' [STORNO]';
-        if (!str_contains($label, '[STORNO]')) {
-            $label .= $suffix;
-        }
-
-        return strlen($label) > 64 ? substr($label, 0, 64) : $label;
     }
 
     private function buildStornoLineNo(string $lineNo): string
