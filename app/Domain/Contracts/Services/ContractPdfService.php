@@ -184,6 +184,14 @@ class ContractPdfService
         if (!$this->ensureDompdfLoaded()) {
             return false;
         }
+        $missingExtensions = $this->missingDompdfExtensions();
+        if (!empty($missingExtensions)) {
+            Logger::logWarning('dompdf_extensions_missing', [
+                'contract_id' => $contractId,
+                'missing' => $missingExtensions,
+            ]);
+            return false;
+        }
 
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $tempDir = $basePath . '/storage/cache/dompdf/tmp';
@@ -193,6 +201,18 @@ class ContractPdfService
         }
         if (!is_dir($fontDir)) {
             @mkdir($fontDir, 0775, true);
+        }
+        if (!is_dir($tempDir) || !is_writable($tempDir) || !is_dir($fontDir) || !is_writable($fontDir)) {
+            Logger::logWarning('dompdf_storage_not_writable', [
+                'contract_id' => $contractId,
+                'temp_dir' => $tempDir,
+                'font_dir' => $fontDir,
+                'temp_exists' => is_dir($tempDir),
+                'font_exists' => is_dir($fontDir),
+                'temp_writable' => is_writable($tempDir),
+                'font_writable' => is_writable($fontDir),
+            ]);
+            return false;
         }
 
         try {
@@ -281,14 +301,29 @@ class ContractPdfService
     {
         $autoloadPath = $this->resolveDompdfAutoloadPath();
         if ($autoloadPath === '') {
+            $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+            Logger::logWarning('dompdf_autoload_missing', [
+                'checked' => $this->dompdfAutoloadCandidates($basePath),
+            ]);
             return false;
         }
         if (!class_exists(\Dompdf\Dompdf::class, false)) {
-            /** @noinspection PhpIncludeInspection */
-            require_once $autoloadPath;
+            $loaded = @include_once $autoloadPath;
+            if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
+                Logger::logWarning('dompdf_autoload_failed', [
+                    'autoload_path' => $autoloadPath,
+                ]);
+                return false;
+            }
+        }
+        if (!class_exists(\Dompdf\Dompdf::class, false)) {
+            Logger::logWarning('dompdf_class_missing', [
+                'autoload_path' => $autoloadPath,
+            ]);
+            return false;
         }
 
-        return class_exists(\Dompdf\Dompdf::class, false);
+        return true;
     }
 
     private function resolveDompdfAutoloadPath(): string
@@ -299,12 +334,7 @@ class ContractPdfService
         $this->dompdfChecked = true;
 
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $candidates = [
-            $basePath . '/app/Support/Dompdf/autoload.inc.php',
-            $basePath . '/app/Support/dompdf/autoload.inc.php',
-            $basePath . '/app/Support/Dompdf/vendor/autoload.php',
-            $basePath . '/app/Support/dompdf/vendor/autoload.php',
-        ];
+        $candidates = $this->dompdfAutoloadCandidates($basePath);
         foreach ($candidates as $candidate) {
             if (is_file($candidate) && is_readable($candidate)) {
                 $this->dompdfAutoloadPath = $candidate;
@@ -314,6 +344,32 @@ class ContractPdfService
 
         $this->dompdfAutoloadPath = '';
         return '';
+    }
+
+    private function dompdfAutoloadCandidates(string $basePath): array
+    {
+        return [
+            $basePath . '/app/Support/Dompdf/vendor/autoload.php',
+            $basePath . '/app/Support/dompdf/vendor/autoload.php',
+            $basePath . '/app/Support/Dompdf/autoload.inc.php',
+            $basePath . '/app/Support/dompdf/autoload.inc.php',
+        ];
+    }
+
+    private function missingDompdfExtensions(): array
+    {
+        $missing = [];
+        if (!class_exists(\DOMDocument::class)) {
+            $missing[] = 'dom';
+        }
+        if (!function_exists('mb_detect_encoding')) {
+            $missing[] = 'mbstring';
+        }
+        if (!class_exists(\XMLReader::class)) {
+            $missing[] = 'xml';
+        }
+
+        return $missing;
     }
 
     private function measureTextWidth(object $fontMetrics, string $text, $font, float $fontSize): float
