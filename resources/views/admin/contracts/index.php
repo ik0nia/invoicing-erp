@@ -29,23 +29,6 @@
     </div>
 </div>
 
-<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-    <div class="font-semibold">Flux contracte</div>
-    <ol class="mt-2 list-decimal space-y-1 pl-5">
-        <li>Contract in <strong>Ciorna</strong></li>
-        <li>Genereaza PDF contract</li>
-        <li>Trimite catre semnare</li>
-        <li>Incarca semnat</li>
-        <li>Aprobare (staff intern: super_admin/admin/contabil/operator)</li>
-    </ol>
-    <div class="mt-2 text-xs text-blue-700">
-        Statusuri: Ciorna, Generat, Trimis, Semnat (incarcat), Aprobat.
-    </div>
-    <div class="mt-2 text-xs text-blue-700">
-        [1] Ciorna &rarr; [2] Generat &rarr; [3] Semnat &rarr; [4] Aprobat
-    </div>
-</div>
-
 <?php if (!$pdfAvailable): ?>
     <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         Generarea PDF nu este disponibila (wkhtmltopdf lipsa). Contractele pot fi salvate, dar download-ul PDF va fi indisponibil
