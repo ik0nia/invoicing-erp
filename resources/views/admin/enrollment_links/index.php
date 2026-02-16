@@ -169,6 +169,10 @@
                     id="prefill-cui"
                     name="prefill_cui"
                     type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    maxlength="16"
+                    data-lookup-url="<?= App\Support\Url::to('admin/enrollment-links/lookup') ?>"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     placeholder="CUI companie"
                 >
@@ -237,6 +241,7 @@
                 >
             </div>
         </div>
+        <p id="prefill-lookup-status" class="mt-2 text-xs text-slate-500"></p>
 
         <div class="mt-4 flex flex-wrap items-center gap-2">
             <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
@@ -798,6 +803,125 @@
             if (hiddenInput && hiddenInput.value.trim() !== '') {
                 resolveSupplierByCui(hiddenInput.value.trim(), true);
             }
+        }
+
+        const prefillCuiInput = document.getElementById('prefill-cui');
+        if (prefillCuiInput) {
+            const prefillStatus = document.getElementById('prefill-lookup-status');
+            const lookupUrl = prefillCuiInput.getAttribute('data-lookup-url') || '';
+            const form = prefillCuiInput.closest('form');
+            const csrfInput = form ? form.querySelector('input[name="_token"]') : null;
+            const getField = (id) => document.getElementById(id);
+            const prefillFields = {
+                denumire: getField('prefill-denumire'),
+                nr_reg_comertului: getField('prefill-nr'),
+                adresa: getField('prefill-adresa'),
+                localitate: getField('prefill-localitate'),
+                judet: getField('prefill-judet'),
+                telefon: getField('prefill-telefon'),
+            };
+            let lastLookupCui = '';
+            let activeLookup = 0;
+
+            const setPrefillStatus = (text, tone = 'neutral') => {
+                if (!prefillStatus) {
+                    return;
+                }
+                prefillStatus.textContent = text;
+                prefillStatus.className = 'mt-2 text-xs';
+                if (tone === 'error') {
+                    prefillStatus.classList.add('text-rose-600');
+                    return;
+                }
+                if (tone === 'success') {
+                    prefillStatus.classList.add('text-emerald-700');
+                    return;
+                }
+                prefillStatus.classList.add('text-slate-500');
+            };
+
+            const digitsOnly = (value) => String(value || '').replace(/\D+/g, '');
+
+            const applyPrefillData = (data) => {
+                Object.keys(prefillFields).forEach((key) => {
+                    const field = prefillFields[key];
+                    if (!field) {
+                        return;
+                    }
+                    const value = Object.prototype.hasOwnProperty.call(data, key) ? String(data[key] ?? '') : '';
+                    field.value = value;
+                });
+            };
+
+            const lookupCompanyByCui = (cui) => {
+                if (!lookupUrl || !csrfInput || !csrfInput.value) {
+                    return;
+                }
+                const normalizedCui = digitsOnly(cui);
+                if (normalizedCui === '') {
+                    setPrefillStatus('');
+                    return;
+                }
+                if (normalizedCui === lastLookupCui) {
+                    return;
+                }
+
+                const requestId = ++activeLookup;
+                setPrefillStatus('Se cauta datele firmei in OpenAPI...');
+                const payload = new URLSearchParams();
+                payload.set('_token', csrfInput.value);
+                payload.set('cui', normalizedCui);
+
+                fetch(lookupUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: payload.toString(),
+                })
+                    .then((response) => response.json())
+                    .then((json) => {
+                        if (requestId !== activeLookup) {
+                            return;
+                        }
+                        if (!json || json.success !== true || typeof json.data !== 'object' || json.data === null) {
+                            const message = json && typeof json.message === 'string' && json.message !== ''
+                                ? json.message
+                                : 'Nu am putut prelua datele firmei pentru acest CUI.';
+                            setPrefillStatus(message, 'error');
+                            return;
+                        }
+                        applyPrefillData(json.data);
+                        lastLookupCui = normalizedCui;
+                        setPrefillStatus('Datele firmei au fost preluate automat.', 'success');
+                    })
+                    .catch(() => {
+                        if (requestId !== activeLookup) {
+                            return;
+                        }
+                        setPrefillStatus('Eroare la interogarea OpenAPI.', 'error');
+                    });
+            };
+
+            prefillCuiInput.addEventListener('input', () => {
+                const sanitized = digitsOnly(prefillCuiInput.value);
+                if (prefillCuiInput.value !== sanitized) {
+                    prefillCuiInput.value = sanitized;
+                }
+                if (sanitized === '') {
+                    lastLookupCui = '';
+                    setPrefillStatus('');
+                }
+            });
+
+            prefillCuiInput.addEventListener('blur', () => {
+                const sanitized = digitsOnly(prefillCuiInput.value);
+                prefillCuiInput.value = sanitized;
+                lookupCompanyByCui(sanitized);
+            });
         }
 
         const copyButton = document.getElementById('enroll-copy');
