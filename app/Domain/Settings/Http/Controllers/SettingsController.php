@@ -658,16 +658,6 @@ class SettingsController
         }
     }
 
-    public function manual(): void
-    {
-        Auth::requireAdmin();
-
-        Response::view('admin/manual', [
-            'version' => self::APP_VERSION,
-            'releases' => $this->readChangelog(),
-        ]);
-    }
-
     public function changelog(): void
     {
         Auth::requireAdmin();

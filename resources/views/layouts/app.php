@@ -44,16 +44,6 @@ if ($base !== '' && str_starts_with($currentPath, $base)) {
 
 $menuSections = [];
 
-if ($isPlatformUser || $isSupplierUser) {
-    $menuSections['General'] = [
-        [
-            'label' => 'Dashboard',
-            'path' => '/admin/dashboard',
-            'active' => str_starts_with($currentPath, '/admin/dashboard'),
-        ],
-    ];
-}
-
 $menuSections['Facturare'] = [
     [
             'label' => 'Facturare',
@@ -93,11 +83,6 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'label' => 'Contracte',
             'path' => '/admin/contracts',
             'active' => str_starts_with($currentPath, '/admin/contracts'),
-        ],
-        [
-            'label' => 'Contacte',
-            'path' => '/admin/companii',
-            'active' => str_starts_with($currentPath, '/admin/companii') || str_starts_with($currentPath, '/admin/asocieri'),
         ],
     ];
 }
@@ -168,42 +153,25 @@ if ($isPlatformUser) {
         ],
     ];
 
-    $settingsItems = [];
+    $adminItems = [];
     if ($isSuperAdmin) {
-        $settingsItems[] = [
+        $adminItems[] = [
             'label' => 'Setari',
             'path' => '/admin/setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ];
     }
-    $settingsItems[] = [
-        'label' => 'Manual',
-        'path' => '/admin/manual',
-        'active' => str_starts_with($currentPath, '/admin/manual'),
+    $adminItems[] = [
+        'label' => 'Utilizatori',
+        'path' => '/admin/utilizatori',
+        'active' => str_starts_with($currentPath, '/admin/utilizatori'),
     ];
-    $settingsItems[] = [
-        'label' => 'Changelog',
-        'path' => '/admin/changelog',
-        'active' => str_starts_with($currentPath, '/admin/changelog'),
+    $adminItems[] = [
+        'label' => 'Audit Log',
+        'path' => '/admin/audit',
+        'active' => str_starts_with($currentPath, '/admin/audit'),
     ];
-    if (!empty($settingsItems)) {
-        $menuSections['Setari'] = $settingsItems;
-    }
-}
-
-if ($isPlatformUser) {
-    $menuSections['Administrare'] = [
-        [
-            'label' => 'Utilizatori',
-            'path' => '/admin/utilizatori',
-            'active' => str_starts_with($currentPath, '/admin/utilizatori'),
-        ],
-        [
-            'label' => 'Audit Log',
-            'path' => '/admin/audit',
-            'active' => str_starts_with($currentPath, '/admin/audit'),
-        ],
-    ];
+    $menuSections['Administrare'] = $adminItems;
 }
 ?>
 <!DOCTYPE html>
@@ -366,6 +334,20 @@ if ($isPlatformUser) {
                         >
                             ☰
                         </button>
+                        <?php if ($isPlatformUser): ?>
+                            <a
+                                href="<?= App\Support\Url::to('admin/changelog') ?>"
+                                class="inline-flex items-center justify-center rounded border px-3 py-2 text-sm <?= str_starts_with($currentPath, '/admin/changelog') ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:bg-slate-50' ?>"
+                                title="Changelog"
+                                aria-label="Changelog"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 12a9 9 0 1 0 9-9" />
+                                    <path d="M3 3v6h6" />
+                                    <path d="M12 7v5l3 3" />
+                                </svg>
+                            </a>
+                        <?php endif; ?>
                     </div>
                     <div class="flex items-center gap-3">
                         <label class="relative inline-flex items-center gap-2 text-sm text-slate-600">
