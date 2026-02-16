@@ -481,10 +481,17 @@ class PublicPartnerController
             $path = (string) ($contract['generated_pdf_path'] ?? '');
             if ($path === '') {
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($contract['id'] ?? 0), 'public');
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($contract['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($contract['generated_file_path'] ?? '')));
+                }
             }
         }
         if ($path === '') {
-            Session::flash('error', 'PDF indisponibil momentan. Un angajat poate verifica configurarea serverului.');
+            Session::flash('error', 'Documentul generat este indisponibil momentan. Un angajat poate verifica configurarea serverului.');
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
         }
 

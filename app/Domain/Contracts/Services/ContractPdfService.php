@@ -106,18 +106,28 @@ class ContractPdfService
         if ($hasWkhtmltopdf && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, $contractId)) {
             $generator = 'wkhtmltopdf';
         }
-        $hasDompdf = $this->isDompdfAvailable();
-        if ($generator === '' && $hasDompdf && $this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
-            $generator = 'dompdf';
+        $dompdfStatus = $this->dompdfAvailability($contractId, false);
+        $hasDompdf = (bool) ($dompdfStatus['available'] ?? false);
+        $dompdfTried = false;
+        if ($generator === '' && $hasDompdf) {
+            $dompdfTried = true;
+            if ($this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
+                $generator = 'dompdf';
+            }
         }
 
         if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
             @unlink($pdfAbsolute);
             $this->storeHtmlFallback($contractId, $html);
+            if ($dompdfTried && $generator === '' && ($dompdfStatus['reason'] ?? '') === 'ready') {
+                $dompdfStatus['reason'] = 'generation_failed';
+            }
             Logger::logWarning('contract_pdf_tool_missing', [
                 'contract_id' => $contractId,
                 'has_wkhtmltopdf' => $hasWkhtmltopdf,
                 'has_dompdf' => $hasDompdf,
+                'dompdf_reason' => (string) ($dompdfStatus['reason'] ?? ''),
+                'dompdf_missing_extensions' => (array) ($dompdfStatus['missing_extensions'] ?? []),
             ]);
             return '';
         }
@@ -187,39 +197,13 @@ class ContractPdfService
 
     private function generateWithDompdf(string $html, string $pdfAbsolute, int $contractId): bool
     {
-        if (!$this->ensureDompdfLoaded()) {
+        $dompdfStatus = $this->dompdfAvailability($contractId, true);
+        if (empty($dompdfStatus['available'])) {
             return false;
         }
-        $missingExtensions = $this->missingDompdfExtensions();
-        if (!empty($missingExtensions)) {
-            Logger::logWarning('dompdf_extensions_missing', [
-                'contract_id' => $contractId,
-                'missing' => $missingExtensions,
-            ]);
-            return false;
-        }
-
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $tempDir = $basePath . '/storage/cache/dompdf/tmp';
         $fontDir = $basePath . '/storage/cache/dompdf/fonts';
-        if (!is_dir($tempDir)) {
-            @mkdir($tempDir, 0775, true);
-        }
-        if (!is_dir($fontDir)) {
-            @mkdir($fontDir, 0775, true);
-        }
-        if (!is_dir($tempDir) || !is_writable($tempDir) || !is_dir($fontDir) || !is_writable($fontDir)) {
-            Logger::logWarning('dompdf_storage_not_writable', [
-                'contract_id' => $contractId,
-                'temp_dir' => $tempDir,
-                'font_dir' => $fontDir,
-                'temp_exists' => is_dir($tempDir),
-                'font_exists' => is_dir($fontDir),
-                'temp_writable' => is_writable($tempDir),
-                'font_writable' => is_writable($fontDir),
-            ]);
-            return false;
-        }
 
         try {
             $options = new \Dompdf\Options();
@@ -300,7 +284,50 @@ class ContractPdfService
 
     private function isDompdfAvailable(): bool
     {
-        return $this->ensureDompdfLoaded(false);
+        $status = $this->dompdfAvailability(0, false);
+
+        return !empty($status['available']);
+    }
+
+    private function dompdfAvailability(int $contractId = 0, bool $logFailures = false): array
+    {
+        if (!$this->ensureDompdfLoaded($logFailures)) {
+            return [
+                'available' => false,
+                'reason' => 'autoload_or_class_missing',
+                'missing_extensions' => [],
+            ];
+        }
+
+        $missingExtensions = $this->missingDompdfExtensions();
+        if (!empty($missingExtensions)) {
+            if ($logFailures) {
+                Logger::logWarning('dompdf_extensions_missing', [
+                    'contract_id' => $contractId > 0 ? $contractId : null,
+                    'missing' => $missingExtensions,
+                ]);
+            }
+
+            return [
+                'available' => false,
+                'reason' => 'extensions_missing',
+                'missing_extensions' => $missingExtensions,
+            ];
+        }
+
+        if (!$this->ensureDompdfStorageReady($contractId, $logFailures)) {
+            return [
+                'available' => false,
+                'reason' => 'storage_not_writable',
+                'missing_extensions' => [],
+            ];
+        }
+
+        return [
+            'available' => true,
+            'reason' => 'ready',
+            'missing_extensions' => [],
+        ];
     }
 
     private function ensureDompdfLoaded(bool $logFailures = true): bool
@@ -417,6 +444,35 @@ class ContractPdfService
         }
 
         return $missing;
+    }
+
+    private function ensureDompdfStorageReady(int $contractId = 0, bool $logFailures = true): bool
+    {
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $tempDir = $basePath . '/storage/cache/dompdf/tmp';
+        $fontDir = $basePath . '/storage/cache/dompdf/fonts';
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0775, true);
+        }
+        if (!is_dir($fontDir)) {
+            @mkdir($fontDir, 0775, true);
+        }
+        $ready = is_dir($tempDir) && is_writable($tempDir) && is_dir($fontDir) && is_writable($fontDir);
+        if ($ready || !$logFailures) {
+            return $ready;
+        }
+
+        Logger::logWarning('dompdf_storage_not_writable', [
+            'contract_id' => $contractId > 0 ? $contractId : null,
+            'temp_dir' => $tempDir,
+            'font_dir' => $fontDir,
+            'temp_exists' => is_dir($tempDir),
+            'font_exists' => is_dir($fontDir),
+            'temp_writable' => is_writable($tempDir),
+            'font_writable' => is_writable($fontDir),
+        ]);
+
+        return false;
     }
 
     private function measureTextWidth(object $fontMetrics, string $text, $font, float $fontSize): float

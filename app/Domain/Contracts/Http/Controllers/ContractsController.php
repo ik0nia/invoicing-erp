@@ -279,9 +279,16 @@ class ContractsController
         }
         if ($path === '') {
             $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+            if ($path === '') {
+                $refreshed = Database::fetchOne(
+                    'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                    ['id' => (int) ($row['id'] ?? 0)]
+                );
+                $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+            }
         }
         if ($path === '') {
-            Response::abort(503, 'PDF indisponibil momentan. Verifica configurarea wkhtmltopdf.');
+            Response::abort(503, 'Documentul generat este indisponibil momentan. Verifica configurarea wkhtmltopdf/dompdf.');
         }
         $this->streamFile($path);
     }
