@@ -37,7 +37,29 @@ class EnrollmentLinksController
     {
         $user = $this->requireEnrollmentRole();
         $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-        $isPendingPage = str_starts_with($currentPath, '/admin/inrolari');
+        $isPendingPage = !empty($_GET['_pending_page']);
+        if (!$isPendingPage) {
+            $normalizedPath = '/' . trim($currentPath, '/');
+            $basePath = '/' . trim((string) Url::base(), '/');
+            if ($basePath === '/') {
+                $basePath = '';
+            }
+
+            $pendingPathCandidates = [
+                '/admin/inrolari',
+                $basePath . '/admin/inrolari',
+            ];
+            foreach ($pendingPathCandidates as $candidate) {
+                $candidate = trim($candidate);
+                if ($candidate === '' || $candidate === '/') {
+                    continue;
+                }
+                if ($normalizedPath === $candidate || str_starts_with($normalizedPath, $candidate . '/')) {
+                    $isPendingPage = true;
+                    break;
+                }
+            }
+        }
 
         $filters = [
             'status' => trim((string) ($_GET['status'] ?? '')),
@@ -142,6 +164,7 @@ class EnrollmentLinksController
     public function pending(): void
     {
         Auth::requireInternalStaff();
+        $_GET['_pending_page'] = '1';
         $_GET['onboarding_status'] = trim((string) ($_GET['onboarding_status'] ?? 'submitted'));
         $this->index();
     }
