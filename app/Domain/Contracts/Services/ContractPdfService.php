@@ -116,7 +116,12 @@ class ContractPdfService
         }
 
         $command = escapeshellarg($binary)
-            . ' --quiet '
+            . ' --quiet'
+            . ' --footer-center ' . escapeshellarg('[page]/[toPage] pagini')
+            . ' --footer-font-size ' . escapeshellarg('9')
+            . ' --footer-spacing ' . escapeshellarg('4')
+            . ' --margin-bottom ' . escapeshellarg('22mm')
+            . ' '
             . escapeshellarg($tmpHtml)
             . ' '
             . escapeshellarg($pdfAbsolute)
