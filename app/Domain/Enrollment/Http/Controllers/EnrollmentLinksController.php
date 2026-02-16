@@ -136,6 +136,7 @@ class EnrollmentLinksController
         $sql = 'SELECT * FROM enrollment_links ' . $whereSql . ' ORDER BY created_at DESC, id DESC';
         $sql .= ' LIMIT ' . (int) $filters['per_page'] . ' OFFSET ' . (int) $offset;
         $rows = Database::fetchAll($sql, $params);
+        $companyNamesByCui = $this->resolveCompanyNamesByCuis($rows);
 
         $pagination = [
             'page' => $filters['page'],
@@ -158,6 +159,7 @@ class EnrollmentLinksController
             'filters' => $filters,
             'pagination' => $pagination,
             'companyFilterDisplay' => $companyFilterDisplay,
+            'companyNamesByCui' => $companyNamesByCui,
             'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
             'canApproveOnboarding' => Auth::isInternalStaff(),
@@ -1000,6 +1002,68 @@ class EnrollmentLinksController
         }
 
         return $companyCui;
+    }
+
+    private function resolveCompanyNamesByCuis(array $rows): array
+    {
+        $cuiSet = [];
+        foreach ($rows as $row) {
+            foreach (['supplier_cui', 'partner_cui', 'relation_supplier_cui', 'relation_client_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($row[$column] ?? ''));
+                if ($cui !== '') {
+                    $cuiSet[$cui] = true;
+                }
+            }
+        }
+
+        $cuis = array_keys($cuiSet);
+        if (empty($cuis)) {
+            return [];
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach (array_values($cuis) as $index => $cui) {
+            $key = 'c' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+        $inSql = implode(',', $placeholders);
+
+        $result = [];
+        if (Database::tableExists('partners')) {
+            $partnerRows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM partners
+                 WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($partnerRows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '') {
+                    $result[$cui] = $name;
+                }
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $companyRows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM companies
+                 WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($companyRows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '' && !isset($result[$cui])) {
+                    $result[$cui] = $name;
+                }
+            }
+        }
+
+        return $result;
     }
 
     private function findSupplierByCui(\App\Domain\Users\Models\User $user, string $cui): ?array

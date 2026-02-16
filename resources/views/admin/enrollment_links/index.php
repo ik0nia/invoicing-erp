@@ -12,6 +12,7 @@
         'per_page' => 50,
     ];
     $companyFilterDisplay = trim((string) ($companyFilterDisplay ?? ''));
+    $companyNamesByCui = is_array($companyNamesByCui ?? null) ? $companyNamesByCui : [];
     $pagination = $pagination ?? [
         'page' => 1,
         'per_page' => (int) ($filters['per_page'] ?? 50),
@@ -257,7 +258,7 @@
     </form>
 <?php endif; ?>
 
-<form method="GET" action="<?= App\Support\Url::to($listPath) ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+<form id="enrollment-filters-form" method="GET" action="<?= App\Support\Url::to($listPath) ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div class="flex flex-wrap items-end gap-3 xl:flex-nowrap">
         <div class="min-w-[130px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-status">Status</label>
@@ -319,10 +320,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="flex shrink-0 items-end gap-2">
-            <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Filtreaza
-            </button>
+        <div class="flex shrink-0 items-end">
             <a
                 href="<?= App\Support\Url::to($listPath) ?>"
                 class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
@@ -364,11 +362,25 @@
                         </td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['partner_cui'] ?? '—')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?php if (!empty($row['relation_supplier_cui']) || !empty($row['relation_client_cui'])): ?>
-                                <?= htmlspecialchars((string) ($row['relation_supplier_cui'] ?? '')) ?> /
-                                <?= htmlspecialchars((string) ($row['relation_client_cui'] ?? '')) ?>
-                            <?php else: ?>
+                            <?php
+                                $relationSupplierCui = preg_replace('/\D+/', '', (string) ($row['relation_supplier_cui'] ?? ''));
+                                $relationClientCui = preg_replace('/\D+/', '', (string) ($row['relation_client_cui'] ?? ''));
+                                $relationSupplierName = $relationSupplierCui !== ''
+                                    ? (string) ($companyNamesByCui[$relationSupplierCui] ?? $relationSupplierCui)
+                                    : '';
+                                $relationClientName = $relationClientCui !== ''
+                                    ? (string) ($companyNamesByCui[$relationClientCui] ?? $relationClientCui)
+                                    : '';
+                            ?>
+                            <?php if ($relationSupplierName === '' && $relationClientName === ''): ?>
                                 —
+                            <?php else: ?>
+                                <?php if ($relationSupplierName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Furnizor:</span> <?= htmlspecialchars($relationSupplierName) ?></div>
+                                <?php endif; ?>
+                                <?php if ($relationClientName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Client:</span> <?= htmlspecialchars($relationClientName) ?></div>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
@@ -574,9 +586,55 @@
 
         let refreshCreateSubmitState = () => {};
         const supplierPicker = document.querySelector('[data-supplier-picker]');
+        const filtersForm = document.getElementById('enrollment-filters-form');
         const createLinkSubmitButton = document.getElementById('create-link-submit');
         const prefillCuiField = document.getElementById('prefill-cui');
         const commissionInput = document.getElementById('commission');
+        let filtersSubmitTimer = null;
+        const submitFilters = (immediate = false) => {
+            if (!filtersForm) {
+                return;
+            }
+            const run = () => {
+                if (typeof filtersForm.requestSubmit === 'function') {
+                    filtersForm.requestSubmit();
+                    return;
+                }
+                filtersForm.submit();
+            };
+            if (immediate) {
+                if (filtersSubmitTimer) {
+                    clearTimeout(filtersSubmitTimer);
+                    filtersSubmitTimer = null;
+                }
+                run();
+                return;
+            }
+            if (filtersSubmitTimer) {
+                clearTimeout(filtersSubmitTimer);
+            }
+            filtersSubmitTimer = window.setTimeout(run, 250);
+        };
+
+        if (filtersForm) {
+            const controls = filtersForm.querySelectorAll('input, select');
+            controls.forEach((control) => {
+                if (!(control instanceof HTMLElement)) {
+                    return;
+                }
+                if (control.matches('[data-company-filter-display]')) {
+                    return;
+                }
+                const input = /** @type {HTMLInputElement|HTMLSelectElement} */ (control);
+                if (input.disabled || !input.name || input.type === 'hidden') {
+                    return;
+                }
+                input.addEventListener('change', () => {
+                    submitFilters(true);
+                });
+            });
+        }
+
         if (supplierPicker) {
             const displayInput = supplierPicker.querySelector('[data-supplier-display]');
             const hiddenInput = supplierPicker.querySelector('[data-supplier-value]');
@@ -935,6 +993,7 @@
                 companyValueInput.value = cui;
                 companyDisplayInput.value = label;
                 clearCompanyList();
+                submitFilters(true);
             };
 
             const renderCompanyItems = (items) => {
@@ -1020,8 +1079,19 @@
                         fetchCompanies(query);
                     }, 200);
                 });
+                companyDisplayInput.addEventListener('change', () => {
+                    const maybeCui = extractCompanyCuiCandidate(companyDisplayInput.value);
+                    if (maybeCui !== '') {
+                        companyValueInput.value = maybeCui;
+                        companyDisplayInput.value = maybeCui;
+                    } else if (companyDisplayInput.value.trim() === '') {
+                        companyValueInput.value = '';
+                    }
+                    submitFilters(true);
+                });
                 companyDisplayInput.addEventListener('blur', () => {
                     window.setTimeout(() => {
+                        const previousValue = companyValueInput.value.trim();
                         clearCompanyList();
                         if (companyValueInput.value.trim() !== '') {
                             return;
@@ -1030,6 +1100,11 @@
                         if (maybeCui !== '') {
                             companyValueInput.value = maybeCui;
                             companyDisplayInput.value = maybeCui;
+                        } else if (companyDisplayInput.value.trim() === '') {
+                            companyValueInput.value = '';
+                        }
+                        if (companyValueInput.value.trim() !== previousValue) {
+                            submitFilters(true);
                         }
                     }, 150);
                 });
