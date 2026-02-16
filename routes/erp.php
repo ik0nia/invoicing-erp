@@ -66,6 +66,8 @@ $router->get('/admin/facturi/fisier', [InvoiceController::class, 'showSupplierFi
 $router->get('/admin/facturi/print-situatie', [InvoiceController::class, 'printSituation']);
 $router->get('/admin/facturi/lookup-suppliers', [InvoiceController::class, 'lookupSuppliers']);
 $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookupClients']);
+$router->get('/admin/facturi/manual/suppliers-search', [InvoiceController::class, 'manualSupplierSearch']);
+$router->get('/admin/facturi/manual/clients-search', [InvoiceController::class, 'manualClientSearch']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->post('/admin/pachete-confirmate/import-saga', [InvoiceController::class, 'importSagaCsv']);
 $router->get('/admin/pachete-confirmate/saga-json', [InvoiceController::class, 'sagaPackageJson']);

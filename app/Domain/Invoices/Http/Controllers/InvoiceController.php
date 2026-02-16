@@ -394,6 +394,58 @@ class InvoiceController
         $this->jsonResponse(['items' => $items, 'allow_empty' => $hasEmpty]);
     }
 
+    public function manualSupplierSearch(): void
+    {
+        $this->requireInvoiceRole();
+
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $user = Auth::user();
+        $allowedSuppliers = [];
+        if ($user && $user->isSupplierUser()) {
+            $allowedSuppliers = $this->allowedSuppliers($user);
+            if (empty($allowedSuppliers)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+        }
+
+        $items = $this->manualSupplierOptions($allowedSuppliers);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
+        }
+        $items = array_slice($items, 0, $limit);
+
+        $this->jsonResponse(['success' => true, 'items' => $items]);
+    }
+
+    public function manualClientSearch(): void
+    {
+        $this->requireInvoiceRole();
+
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+        $user = Auth::user();
+        $allowedSuppliers = [];
+        if ($user && $user->isSupplierUser()) {
+            $allowedSuppliers = $this->allowedSuppliers($user);
+            if (empty($allowedSuppliers)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+            if ($supplierCui !== '' && !in_array($supplierCui, $allowedSuppliers, true)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+        }
+
+        $items = $this->manualClientOptions($supplierCui, $allowedSuppliers);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
+        }
+        $items = array_slice($items, 0, $limit);
+
+        $this->jsonResponse(['success' => true, 'items' => $items]);
+    }
+
     public function export(): void
     {
         $this->requireInvoiceRole();
@@ -4243,6 +4295,133 @@ class InvoiceController
         }
 
         return false;
+    }
+
+    private function manualSupplierOptions(array $allowedSuppliers): array
+    {
+        $allowedSuppliers = array_values(array_filter(array_map(static fn ($cui) => preg_replace('/\D+/', '', (string) $cui), $allowedSuppliers)));
+        if (!Database::tableExists('partners')) {
+            return [];
+        }
+
+        $defaultCommissionColumn = Database::columnExists('partners', 'default_commission')
+            ? 'default_commission'
+            : '0 AS default_commission';
+        $sql = 'SELECT cui, denumire, ' . $defaultCommissionColumn . ' FROM partners';
+        $params = [];
+        if (!empty($allowedSuppliers)) {
+            $placeholders = [];
+            foreach ($allowedSuppliers as $index => $cui) {
+                $key = 's' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $sql .= ' WHERE cui IN (' . implode(',', $placeholders) . ')';
+        }
+        $sql .= ' ORDER BY denumire ASC, cui ASC';
+
+        $rows = Database::fetchAll($sql, $params);
+        $items = [];
+        foreach ($rows as $row) {
+            $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($cui === '') {
+                continue;
+            }
+            $name = trim((string) ($row['denumire'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            $commission = (float) ($row['default_commission'] ?? 0.0);
+            $items[] = [
+                'cui' => $cui,
+                'name' => $name,
+                'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                'default_commission' => $commission,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $allowedSuppliers = array_values(array_filter(array_map(static fn ($cui) => preg_replace('/\D+/', '', (string) $cui), $allowedSuppliers)));
+        if (!empty($allowedSuppliers) && $supplierCui !== '' && !in_array($supplierCui, $allowedSuppliers, true)) {
+            return [];
+        }
+
+        if (Database::tableExists('commissions')) {
+            if ($supplierCui === '') {
+                return [];
+            }
+            $rows = Database::fetchAll(
+                'SELECT c.client_cui AS cui,
+                        c.commission AS commission,
+                        COALESCE(NULLIF(p.denumire, ""), c.client_cui) AS denumire
+                 FROM commissions c
+                 LEFT JOIN partners p ON p.cui = c.client_cui
+                 WHERE c.supplier_cui = :supplier
+                 ORDER BY denumire ASC, c.client_cui ASC',
+                ['supplier' => $supplierCui]
+            );
+            $items = [];
+            foreach ($rows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                if ($cui === '') {
+                    continue;
+                }
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($name === '') {
+                    $name = $cui;
+                }
+                $items[] = [
+                    'cui' => $cui,
+                    'name' => $name,
+                    'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                    'commission' => (float) ($row['commission'] ?? 0),
+                ];
+            }
+
+            return $items;
+        }
+
+        if (!Database::tableExists('partners')) {
+            return [];
+        }
+
+        $sql = 'SELECT cui, denumire FROM partners';
+        $params = [];
+        $where = [];
+        if ($supplierCui !== '') {
+            $where[] = 'cui <> :supplier';
+            $params['supplier'] = $supplierCui;
+        }
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY denumire ASC, cui ASC';
+
+        $rows = Database::fetchAll($sql, $params);
+        $items = [];
+        foreach ($rows as $row) {
+            $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($cui === '') {
+                continue;
+            }
+            $name = trim((string) ($row['denumire'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            $items[] = [
+                'cui' => $cui,
+                'name' => $name,
+                'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                'commission' => null,
+            ];
+        }
+
+        return $items;
     }
 
     private function supplierOptionsFromInvoices(array $invoices): array

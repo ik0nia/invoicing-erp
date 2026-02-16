@@ -11,15 +11,31 @@
         'DOZA', 'FLACON', 'SAC', 'BIDON',
     ];
     $vatOptions = ['21', '11', '0'];
-    $commissionOptions = [];
-    foreach ($commissions as $row) {
-        $commissionOptions[] = [
-            'supplier_cui' => (string) ($row['supplier_cui'] ?? ''),
-            'client_cui' => (string) ($row['client_cui'] ?? ''),
-            'client_name' => (string) ($row['client_name'] ?? ''),
-            'commission' => (float) ($row['commission'] ?? 0),
-        ];
+    $initialSupplierCui = preg_replace('/\D+/', '', (string) ($form['supplier_cui'] ?? ''));
+    $initialSupplierName = trim((string) ($form['supplier_name'] ?? ''));
+    $initialCustomerCui = preg_replace('/\D+/', '', (string) ($form['customer_cui'] ?? ''));
+    $initialCustomerName = trim((string) ($form['customer_name'] ?? ''));
+    $initialCommissionDisplay = '-';
+    if ($initialSupplierCui !== '' && $initialCustomerCui !== '') {
+        foreach ($commissions as $row) {
+            $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+            $clientCui = preg_replace('/\D+/', '', (string) ($row['client_cui'] ?? ''));
+            if ($supplierCui !== $initialSupplierCui || $clientCui !== $initialCustomerCui) {
+                continue;
+            }
+            $initialCommissionDisplay = rtrim(rtrim(number_format((float) ($row['commission'] ?? 0), 4, '.', ''), '0'), '.');
+            if ($initialCommissionDisplay === '') {
+                $initialCommissionDisplay = '0';
+            }
+            break;
+        }
     }
+    $supplierDisplayText = $initialSupplierName !== '' && $initialSupplierCui !== ''
+        ? ($initialSupplierName . ' - ' . $initialSupplierCui)
+        : ($initialSupplierName !== '' ? $initialSupplierName : $initialSupplierCui);
+    $customerDisplayText = $initialCustomerName !== '' && $initialCustomerCui !== ''
+        ? ($initialCustomerName . ' - ' . $initialCustomerCui)
+        : ($initialCustomerName !== '' ? $initialCustomerName : $initialCustomerCui);
 
     if (empty($lines)) {
         $lines = [
@@ -56,32 +72,46 @@
                 <div class="text-sm font-semibold text-slate-700">Furnizor</div>
                 <div class="mt-3 space-y-3">
                     <?php if (!empty($partners)): ?>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700" for="supplier_select">Denumire</label>
-                            <select
-                                id="supplier_select"
-                                name="supplier_cui"
+                        <div
+                            class="relative"
+                            data-manual-supplier-picker
+                            data-search-url="<?= App\Support\Url::to('admin/facturi/manual/suppliers-search') ?>"
+                        >
+                            <label class="block text-sm font-medium text-slate-700" for="supplier_picker_display">Denumire</label>
+                            <input
+                                id="supplier_picker_display"
+                                type="text"
+                                autocomplete="off"
+                                value="<?= htmlspecialchars($supplierDisplayText) ?>"
+                                placeholder="Cauta dupa denumire sau CUI"
                                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                                data-manual-supplier-display
                             >
-                                <option value="">Selecteaza furnizor</option>
-                                <?php foreach ($partners as $partner): ?>
-                                    <option
-                                        value="<?= htmlspecialchars($partner->cui) ?>"
-                                        data-name="<?= htmlspecialchars($partner->denumire) ?>"
-                                        <?= ($form['supplier_cui'] ?? '') === $partner->cui ? 'selected' : '' ?>
-                                    >
-                                        <?= htmlspecialchars($partner->denumire) ?> · <?= htmlspecialchars($partner->cui) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <input type="hidden" name="supplier_name" value="<?= htmlspecialchars($form['supplier_name'] ?? '') ?>">
+                            <input
+                                id="supplier_cui"
+                                type="hidden"
+                                name="supplier_cui"
+                                value="<?= htmlspecialchars($initialSupplierCui) ?>"
+                                data-manual-supplier-value
+                            >
+                            <input
+                                id="supplier_name_hidden"
+                                type="hidden"
+                                name="supplier_name"
+                                value="<?= htmlspecialchars($initialSupplierName) ?>"
+                                data-manual-supplier-name
+                            >
+                            <div
+                                class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100"
+                                data-manual-supplier-list
+                            ></div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700" for="supplier_cui_display">CUI</label>
                             <input
                                 id="supplier_cui_display"
                                 type="text"
-                                value="<?= htmlspecialchars($form['supplier_cui'] ?? '') ?>"
+                                value="<?= htmlspecialchars($initialSupplierCui) ?>"
                                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
                                 readonly
                             >
@@ -114,59 +144,54 @@
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
                 <div class="text-sm font-semibold text-slate-700">Client</div>
                 <div class="mt-3 space-y-3">
-                    <?php if (!empty($commissionOptions)): ?>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700" for="customer_select">Client asociat</label>
-                            <select
-                                id="customer_select"
-                                name="customer_cui"
+                    <?php if (!empty($partners)): ?>
+                        <div
+                            class="relative"
+                            data-manual-client-picker
+                            data-search-url="<?= App\Support\Url::to('admin/facturi/manual/clients-search') ?>"
+                        >
+                            <label class="block text-sm font-medium text-slate-700" for="customer_picker_display">Client asociat</label>
+                            <input
+                                id="customer_picker_display"
+                                type="text"
+                                autocomplete="off"
+                                value="<?= htmlspecialchars($customerDisplayText) ?>"
+                                placeholder="Selecteaza mai intai furnizorul"
                                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                                data-manual-client-display
                             >
-                                <option value="">Selecteaza furnizorul</option>
-                            </select>
-                            <input type="hidden" name="customer_name" value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>">
+                            <input
+                                id="customer_cui"
+                                type="hidden"
+                                name="customer_cui"
+                                value="<?= htmlspecialchars($initialCustomerCui) ?>"
+                                data-manual-client-value
+                            >
+                            <input
+                                id="customer_name_hidden"
+                                type="hidden"
+                                name="customer_name"
+                                value="<?= htmlspecialchars($initialCustomerName) ?>"
+                                data-manual-client-name
+                            >
+                            <div
+                                class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100"
+                                data-manual-client-list
+                            ></div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700" for="customer_cui_display">CUI</label>
                             <input
                                 id="customer_cui_display"
                                 type="text"
-                                value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
+                                value="<?= htmlspecialchars($initialCustomerCui) ?>"
                                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
                                 readonly
                             >
                         </div>
-                        <div class="text-xs font-semibold text-slate-600" id="customer_commission">Comision: -</div>
-                    <?php elseif (!empty($partners)): ?>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700" for="customer_select">Denumire</label>
-                            <select
-                                id="customer_select"
-                                name="customer_cui"
-                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                            >
-                                <option value="">Selecteaza client</option>
-                                <?php foreach ($partners as $partner): ?>
-                                    <option
-                                        value="<?= htmlspecialchars($partner->cui) ?>"
-                                        data-name="<?= htmlspecialchars($partner->denumire) ?>"
-                                        <?= ($form['customer_cui'] ?? '') === $partner->cui ? 'selected' : '' ?>
-                                    >
-                                        <?= htmlspecialchars($partner->denumire) ?> · <?= htmlspecialchars($partner->cui) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <input type="hidden" name="customer_name" value="<?= htmlspecialchars($form['customer_name'] ?? '') ?>">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700" for="customer_cui_display">CUI</label>
-                            <input
-                                id="customer_cui_display"
-                                type="text"
-                                value="<?= htmlspecialchars($form['customer_cui'] ?? '') ?>"
-                                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm bg-slate-100"
-                                readonly
-                            >
+                        <?php $initialCommissionLabel = $initialCommissionDisplay !== '-' ? ($initialCommissionDisplay . '%') : '-'; ?>
+                        <div class="text-xs font-semibold text-slate-600" id="customer_commission">
+                            Comision: <?= htmlspecialchars($initialCommissionLabel) ?>
                         </div>
                     <?php else: ?>
                         <div>
@@ -360,9 +385,10 @@
 
         const units = <?= json_encode($unitOptions, JSON_UNESCAPED_UNICODE) ?>;
         const vats = <?= json_encode($vatOptions, JSON_UNESCAPED_UNICODE) ?>;
-        const commissions = <?= json_encode($commissionOptions, JSON_UNESCAPED_UNICODE) ?>;
         const initialSupplier = <?= json_encode($form['supplier_cui'] ?? '') ?>;
         const initialClient = <?= json_encode($form['customer_cui'] ?? '') ?>;
+        const initialSupplierName = <?= json_encode($form['supplier_name'] ?? '') ?>;
+        const initialClientName = <?= json_encode($form['customer_name'] ?? '') ?>;
 
         const buildOptions = (items, selected) => {
             return items.map((item) => {
@@ -541,97 +567,415 @@
         bindLineInputs();
         requestTotals();
 
-        const supplierSelect = document.getElementById('supplier_select');
-        const supplierCui = document.getElementById('supplier_cui_display');
-        const supplierName = document.querySelector('input[name="supplier_name"]');
-        const customerSelect = document.getElementById('customer_select');
-        const customerCui = document.getElementById('customer_cui_display');
-        const customerName = document.querySelector('input[name="customer_name"]');
+        const supplierPicker = document.querySelector('[data-manual-supplier-picker]');
+        const clientPicker = document.querySelector('[data-manual-client-picker]');
+        const supplierDisplayInput = supplierPicker ? supplierPicker.querySelector('[data-manual-supplier-display]') : null;
+        const supplierValueInput = supplierPicker ? supplierPicker.querySelector('[data-manual-supplier-value]') : null;
+        const supplierNameInput = supplierPicker ? supplierPicker.querySelector('[data-manual-supplier-name]') : null;
+        const supplierList = supplierPicker ? supplierPicker.querySelector('[data-manual-supplier-list]') : null;
+        const supplierCuiDisplay = document.getElementById('supplier_cui_display');
+        const clientDisplayInput = clientPicker ? clientPicker.querySelector('[data-manual-client-display]') : null;
+        const clientValueInput = clientPicker ? clientPicker.querySelector('[data-manual-client-value]') : null;
+        const clientNameInput = clientPicker ? clientPicker.querySelector('[data-manual-client-name]') : null;
+        const clientList = clientPicker ? clientPicker.querySelector('[data-manual-client-list]') : null;
+        const customerCuiDisplay = document.getElementById('customer_cui_display');
         const commissionDisplay = document.getElementById('customer_commission');
+        const supplierSearchUrl = supplierPicker ? String(supplierPicker.getAttribute('data-search-url') || '') : '';
+        const clientSearchUrl = clientPicker ? String(clientPicker.getAttribute('data-search-url') || '') : '';
 
-        const commissionsBySupplier = {};
-        commissions.forEach((item) => {
-            if (!item.supplier_cui || !item.client_cui) {
+        const escapeHtml = (value) => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        const digitsOnly = (value) => String(value || '').replace(/\D+/g, '');
+        const buildLabel = (name, cui) => {
+            const cleanName = String(name || '').trim();
+            const cleanCui = digitsOnly(cui);
+            if (cleanName !== '' && cleanCui !== '') {
+                return `${cleanName} - ${cleanCui}`;
+            }
+            return cleanName !== '' ? cleanName : cleanCui;
+        };
+        const formatCommission = (value) => {
+            const number = Number(value);
+            if (!Number.isFinite(number)) {
+                return '';
+            }
+            return number.toFixed(4).replace(/\.?0+$/, '');
+        };
+        const setCommissionText = (value) => {
+            if (!commissionDisplay) {
                 return;
             }
-            if (!commissionsBySupplier[item.supplier_cui]) {
-                commissionsBySupplier[item.supplier_cui] = [];
-            }
-            commissionsBySupplier[item.supplier_cui].push(item);
-        });
-
-        const updateSupplier = () => {
-            if (!supplierSelect || !supplierCui || !supplierName) {
-                return;
-            }
-            const option = supplierSelect.selectedOptions[0];
-            supplierCui.value = supplierSelect.value || '';
-            supplierName.value = option ? (option.dataset.name || '') : '';
+            const text = String(value || '').trim();
+            commissionDisplay.textContent = text !== '' ? `Comision: ${text}%` : 'Comision: -';
         };
 
-        const updateCustomerMeta = () => {
-            if (!customerSelect || !customerCui || !customerName) {
+        let supplierRequestId = 0;
+        let clientRequestId = 0;
+        let supplierTimer = null;
+        let clientTimer = null;
+
+        const clearSupplierList = () => {
+            if (!supplierList) {
                 return;
             }
-            const option = customerSelect.selectedOptions[0];
-            customerCui.value = customerSelect.value || '';
-            customerName.value = option ? (option.dataset.name || '') : '';
-            if (commissionDisplay) {
-                const commission = option ? (option.dataset.commission || '') : '';
-                commissionDisplay.textContent = commission ? `Comision: ${commission}%` : 'Comision: -';
+            supplierList.innerHTML = '';
+            supplierList.classList.add('hidden');
+        };
+        const clearClientList = () => {
+            if (!clientList) {
+                return;
             }
+            clientList.innerHTML = '';
+            clientList.classList.add('hidden');
         };
 
-        const updateCustomerOptions = (supplierCuiValue, selectedCui) => {
-            if (!customerSelect) {
+        const applySupplierSelection = (item, preserveClient = false) => {
+            if (!supplierDisplayInput || !supplierValueInput || !supplierNameInput) {
                 return;
             }
-            const items = commissionsBySupplier[supplierCuiValue] || [];
-            customerSelect.innerHTML = '';
-
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = items.length ? 'Selecteaza client' : 'Nu exista clienti asociati';
-            customerSelect.appendChild(placeholder);
-            customerSelect.disabled = items.length === 0;
-
-            items.forEach((item) => {
-                const option = document.createElement('option');
-                option.value = item.client_cui;
-                option.dataset.name = item.client_name || '';
-                option.dataset.commission = String(item.commission ?? '');
-                const labelName = item.client_name || item.client_cui;
-                option.textContent = `${labelName} · ${item.client_cui} · ${item.commission}%`;
-                if (selectedCui && selectedCui === item.client_cui) {
-                    option.selected = true;
+            const cui = digitsOnly(item.cui || '');
+            const name = String(item.name || '').trim();
+            const label = buildLabel(name, cui);
+            const previousSupplier = digitsOnly(supplierValueInput.value);
+            supplierValueInput.value = cui;
+            supplierNameInput.value = name;
+            supplierDisplayInput.value = label;
+            if (supplierCuiDisplay) {
+                supplierCuiDisplay.value = cui;
+            }
+            clearSupplierList();
+            if (!preserveClient || previousSupplier !== cui) {
+                if (clientValueInput) {
+                    clientValueInput.value = '';
                 }
-                customerSelect.appendChild(option);
-            });
-
-            updateCustomerMeta();
+                if (clientNameInput) {
+                    clientNameInput.value = '';
+                }
+                if (clientDisplayInput) {
+                    clientDisplayInput.value = '';
+                }
+                if (customerCuiDisplay) {
+                    customerCuiDisplay.value = '';
+                }
+                setCommissionText('');
+            }
         };
 
-        if (supplierSelect) {
-            supplierSelect.addEventListener('change', () => {
-                updateSupplier();
-                updateCustomerOptions(supplierSelect.value, '');
+        const applyClientSelection = (item) => {
+            if (!clientDisplayInput || !clientValueInput || !clientNameInput) {
+                return;
+            }
+            const cui = digitsOnly(item.cui || '');
+            const name = String(item.name || '').trim();
+            const commission = formatCommission(item.commission);
+            clientValueInput.value = cui;
+            clientNameInput.value = name;
+            clientDisplayInput.value = buildLabel(name, cui);
+            if (customerCuiDisplay) {
+                customerCuiDisplay.value = cui;
+            }
+            setCommissionText(commission);
+            clearClientList();
+        };
+
+        const renderSupplierItems = (items) => {
+            if (!supplierList) {
+                return;
+            }
+            if (!Array.isArray(items) || items.length === 0) {
+                supplierList.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                supplierList.classList.remove('hidden');
+                return;
+            }
+            supplierList.innerHTML = items.map((item) => {
+                const name = escapeHtml(item.name || item.cui || '');
+                const cui = escapeHtml(item.cui || '');
+                return `
+                    <button
+                        type="button"
+                        class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                        data-manual-supplier-item
+                        data-cui="${cui}"
+                        data-name="${escapeHtml(item.name || '')}"
+                    >
+                        <div class="font-medium text-slate-900">${name}</div>
+                        <div class="text-xs text-slate-500">${cui}</div>
+                    </button>
+                `;
+            }).join('');
+            supplierList.classList.remove('hidden');
+        };
+
+        const renderClientItems = (items, supplierSelected) => {
+            if (!clientList) {
+                return;
+            }
+            if (!supplierSelected) {
+                clientList.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Selecteaza mai intai furnizorul.</div>';
+                clientList.classList.remove('hidden');
+                return;
+            }
+            if (!Array.isArray(items) || items.length === 0) {
+                clientList.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista clienti asociati.</div>';
+                clientList.classList.remove('hidden');
+                return;
+            }
+            clientList.innerHTML = items.map((item) => {
+                const name = escapeHtml(item.name || item.cui || '');
+                const cui = escapeHtml(item.cui || '');
+                const commission = formatCommission(item.commission);
+                const commissionHtml = commission !== ''
+                    ? `<div class="text-[11px] text-emerald-700">Comision: ${escapeHtml(commission)}%</div>`
+                    : '';
+                return `
+                    <button
+                        type="button"
+                        class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                        data-manual-client-item
+                        data-cui="${cui}"
+                        data-name="${escapeHtml(item.name || '')}"
+                        data-commission="${escapeHtml(commission)}"
+                    >
+                        <div class="font-medium text-slate-900">${name}</div>
+                        <div class="text-xs text-slate-500">${cui}</div>
+                        ${commissionHtml}
+                    </button>
+                `;
+            }).join('');
+            clientList.classList.remove('hidden');
+        };
+
+        const fetchSuppliers = (term) => {
+            if (!supplierSearchUrl) {
+                return;
+            }
+            const currentRequestId = ++supplierRequestId;
+            const url = new URL(supplierSearchUrl, window.location.origin);
+            url.searchParams.set('term', term);
+            url.searchParams.set('limit', '20');
+            fetch(url.toString(), { credentials: 'same-origin' })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (currentRequestId !== supplierRequestId) {
+                        return;
+                    }
+                    if (!data || data.success !== true) {
+                        renderSupplierItems([]);
+                        return;
+                    }
+                    renderSupplierItems(data.items || []);
+                })
+                .catch(() => {
+                    if (currentRequestId !== supplierRequestId) {
+                        return;
+                    }
+                    renderSupplierItems([]);
+                });
+        };
+
+        const fetchClients = (term) => {
+            if (!clientSearchUrl) {
+                return;
+            }
+            const supplierCui = supplierValueInput ? digitsOnly(supplierValueInput.value) : '';
+            const currentRequestId = ++clientRequestId;
+            if (supplierCui === '') {
+                renderClientItems([], false);
+                return;
+            }
+            const url = new URL(clientSearchUrl, window.location.origin);
+            url.searchParams.set('supplier_cui', supplierCui);
+            url.searchParams.set('term', term);
+            url.searchParams.set('limit', '20');
+            fetch(url.toString(), { credentials: 'same-origin' })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (currentRequestId !== clientRequestId) {
+                        return;
+                    }
+                    if (!data || data.success !== true) {
+                        renderClientItems([], true);
+                        return;
+                    }
+                    renderClientItems(data.items || [], true);
+                })
+                .catch(() => {
+                    if (currentRequestId !== clientRequestId) {
+                        return;
+                    }
+                    renderClientItems([], true);
+                });
+        };
+
+        if (supplierDisplayInput && supplierValueInput && supplierNameInput) {
+            supplierDisplayInput.addEventListener('focus', () => {
+                fetchSuppliers(supplierDisplayInput.value.trim());
+            });
+            supplierDisplayInput.addEventListener('input', () => {
+                supplierValueInput.value = '';
+                supplierNameInput.value = '';
+                if (supplierCuiDisplay) {
+                    supplierCuiDisplay.value = '';
+                }
+                if (supplierTimer) {
+                    clearTimeout(supplierTimer);
+                }
+                const query = supplierDisplayInput.value.trim();
+                supplierTimer = window.setTimeout(() => {
+                    fetchSuppliers(query);
+                }, 200);
+            });
+            supplierDisplayInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) {
+                    return;
+                }
+                if (!clientDisplayInput) {
+                    return;
+                }
+                if (digitsOnly(supplierValueInput.value) === '' && supplierList) {
+                    const firstItem = supplierList.querySelector('[data-manual-supplier-item]');
+                    if (firstItem) {
+                        applySupplierSelection({
+                            cui: firstItem.getAttribute('data-cui') || '',
+                            name: firstItem.getAttribute('data-name') || '',
+                        });
+                    }
+                }
+                if (digitsOnly(supplierValueInput.value) !== '') {
+                    event.preventDefault();
+                    clientDisplayInput.focus();
+                    fetchClients(clientDisplayInput.value.trim());
+                }
+            });
+            supplierDisplayInput.addEventListener('blur', () => {
+                window.setTimeout(() => {
+                    clearSupplierList();
+                    if (digitsOnly(supplierValueInput.value) !== '') {
+                        return;
+                    }
+                    const maybeCui = digitsOnly(supplierDisplayInput.value);
+                    if (maybeCui !== '') {
+                        supplierValueInput.value = maybeCui;
+                        if (supplierCuiDisplay) {
+                            supplierCuiDisplay.value = maybeCui;
+                        }
+                    }
+                }, 120);
             });
         }
 
-        if (customerSelect) {
-            customerSelect.addEventListener('change', updateCustomerMeta);
+        if (clientDisplayInput && clientValueInput && clientNameInput) {
+            clientDisplayInput.addEventListener('focus', () => {
+                fetchClients(clientDisplayInput.value.trim());
+            });
+            clientDisplayInput.addEventListener('input', () => {
+                clientValueInput.value = '';
+                clientNameInput.value = '';
+                if (customerCuiDisplay) {
+                    customerCuiDisplay.value = '';
+                }
+                setCommissionText('');
+                if (clientTimer) {
+                    clearTimeout(clientTimer);
+                }
+                const query = clientDisplayInput.value.trim();
+                clientTimer = window.setTimeout(() => {
+                    fetchClients(query);
+                }, 200);
+            });
+            clientDisplayInput.addEventListener('blur', () => {
+                window.setTimeout(() => {
+                    clearClientList();
+                    if (digitsOnly(clientValueInput.value) !== '') {
+                        return;
+                    }
+                    const maybeCui = digitsOnly(clientDisplayInput.value);
+                    if (maybeCui !== '') {
+                        clientValueInput.value = maybeCui;
+                        if (customerCuiDisplay) {
+                            customerCuiDisplay.value = maybeCui;
+                        }
+                    }
+                }, 120);
+            });
         }
 
-        updateSupplier();
+        if (supplierList) {
+            const handleSupplierSelect = (event) => {
+                if (event.type === 'mousedown' && typeof window.PointerEvent !== 'undefined') {
+                    return;
+                }
+                const target = event.target.closest('[data-manual-supplier-item]');
+                if (!target) {
+                    return;
+                }
+                event.preventDefault();
+                applySupplierSelection({
+                    cui: target.getAttribute('data-cui') || '',
+                    name: target.getAttribute('data-name') || '',
+                });
+            };
+            supplierList.addEventListener('pointerdown', handleSupplierSelect);
+            supplierList.addEventListener('mousedown', handleSupplierSelect);
+        }
 
-        if (supplierSelect && commissions.length > 0) {
-            if (initialSupplier && supplierSelect.value !== initialSupplier) {
-                supplierSelect.value = initialSupplier;
-                updateSupplier();
-            }
-            updateCustomerOptions(supplierSelect.value, initialClient);
-        } else {
-            updateCustomerMeta();
+        if (clientList) {
+            const handleClientSelect = (event) => {
+                if (event.type === 'mousedown' && typeof window.PointerEvent !== 'undefined') {
+                    return;
+                }
+                const target = event.target.closest('[data-manual-client-item]');
+                if (!target) {
+                    return;
+                }
+                event.preventDefault();
+                applyClientSelection({
+                    cui: target.getAttribute('data-cui') || '',
+                    name: target.getAttribute('data-name') || '',
+                    commission: target.getAttribute('data-commission') || '',
+                });
+            };
+            clientList.addEventListener('pointerdown', handleClientSelect);
+            clientList.addEventListener('mousedown', handleClientSelect);
+        }
+
+        if (supplierValueInput && supplierDisplayInput && digitsOnly(supplierValueInput.value) === '' && digitsOnly(initialSupplier) !== '') {
+            supplierValueInput.value = digitsOnly(initialSupplier);
+        }
+        if (supplierNameInput && supplierNameInput.value.trim() === '' && String(initialSupplierName || '').trim() !== '') {
+            supplierNameInput.value = String(initialSupplierName || '').trim();
+        }
+        if (supplierDisplayInput && supplierDisplayInput.value.trim() === '') {
+            supplierDisplayInput.value = buildLabel(
+                supplierNameInput ? supplierNameInput.value : '',
+                supplierValueInput ? supplierValueInput.value : ''
+            );
+        }
+        if (supplierCuiDisplay && supplierValueInput) {
+            supplierCuiDisplay.value = digitsOnly(supplierValueInput.value);
+        }
+
+        if (clientValueInput && clientDisplayInput && digitsOnly(clientValueInput.value) === '' && digitsOnly(initialClient) !== '') {
+            clientValueInput.value = digitsOnly(initialClient);
+        }
+        if (clientNameInput && clientNameInput.value.trim() === '' && String(initialClientName || '').trim() !== '') {
+            clientNameInput.value = String(initialClientName || '').trim();
+        }
+        if (clientDisplayInput && clientDisplayInput.value.trim() === '') {
+            clientDisplayInput.value = buildLabel(
+                clientNameInput ? clientNameInput.value : '',
+                clientValueInput ? clientValueInput.value : ''
+            );
+        }
+        if (customerCuiDisplay && clientValueInput) {
+            customerCuiDisplay.value = digitsOnly(clientValueInput.value);
+        }
+        if (commissionDisplay && /Comision:\s*-\s*%?$/.test(commissionDisplay.textContent || '')) {
+            setCommissionText('');
         }
     })();
 </script>
