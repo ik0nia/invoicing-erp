@@ -102,17 +102,23 @@ class ContractPdfService
         $pdfAbsolute = $outputDir . '/' . $pdfName;
         $generator = '';
         $binary = $this->resolveWkhtmltopdfPath();
-        if ($binary !== '' && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, $contractId)) {
+        $hasWkhtmltopdf = $binary !== '';
+        if ($hasWkhtmltopdf && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, $contractId)) {
             $generator = 'wkhtmltopdf';
         }
-        if ($generator === '' && $this->isDompdfAvailable() && $this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
+        $hasDompdf = $this->isDompdfAvailable();
+        if ($generator === '' && $hasDompdf && $this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
             $generator = 'dompdf';
         }
 
         if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
             @unlink($pdfAbsolute);
             $this->storeHtmlFallback($contractId, $html);
-            Logger::logWarning('contract_pdf_tool_missing', ['contract_id' => $contractId]);
+            Logger::logWarning('contract_pdf_tool_missing', [
+                'contract_id' => $contractId,
+                'has_wkhtmltopdf' => $hasWkhtmltopdf,
+                'has_dompdf' => $hasDompdf,
+            ]);
             return '';
         }
 
@@ -364,9 +370,6 @@ class ContractPdfService
         }
         if (!function_exists('mb_detect_encoding')) {
             $missing[] = 'mbstring';
-        }
-        if (!class_exists(\XMLReader::class)) {
-            $missing[] = 'xml';
         }
 
         return $missing;
