@@ -609,6 +609,22 @@
                 return num.toFixed(4).replace(/\.?0+$/, '');
             };
 
+            const extractCuiCandidate = (value) => {
+                const raw = String(value || '').trim();
+                if (raw === '') {
+                    return '';
+                }
+                if (/^\d+$/.test(raw)) {
+                    return raw;
+                }
+                const compact = raw.replace(/\s+/g, '').toUpperCase();
+                if (/^RO\d+$/.test(compact)) {
+                    return compact.replace(/^RO/, '');
+                }
+
+                return '';
+            };
+
             const clearList = () => {
                 if (!list) {
                     return;
@@ -731,7 +747,7 @@
                         if (hiddenInput.value.trim() !== '') {
                             return;
                         }
-                        const maybeCui = displayInput.value.replace(/\D+/g, '');
+                        const maybeCui = extractCuiCandidate(displayInput.value);
                         if (maybeCui !== '') {
                             hiddenInput.value = maybeCui;
                         }
@@ -757,7 +773,7 @@
                         if (hiddenInput.value.trim() !== '') {
                             return;
                         }
-                        const maybeCui = displayInput.value.replace(/\D+/g, '');
+                        const maybeCui = extractCuiCandidate(displayInput.value);
                         if (maybeCui !== '') {
                             resolveSupplierByCui(maybeCui, true);
                         }
