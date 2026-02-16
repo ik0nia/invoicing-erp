@@ -61,6 +61,7 @@
         'signed_uploaded' => 'bg-purple-100 text-purple-700',
         'approved' => 'bg-emerald-100 text-emerald-700',
     ];
+    $contactDepartments = $contactDepartments ?? ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
 ?>
 
 <div class="max-w-6xl">
@@ -297,6 +298,10 @@
 
             <div class="mt-6 border-t border-slate-100 pt-4">
                 <div class="text-sm font-semibold text-slate-700">Contacte companie</div>
+                <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Daca doriti sa primiti facturile pe o alta adresa de e-mail decat cea generala a companiei, adaugati un contact
+                    in departamentul <strong>Financiar-contabil</strong> cu datele de contact dedicate.
+                </div>
                 <?php if ($partnerCui === ''): ?>
                     <div class="mt-2 text-sm text-slate-500">Salvati datele companiei pentru a adauga contacte.</div>
                 <?php else: ?>
@@ -305,7 +310,7 @@
                             <thead class="bg-slate-50 text-slate-600">
                                 <tr>
                                     <th class="px-3 py-2">Nume</th>
-                                    <th class="px-3 py-2">Rol</th>
+                                    <th class="px-3 py-2">Departament</th>
                                     <th class="px-3 py-2">Email</th>
                                     <th class="px-3 py-2">Telefon</th>
                                     <th class="px-3 py-2">Tip</th>
@@ -374,13 +379,11 @@
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
                             <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
-                            <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Rol/Functie</option>
-                                <option value="Administrator">Administrator</option>
-                                <option value="Contabil">Contabil</option>
-                                <option value="Achizitii">Achizitii</option>
-                                <option value="Vanzari">Vanzari</option>
-                                <option value="Manager">Manager</option>
+                            <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
+                                <option value="">Departament</option>
+                                <?php foreach ($contactDepartments as $department): ?>
+                                    <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
+                                <?php endforeach; ?>
                             </select>
                             <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
                             <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">

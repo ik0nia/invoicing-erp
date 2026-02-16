@@ -21,6 +21,7 @@ class PublicPartnerController
     private const MAX_UPLOAD_BYTES = 20971520;
     private const SIGNED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
     private const EDITABLE_ONBOARDING_STATUSES = ['draft', 'waiting_signature', 'rejected'];
+    private const CONTACT_DEPARTMENTS = ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
 
     public function index(): void
     {
@@ -115,6 +116,7 @@ class PublicPartnerController
             'onboardingStatus' => $onboardingStatus,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
             'token' => $token,
+            'contactDepartments' => self::CONTACT_DEPARTMENTS,
         ], 'layouts/guest');
     }
 
@@ -170,6 +172,12 @@ class PublicPartnerController
 
         Partner::upsert($cui, $denumire);
         $this->upsertCompanyFromPayload($cui, $context, $payload);
+        $this->ensureLegalRepresentativeContact(
+            $cui,
+            $legalRepresentativeName,
+            $this->sanitizeContactValue((string) ($_POST['email'] ?? '')),
+            $this->sanitizeContactValue((string) ($_POST['telefon'] ?? ''))
+        );
 
         $linkType = (string) ($context['link']['type'] ?? '');
         $isSupplier = $linkType === 'supplier';
@@ -243,9 +251,13 @@ class PublicPartnerController
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
 
-        $email = trim((string) ($_POST['email'] ?? ''));
-        $phone = trim((string) ($_POST['phone'] ?? ''));
-        $role = trim((string) ($_POST['role'] ?? ''));
+        $email = $this->sanitizeContactValue((string) ($_POST['email'] ?? ''));
+        $phone = $this->sanitizeContactValue((string) ($_POST['phone'] ?? ''));
+        $role = $this->normalizeContactDepartment((string) ($_POST['role'] ?? ($_POST['department'] ?? '')));
+        if ($role === '') {
+            Session::flash('error', 'Selectati departamentul contactului.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+        }
         $isPrimary = !empty($_POST['is_primary']) ? 1 : 0;
         $scope = $this->resolveScope($context, $partnerCui);
         $contactScope = trim((string) ($_POST['contact_scope'] ?? 'partner'));
@@ -1234,6 +1246,128 @@ class PublicPartnerController
         $value = preg_replace('/\s+/', ' ', $value);
 
         return trim((string) $value);
+    }
+
+    private function sanitizeContactValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function normalizeContactDepartment(string $value): string
+    {
+        $value = strtolower($this->sanitizeContactValue($value));
+        if ($value === '') {
+            return '';
+        }
+
+        foreach (self::CONTACT_DEPARTMENTS as $department) {
+            if ($value === strtolower($department)) {
+                return $department;
+            }
+        }
+
+        return '';
+    }
+
+    private function ensureLegalRepresentativeContact(string $partnerCui, string $name, string $email, string $phone): void
+    {
+        if (!Database::tableExists('partner_contacts')) {
+            return;
+        }
+
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        $name = $this->sanitizeCompanyValue($name);
+        $email = $this->sanitizeContactValue($email);
+        $phone = $this->sanitizeContactValue($phone);
+        if ($partnerCui === '' || $name === '') {
+            return;
+        }
+
+        $existing = Database::fetchOne(
+            'SELECT id, email, phone
+             FROM partner_contacts
+             WHERE partner_cui = :partner_cui
+               AND LOWER(TRIM(role)) = LOWER(TRIM(:role))
+             ORDER BY id DESC
+             LIMIT 1',
+            [
+                'partner_cui' => $partnerCui,
+                'role' => self::CONTACT_DEPARTMENTS[0],
+            ]
+        );
+        if (!$existing) {
+            $existing = Database::fetchOne(
+                'SELECT id, email, phone
+                 FROM partner_contacts
+                 WHERE partner_cui = :partner_cui
+                   AND LOWER(TRIM(name)) = LOWER(TRIM(:name))
+                 ORDER BY id DESC
+                 LIMIT 1',
+                [
+                    'partner_cui' => $partnerCui,
+                    'name' => $name,
+                ]
+            );
+        }
+
+        if ($existing) {
+            $resolvedEmail = $email !== '' ? $email : (string) ($existing['email'] ?? '');
+            $resolvedPhone = $phone !== '' ? $phone : (string) ($existing['phone'] ?? '');
+            Database::execute(
+                'UPDATE partner_contacts
+                 SET role = :role,
+                     email = :email,
+                     phone = :phone
+                 WHERE id = :id',
+                [
+                    'role' => self::CONTACT_DEPARTMENTS[0],
+                    'email' => $resolvedEmail !== '' ? $resolvedEmail : null,
+                    'phone' => $resolvedPhone !== '' ? $resolvedPhone : null,
+                    'id' => (int) ($existing['id'] ?? 0),
+                ]
+            );
+
+            return;
+        }
+
+        $hasPrimary = Database::columnExists('partner_contacts', 'is_primary');
+        if ($hasPrimary) {
+            Database::execute(
+                'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, is_primary, created_at)
+                 VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :is_primary, :created_at)',
+                [
+                    'partner' => $partnerCui,
+                    'supplier' => null,
+                    'client' => null,
+                    'name' => $name,
+                    'email' => $email !== '' ? $email : null,
+                    'phone' => $phone !== '' ? $phone : null,
+                    'role' => self::CONTACT_DEPARTMENTS[0],
+                    'is_primary' => 0,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]
+            );
+
+            return;
+        }
+
+        Database::execute(
+            'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, created_at)
+             VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :created_at)',
+            [
+                'partner' => $partnerCui,
+                'supplier' => null,
+                'client' => null,
+                'name' => $name,
+                'email' => $email !== '' ? $email : null,
+                'phone' => $phone !== '' ? $phone : null,
+                'role' => self::CONTACT_DEPARTMENTS[0],
+                'created_at' => date('Y-m-d H:i:s'),
+            ]
+        );
     }
 
     private function sanitizeIban(string $value): string
