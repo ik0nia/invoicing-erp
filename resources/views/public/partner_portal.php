@@ -363,7 +363,7 @@
         <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
             <div class="text-base font-semibold text-slate-800">Pasul 2/3: Documente obligatorii</div>
             <p class="mt-1 text-sm text-slate-500">
-                Pentru a continua, incarcati documentele semnate obligatorii. Fiecare document este indexat prin doc_type si data contractului.
+                Pentru a continua, incarcati documentele semnate obligatorii.
             </p>
 
             <?php if ($partnerCui === ''): ?>
@@ -396,7 +396,6 @@
                             <?php foreach ($missingDocs as $missing): ?>
                                 <li>
                                     <?= htmlspecialchars((string) ($missing['title'] ?? 'Document')) ?>
-                                    <span class="font-mono text-xs">(<?= htmlspecialchars((string) ($missing['doc_type'] ?? 'contract')) ?>)</span>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -413,7 +412,6 @@
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
                                 <th class="px-3 py-2">Titlu</th>
-                                <th class="px-3 py-2">Doc type</th>
                                 <th class="px-3 py-2">Nr. registru</th>
                                 <th class="px-3 py-2">Data contract</th>
                                 <th class="px-3 py-2">Obligatoriu</th>
@@ -424,7 +422,7 @@
                         <tbody>
                             <?php if (empty($contracts)): ?>
                                 <tr>
-                                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
+                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($contracts as $contract): ?>
@@ -458,7 +456,6 @@
                                     ?>
                                     <tr class="border-t border-slate-100">
                                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
-                                        <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
                                         <td class="px-3 py-2 text-slate-600">
                                             <?php if ($docNoDisplay !== ''): ?>
                                                 <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
@@ -513,7 +510,6 @@
                                 ?>
                                 <option value="<?= (int) $contract['id'] ?>">
                                     <?= htmlspecialchars((string) ($contract['title'] ?? 'Document')) ?>
-                                    [<?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?>]
                                     <?= $optionDocNo !== '' ? ' [' . htmlspecialchars($optionDocNo) . ']' : '' ?>
                                 </option>
                             <?php endforeach; ?>
