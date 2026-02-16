@@ -21,7 +21,6 @@ class DocumentRegistryController
     public function index(): void
     {
         Auth::requireInternalStaff();
-        $registry = $this->ensureGlobalRegistryRow();
         $filters = [
             'doc_type' => $this->sanitizeDocType((string) ($_GET['doc_type'] ?? '')),
         ];
@@ -29,7 +28,6 @@ class DocumentRegistryController
         $documents = $this->loadDocuments($filters['doc_type']);
 
         Response::view('admin/contracts/document_registry', [
-            'registry' => $registry,
             'filters' => $filters,
             'docTypeOptions' => $docTypeOptions,
             'documents' => $documents,
@@ -144,19 +142,6 @@ class DocumentRegistryController
 
         Session::flash('status', 'Registrul a fost resetat la numarul de start.');
         Response::redirect('/admin/registru-documente');
-    }
-
-    private function ensureGlobalRegistryRow(): array
-    {
-        $row = $this->numberService->ensureRegistryRow('contract');
-        if (!Database::tableExists('document_registry')) {
-            return $row;
-        }
-
-        return Database::fetchOne(
-            'SELECT * FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
-            ['doc_type' => $this->numberService->registryKey()]
-        ) ?? $row;
     }
 
     private function loadDocTypeOptions(): array
