@@ -140,8 +140,6 @@ class EnrollmentLinksController
             'end' => $total > 0 ? min($total, $offset + count($rows)) : 0,
         ];
 
-        $onboardingResources = $this->fetchEnrollmentResources(null, true);
-
         $suppliers = [];
         if ($user->isSupplierUser()) {
             UserSupplierAccess::ensureTable();
@@ -155,8 +153,6 @@ class EnrollmentLinksController
             'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
             'canApproveOnboarding' => Auth::isInternalStaff(),
-            'canManageOnboardingResources' => Auth::isInternalStaff(),
-            'onboardingResources' => $onboardingResources,
             'isPendingPage' => $isPendingPage,
         ]);
     }
@@ -167,6 +163,15 @@ class EnrollmentLinksController
         $_GET['_pending_page'] = '1';
         $_GET['onboarding_status'] = trim((string) ($_GET['onboarding_status'] ?? 'submitted'));
         $this->index();
+    }
+
+    public function resources(): void
+    {
+        Auth::requireInternalStaff();
+
+        Response::view('admin/enrollment_links/resources', [
+            'resources' => $this->fetchEnrollmentResources(null, true),
+        ]);
     }
 
     public function create(): void
@@ -636,10 +641,11 @@ class EnrollmentLinksController
     {
         Auth::requireInternalStaff();
         $user = Auth::user();
+        $redirectPath = '/admin/fisiere-upa';
 
         if (!Database::tableExists('enrollment_resources')) {
             Session::flash('error', 'Sectiunea de fisiere onboarding nu este disponibila momentan.');
-            Response::redirect('/admin/enrollment-links');
+            Response::redirect($redirectPath);
         }
 
         $appliesTo = trim((string) ($_POST['applies_to'] ?? 'both'));
@@ -660,7 +666,7 @@ class EnrollmentLinksController
                 'error',
                 'Fisier invalid. Sunt acceptate PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/TXT/JPG/PNG/ZIP (maxim 25MB).'
             );
-            Response::redirect('/admin/enrollment-links');
+            Response::redirect($redirectPath);
         }
 
         $title = $this->sanitizeResourceTitle((string) ($_POST['title'] ?? ''));
@@ -718,22 +724,23 @@ class EnrollmentLinksController
         ]);
 
         Session::flash('status', 'Fisierul de onboarding a fost incarcat.');
-        Response::redirect('/admin/enrollment-links');
+        Response::redirect($redirectPath);
     }
 
     public function deleteResource(): void
     {
         Auth::requireInternalStaff();
+        $redirectPath = '/admin/fisiere-upa';
 
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         if ($id <= 0 || !Database::tableExists('enrollment_resources')) {
-            Response::redirect('/admin/enrollment-links');
+            Response::redirect($redirectPath);
         }
 
         $row = Database::fetchOne('SELECT * FROM enrollment_resources WHERE id = :id LIMIT 1', ['id' => $id]);
         if (!$row) {
             Session::flash('error', 'Fisierul nu a fost gasit.');
-            Response::redirect('/admin/enrollment-links');
+            Response::redirect($redirectPath);
         }
 
         Database::execute('DELETE FROM enrollment_resources WHERE id = :id', ['id' => $id]);
@@ -744,7 +751,7 @@ class EnrollmentLinksController
 
         Audit::record('enrollment_resource.delete', 'enrollment_resource', $id, ['rows_count' => 1]);
         Session::flash('status', 'Fisierul de onboarding a fost sters.');
-        Response::redirect('/admin/enrollment-links');
+        Response::redirect($redirectPath);
     }
 
     public function downloadResource(): void

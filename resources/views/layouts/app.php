@@ -73,7 +73,7 @@ if ($isPlatformUser && $canAccessSaga) {
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
     $menuSections['Inrolare'] = [
         [
-            'label' => 'Link-uri publice',
+            'label' => 'Adauga partener',
             'path' => '/admin/enrollment-links',
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
         ],
@@ -110,6 +110,11 @@ if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
     ];
 }
 if ($isInternalStaff) {
+    $menuSections['Documente'][] = [
+        'label' => 'Fisiere UPA',
+        'path' => '/admin/fisiere-upa',
+        'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
+    ];
     $menuSections['Documente'][] = [
         'label' => 'Registru documente',
         'path' => '/admin/registru-documente',

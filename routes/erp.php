@@ -25,6 +25,7 @@ $router->get('/admin/audit', [AuditController::class, 'index']);
 $router->get('/admin/audit/view', [AuditController::class, 'show']);
 $router->get('/admin/enrollment-links', [EnrollmentLinksController::class, 'index']);
 $router->get('/admin/inrolari', [EnrollmentLinksController::class, 'pending']);
+$router->get('/admin/fisiere-upa', [EnrollmentLinksController::class, 'resources']);
 $router->post('/admin/enrollment-links/create', [EnrollmentLinksController::class, 'create']);
 $router->post('/admin/enrollment-links/disable', [EnrollmentLinksController::class, 'disable']);
 $router->post('/admin/enrollment-links/regenerate', [EnrollmentLinksController::class, 'regenerate']);
