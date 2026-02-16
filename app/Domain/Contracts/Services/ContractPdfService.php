@@ -572,7 +572,7 @@ class ContractPdfService
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         @page {
-            margin: 28mm 14mm 18mm 14mm;
+            margin: 42mm 14mm 18mm 14mm;
         }
         body {
             margin: 0;
@@ -585,6 +585,11 @@ class ContractPdfService
             width: 100%;
         }
         .print-header {
+            position: fixed;
+            top: -32mm;
+            left: 0;
+            right: 0;
+            z-index: 5;
             border-bottom: 1px solid #cbd5e1;
             padding: 0 0 10px 0;
             margin-bottom: 12px;
