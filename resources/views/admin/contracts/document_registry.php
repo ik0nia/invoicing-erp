@@ -1,8 +1,17 @@
 <?php
     $title = 'Registru documente';
     $filters = $filters ?? ['doc_type' => ''];
+    $activeTab = (string) ($activeTab ?? ($filters['tab'] ?? 'client'));
+    if (!in_array($activeTab, ['client', 'supplier'], true)) {
+        $activeTab = 'client';
+    }
     $docTypeOptions = $docTypeOptions ?? [];
     $documents = $documents ?? [];
+    $tabLabels = [
+        'client' => 'Clienti',
+        'supplier' => 'Furnizori',
+    ];
+    $activeTabLabel = $tabLabels[$activeTab] ?? 'Clienti';
     $statusLabels = [
         'draft' => 'Ciorna',
         'generated' => 'Generat',
@@ -20,13 +29,28 @@
 </div>
 
 <div class="mt-4">
-    <h2 class="text-lg font-semibold text-slate-900">Documente din registru</h2>
+    <div class="flex flex-wrap items-center gap-2">
+        <?php foreach ($tabLabels as $tabKey => $tabLabel): ?>
+            <?php
+                $tabUrl = App\Support\Url::to('admin/registru-documente?tab=' . urlencode($tabKey));
+                $isActiveTab = $activeTab === $tabKey;
+            ?>
+            <a
+                href="<?= htmlspecialchars($tabUrl) ?>"
+                class="rounded-full border px-3 py-1.5 text-sm font-semibold <?= $isActiveTab ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' ?>"
+            >
+                <?= htmlspecialchars($tabLabel) ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <h2 class="mt-4 text-lg font-semibold text-slate-900">Documente din registru - <?= htmlspecialchars($activeTabLabel) ?></h2>
     <p class="mt-1 text-sm text-slate-500">
         Lista afiseaza ultimele 500 documente, cu posibilitate de filtrare dupa tip document.
     </p>
 </div>
 
 <form method="GET" action="<?= App\Support\Url::to('admin/registru-documente') ?>" class="mt-4 rounded border border-slate-200 bg-white p-4">
+    <input type="hidden" name="tab" value="<?= htmlspecialchars($activeTab) ?>">
     <div class="grid gap-4 md:grid-cols-3">
         <div>
             <label class="block text-sm font-medium text-slate-700" for="filter-doc-type">Tip document (doc_type)</label>
@@ -44,7 +68,7 @@
         <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             Filtreaza
         </button>
-        <a href="<?= App\Support\Url::to('admin/registru-documente') ?>" class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <a href="<?= App\Support\Url::to('admin/registru-documente?tab=' . urlencode($activeTab)) ?>" class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Reseteaza
         </a>
     </div>

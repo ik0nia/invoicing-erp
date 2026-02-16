@@ -1040,6 +1040,29 @@ class SchemaEnsurer
                     'document_registry_seed_global'
                 );
             }
+            $supplierRow = Database::fetchOne(
+                'SELECT id FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+                ['doc_type' => 'global_supplier']
+            );
+            if (!$supplierRow) {
+                $globalSeed = Database::fetchOne(
+                    'SELECT series FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+                    ['doc_type' => 'global']
+                ) ?? [];
+                $supplierSeries = trim((string) ($globalSeed['series'] ?? ''));
+                self::safeExecute(
+                    'INSERT INTO document_registry (doc_type, series, next_no, start_no, updated_at)
+                     VALUES (:doc_type, :series, :next_no, :start_no, :updated_at)',
+                    [
+                        'doc_type' => 'global_supplier',
+                        'series' => $supplierSeries !== '' ? $supplierSeries : null,
+                        'next_no' => 1,
+                        'start_no' => 1,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ],
+                    'document_registry_seed_global_supplier'
+                );
+            }
         }
     }
 

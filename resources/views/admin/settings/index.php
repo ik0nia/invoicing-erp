@@ -1,11 +1,8 @@
 <?php
     $title = 'Setari';
     $documentRegistry = $documentRegistry ?? [];
-    $registryAvailable = !empty($documentRegistry['available']);
-    $registrySeries = (string) ($documentRegistry['series'] ?? '');
-    $registryStartNo = max(1, (int) ($documentRegistry['start_no'] ?? 1));
-    $registryNextNo = max($registryStartNo, (int) ($documentRegistry['next_no'] ?? $registryStartNo));
-    $registryUpdatedAt = (string) ($documentRegistry['updated_at'] ?? '');
+    $registryClient = is_array($documentRegistry['client'] ?? null) ? $documentRegistry['client'] : [];
+    $registrySupplier = is_array($documentRegistry['supplier'] ?? null) ? $documentRegistry['supplier'] : [];
 ?>
 
 <div class="flex items-center justify-between">
@@ -300,89 +297,132 @@
 <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Registru documente - setari globale</h2>
     <p class="mt-1 text-sm text-slate-600">
-        Configureaza seria si numerotarea globala folosita pentru documentele contractuale.
+        Configureaza separat numerotarea pentru documentele de clienti si pentru cele de furnizori.
     </p>
 
-    <?php if (!$registryAvailable): ?>
-        <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Registrul documentelor nu este disponibil momentan.
-        </div>
-    <?php else: ?>
-        <div class="mt-4 grid gap-6 lg:grid-cols-2">
-            <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/save') ?>" class="space-y-4 rounded border border-slate-200 bg-slate-50 p-4">
-                <?= App\Support\Csrf::input() ?>
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-700">Serie</label>
-                        <input
-                            type="text"
-                            name="series"
-                            value="<?= htmlspecialchars($registrySeries) ?>"
-                            maxlength="16"
-                            placeholder="ex: CTR"
-                            class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-700">Start</label>
-                        <input
-                            type="number"
-                            min="1"
-                            name="start_no"
-                            value="<?= $registryStartNo ?>"
-                            class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-700">Urmatorul nr.</label>
-                        <input
-                            type="number"
-                            min="1"
-                            name="next_no"
-                            value="<?= $registryNextNo ?>"
-                            class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        >
-                    </div>
-                </div>
-                <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-                    Salveaza registrul
-                </button>
-            </form>
+    <?php
+        $registryCards = [
+            'client' => [
+                'title' => 'Registru clienti',
+                'description' => 'Numerotarea folosita pentru documentele generate pentru clienti.',
+                'data' => $registryClient,
+            ],
+            'supplier' => [
+                'title' => 'Registru furnizori',
+                'description' => 'Numerotarea folosita pentru documentele generate pentru furnizori.',
+                'data' => $registrySupplier,
+            ],
+        ];
+    ?>
 
-            <div class="space-y-4 rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="text-sm text-slate-700">
-                    Ultima actualizare:
-                    <span class="font-semibold text-slate-900"><?= htmlspecialchars($registryUpdatedAt !== '' ? $registryUpdatedAt : '—') ?></span>
-                </div>
-                <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/set-start') ?>" class="inline-flex items-end gap-3">
-                    <?= App\Support\Csrf::input() ?>
+    <div class="mt-4 grid gap-6 xl:grid-cols-2">
+        <?php foreach ($registryCards as $scope => $card): ?>
+            <?php
+                $registryData = is_array($card['data'] ?? null) ? $card['data'] : [];
+                $registryAvailable = !empty($registryData['available']);
+                $registrySeries = (string) ($registryData['series'] ?? '');
+                $registryStartNo = max(1, (int) ($registryData['start_no'] ?? 1));
+                $registryNextNo = max($registryStartNo, (int) ($registryData['next_no'] ?? $registryStartNo));
+                $registryUpdatedAt = (string) ($registryData['updated_at'] ?? '');
+            ?>
+            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
                     <div>
-                        <label class="block text-xs font-medium text-slate-700">Start nou</label>
-                        <input
-                            type="number"
-                            min="1"
-                            name="start_no"
-                            value="<?= $registryStartNo ?>"
-                            class="mt-1 w-28 rounded border border-slate-300 px-2 py-1.5 text-sm"
-                        >
-                        <input type="hidden" name="series" value="<?= htmlspecialchars($registrySeries) ?>">
+                        <h3 class="text-sm font-semibold text-slate-900"><?= htmlspecialchars((string) ($card['title'] ?? 'Registru')) ?></h3>
+                        <p class="mt-1 text-xs text-slate-600"><?= htmlspecialchars((string) ($card['description'] ?? '')) ?></p>
                     </div>
-                    <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
-                        Seteaza start
-                    </button>
-                </form>
-                <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/reset-start') ?>">
-                    <?= App\Support\Csrf::input() ?>
-                    <button
-                        class="rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
-                        onclick="return confirm('Resetezi numerotarea la start pentru registrul global?')"
-                    >
-                        Reseteaza la start
-                    </button>
-                </form>
+                    <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        <?= $scope === 'supplier' ? 'Furnizori' : 'Clienti' ?>
+                    </span>
+                </div>
+
+                <?php if (!$registryAvailable): ?>
+                    <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Registrul nu este disponibil momentan.
+                    </div>
+                <?php else: ?>
+                    <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/save') ?>" class="mt-4 space-y-4">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                        <input type="hidden" name="return_to" value="/admin/setari">
+                        <div class="grid gap-3 sm:grid-cols-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Serie</label>
+                                <input
+                                    type="text"
+                                    name="series"
+                                    value="<?= htmlspecialchars($registrySeries) ?>"
+                                    maxlength="16"
+                                    placeholder="ex: CTR"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Start</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="start_no"
+                                    value="<?= $registryStartNo ?>"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Urmatorul nr.</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="next_no"
+                                    value="<?= $registryNextNo ?>"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                        </div>
+                        <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+                            Salveaza registrul
+                        </button>
+                    </form>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="text-sm text-slate-700">
+                            Ultima actualizare:
+                            <span class="font-semibold text-slate-900"><?= htmlspecialchars($registryUpdatedAt !== '' ? $registryUpdatedAt : '—') ?></span>
+                        </div>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/set-start') ?>" class="inline-flex items-end gap-3">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                            <input type="hidden" name="return_to" value="/admin/setari">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Start nou</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="start_no"
+                                    value="<?= $registryStartNo ?>"
+                                    class="mt-1 w-28 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                                <input type="hidden" name="series" value="<?= htmlspecialchars($registrySeries) ?>">
+                            </div>
+                            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                                Seteaza start
+                            </button>
+                        </form>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/reset-start') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                            <input type="hidden" name="return_to" value="/admin/setari">
+                            <button
+                                class="rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                                onclick="return confirm('Resetezi numerotarea la start pentru acest registru?')"
+                            >
+                                Reseteaza la start
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
             </div>
-        </div>
-    <?php endif; ?>
+        <?php endforeach; ?>
+    </div>
 </div>
 
 <div class="mt-6 rounded-lg border border-rose-200 bg-rose-50/40 p-6 shadow-sm">

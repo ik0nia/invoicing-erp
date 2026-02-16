@@ -50,11 +50,15 @@ class ContractOnboardingService
                     'doc_kind' => $docKind,
                 ], JSON_UNESCAPED_UNICODE);
                 $number = null;
+                $registryScope = $this->resolveRegistryScope($linkType, $supplierCui, $clientCui);
                 try {
-                    $number = $this->numberService->allocateNumber($docType);
+                    $number = $this->numberService->allocateNumber($docType, [
+                        'registry_scope' => $registryScope,
+                    ]);
                 } catch (\Throwable $exception) {
                     Logger::logWarning('document_number_allocate_failed', [
                         'doc_type' => $docType,
+                        'registry_scope' => $registryScope,
                         'error' => $exception->getMessage(),
                     ]);
                     $warnings[] = 'Numerotarea automata nu este disponibila pentru doc_type "' . $docType . '".';
@@ -116,6 +120,7 @@ class ContractOnboardingService
                 if ($contractId > 0 && isset($number['no'])) {
                     Audit::record('contract.number_assigned', 'contract', $contractId, [
                         'doc_type' => $docType,
+                        'registry_scope' => $registryScope,
                         'doc_full_no' => (string) ($number['full_no'] ?? ''),
                         'rows_count' => 1,
                     ]);
@@ -268,5 +273,24 @@ class ContractOnboardingService
         }
 
         return 'c.doc_type = :contract_doc_type';
+    }
+
+    private function resolveRegistryScope(string $linkType, ?string $supplierCui, ?string $clientCui): string
+    {
+        $linkType = strtolower(trim($linkType));
+        $supplierCui = preg_replace('/\D+/', '', (string) $supplierCui);
+        $clientCui = preg_replace('/\D+/', '', (string) $clientCui);
+
+        if ($linkType === 'supplier') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        if ($clientCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+        if ($supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
     }
 }

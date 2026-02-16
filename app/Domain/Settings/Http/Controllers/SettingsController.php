@@ -56,7 +56,10 @@ class SettingsController
             'banca' => (string) $this->settings->get('company.banca', ''),
             'iban' => (string) $this->settings->get('company.iban', ''),
         ];
-        $documentRegistry = $this->loadDocumentRegistrySettings();
+        $documentRegistry = [
+            DocumentNumberService::REGISTRY_SCOPE_CLIENT => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_CLIENT),
+            DocumentNumberService::REGISTRY_SCOPE_SUPPLIER => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER),
+        ];
 
         Response::view('admin/settings/index', [
             'logoPath' => $logoPath,
@@ -190,9 +193,10 @@ class SettingsController
         return \App\Support\Url::asset($logoPath);
     }
 
-    private function loadDocumentRegistrySettings(): array
+    private function loadDocumentRegistrySettings(string $registryScope): array
     {
         $settings = [
+            'scope' => $registryScope,
             'series' => '',
             'start_no' => 1,
             'next_no' => 1,
@@ -204,7 +208,10 @@ class SettingsController
         }
 
         try {
-            $row = (new DocumentNumberService())->ensureRegistryRow('contract');
+            $numberService = new DocumentNumberService();
+            $row = $numberService->ensureRegistryRow('contract', [
+                'registry_scope' => $registryScope,
+            ]);
             $startNo = max(1, (int) ($row['start_no'] ?? 1));
             $nextNo = max($startNo, (int) ($row['next_no'] ?? $startNo));
             $settings['series'] = trim((string) ($row['series'] ?? ''));

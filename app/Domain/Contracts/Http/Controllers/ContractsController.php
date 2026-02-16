@@ -97,12 +97,16 @@ class ContractsController
         $numberService = new DocumentNumberService();
         $number = null;
         $numberWarning = null;
+        $registryScope = $this->resolveRegistryScope($supplierCui, $clientCui, $template);
         try {
-            $number = $numberService->allocateNumber($docType);
+            $number = $numberService->allocateNumber($docType, [
+                'registry_scope' => $registryScope,
+            ]);
         } catch (\Throwable $exception) {
             $numberWarning = 'Contractul a fost creat fara numar de registru pentru doc_type "' . $docType . '".';
             Logger::logWarning('document_number_allocate_failed', [
                 'doc_type' => $docType,
+                'registry_scope' => $registryScope,
                 'error' => $exception->getMessage(),
             ]);
         }
@@ -170,6 +174,7 @@ class ContractsController
         if ($contractId > 0 && isset($number['no'])) {
             Audit::record('contract.number_assigned', 'contract', $contractId, [
                 'doc_type' => $docType,
+                'registry_scope' => $registryScope,
                 'doc_full_no' => (string) ($number['full_no'] ?? ''),
                 'rows_count' => 1,
             ]);
@@ -488,5 +493,24 @@ class ContractsController
         $padded = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
 
         return $series !== '' ? ($series . '-' . $padded) : $padded;
+    }
+
+    private function resolveRegistryScope(string $supplierCui, string $clientCui, ?array $template): string
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $clientCui = preg_replace('/\D+/', '', $clientCui);
+
+        if ($clientCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+        if ($supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        $appliesTo = strtolower(trim((string) ($template['applies_to'] ?? '')));
+        if ($appliesTo === 'supplier') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
     }
 }
