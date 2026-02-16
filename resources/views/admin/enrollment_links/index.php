@@ -33,6 +33,10 @@
         'relation_client_cui' => $filters['relation_client_cui'] ?? '',
     ];
     $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
+    $returnToPath = '/' . ltrim($listPath, '/');
+    if (!empty($filterParams)) {
+        $returnToPath .= '?' . http_build_query($filterParams);
+    }
     $paginationParams = $filterParams;
     $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 50);
 ?>
@@ -427,11 +431,25 @@
                                         <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/approve-onboarding') ?>">
                                             <?= App\Support\Csrf::input() ?>
                                             <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
                                             <button
                                                 class="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
                                                 onclick="return confirm('Confirmati activarea manuala a inrolarii?')"
                                             >
                                                 Aproba / Activeaza
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($canApproveOnboarding): ?>
+                                        <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/reset-onboarding') ?>">
+                                            <?= App\Support\Csrf::input() ?>
+                                            <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
+                                            <button
+                                                class="text-xs font-semibold text-amber-700 hover:text-amber-800"
+                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge semnaturile incarcate pentru documentele obligatorii.')"
+                                            >
+                                                Reset onboarding
                                             </button>
                                         </form>
                                     <?php endif; ?>
@@ -453,11 +471,25 @@
                                         <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/approve-onboarding') ?>">
                                             <?= App\Support\Csrf::input() ?>
                                             <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
                                             <button
                                                 class="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
                                                 onclick="return confirm('Confirmati activarea manuala a inrolarii?')"
                                             >
                                                 Aproba / Activeaza
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($canApproveOnboarding): ?>
+                                        <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/reset-onboarding') ?>">
+                                            <?= App\Support\Csrf::input() ?>
+                                            <input type="hidden" name="id" value="<?= (int) $row['id'] ?>">
+                                            <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
+                                            <button
+                                                class="text-xs font-semibold text-amber-700 hover:text-amber-800"
+                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge semnaturile incarcate pentru documentele obligatorii.')"
+                                            >
+                                                Reset onboarding
                                             </button>
                                         </form>
                                     <?php endif; ?>

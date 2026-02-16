@@ -59,6 +59,9 @@ class ContractPdfService
                 'created_at' => $contractDate,
                 'contract_date' => $contractDate,
                 'doc_type' => $docType,
+                'doc_no' => (int) ($contract['doc_no'] ?? 0),
+                'doc_series' => (string) ($contract['doc_series'] ?? ''),
+                'doc_full_no' => (string) ($contract['doc_full_no'] ?? ''),
             ]
         );
 

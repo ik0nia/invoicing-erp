@@ -12,6 +12,7 @@ use App\Domain\Audit\Http\Controllers\AuditController;
 use App\Domain\Enrollment\Http\Controllers\EnrollmentLinksController;
 use App\Domain\Contracts\Http\Controllers\ContractsController;
 use App\Domain\Contracts\Http\Controllers\ContractTemplatesController;
+use App\Domain\Contracts\Http\Controllers\DocumentRegistryController;
 use App\Domain\Contacts\Http\Controllers\ContactsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
@@ -29,11 +30,16 @@ $router->post('/admin/enrollment-links/disable', [EnrollmentLinksController::cla
 $router->post('/admin/enrollment-links/regenerate', [EnrollmentLinksController::class, 'regenerate']);
 $router->post('/admin/enrollment-links/lookup', [EnrollmentLinksController::class, 'lookup']);
 $router->post('/admin/enrollment-links/approve-onboarding', [EnrollmentLinksController::class, 'approveOnboarding']);
+$router->post('/admin/enrollment-links/reset-onboarding', [EnrollmentLinksController::class, 'resetOnboarding']);
 $router->get('/admin/contracts', [ContractsController::class, 'index']);
 $router->post('/admin/contracts/generate', [ContractsController::class, 'generate']);
 $router->post('/admin/contracts/upload-signed', [ContractsController::class, 'uploadSigned']);
 $router->post('/admin/contracts/approve', [ContractsController::class, 'approve']);
 $router->get('/admin/contracts/download', [ContractsController::class, 'download']);
+$router->get('/admin/registru-documente', [DocumentRegistryController::class, 'index']);
+$router->post('/admin/registru-documente/save', [DocumentRegistryController::class, 'save']);
+$router->post('/admin/registru-documente/set-start', [DocumentRegistryController::class, 'setStart']);
+$router->post('/admin/registru-documente/reset-start', [DocumentRegistryController::class, 'resetStart']);
 $router->get('/admin/contract-templates', [ContractTemplatesController::class, 'index']);
 $router->post('/admin/contract-templates/save', [ContractTemplatesController::class, 'save']);
 $router->get('/admin/contract-templates/edit', [ContractTemplatesController::class, 'edit']);

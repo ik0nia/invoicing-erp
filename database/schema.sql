@@ -313,6 +313,10 @@ CREATE TABLE contracts (
     title VARCHAR(255) NOT NULL,
     doc_type VARCHAR(64) NOT NULL DEFAULT 'contract',
     contract_date DATE NULL,
+    doc_no INT NULL,
+    doc_series VARCHAR(16) NULL,
+    doc_full_no VARCHAR(64) NULL,
+    doc_assigned_at DATETIME NULL,
     required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
     status ENUM('draft', 'generated', 'sent', 'signed_uploaded', 'approved') NOT NULL DEFAULT 'draft',
     generated_file_path VARCHAR(255) NULL,
@@ -327,7 +331,18 @@ CREATE TABLE contracts (
     INDEX idx_contracts_partner (partner_cui),
     INDEX idx_contracts_relation (supplier_cui, client_cui),
     INDEX idx_contracts_created (created_at),
-    INDEX idx_contracts_doc_date (doc_type, contract_date)
+    INDEX idx_contracts_doc_date (doc_type, contract_date),
+    INDEX idx_contracts_doc_no (doc_type, doc_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_registry (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    doc_type VARCHAR(64) NOT NULL,
+    series VARCHAR(16) NULL,
+    next_no INT NOT NULL DEFAULT 1,
+    start_no INT NOT NULL DEFAULT 1,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_document_registry_doc_type (doc_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE relation_documents (

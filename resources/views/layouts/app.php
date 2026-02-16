@@ -102,6 +102,13 @@ if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
         'active' => str_starts_with($currentPath, '/admin/contract-templates'),
     ];
 }
+if ($isInternalStaff) {
+    $menuSections['Documente'][] = [
+        'label' => 'Registru documente',
+        'path' => '/admin/registru-documente',
+        'active' => str_starts_with($currentPath, '/admin/registru-documente'),
+    ];
+}
 
 if ($isPlatformUser) {
     if ($isOperator) {

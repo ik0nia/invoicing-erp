@@ -303,6 +303,9 @@ class ContractTemplatesController
                 'created_at' => date('Y-m-d'),
                 'contract_date' => date('Y-m-d'),
                 'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? 'contract'),
+                'doc_no' => 123,
+                'doc_series' => 'CTR',
+                'doc_full_no' => 'CTR-000123',
             ]
         );
         $rendered = $renderer->render((string) ($template['html_content'] ?? ''), $vars);

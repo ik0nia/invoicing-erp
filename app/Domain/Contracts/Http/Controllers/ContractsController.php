@@ -2,11 +2,13 @@
 
 namespace App\Domain\Contracts\Http\Controllers;
 
+use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
 use App\Support\Audit;
 use App\Support\Database;
+use App\Support\Logger;
 use App\Support\Response;
 use App\Support\Session;
 
@@ -75,6 +77,18 @@ class ContractsController
         if ($contractDate === '') {
             $contractDate = date('Y-m-d');
         }
+        $numberService = new DocumentNumberService();
+        $number = null;
+        $numberWarning = null;
+        try {
+            $number = $numberService->allocateNumber($docType);
+        } catch (\Throwable $exception) {
+            $numberWarning = 'Contractul a fost creat fara numar de registru pentru doc_type "' . $docType . '".';
+            Logger::logWarning('document_number_allocate_failed', [
+                'doc_type' => $docType,
+                'error' => $exception->getMessage(),
+            ]);
+        }
 
         Database::execute(
             'INSERT INTO contracts (
@@ -85,6 +99,10 @@ class ContractsController
                 title,
                 doc_type,
                 contract_date,
+                doc_no,
+                doc_series,
+                doc_full_no,
+                doc_assigned_at,
                 required_onboarding,
                 status,
                 created_by_user_id,
@@ -97,6 +115,10 @@ class ContractsController
                 :title,
                 :doc_type,
                 :contract_date,
+                :doc_no,
+                :doc_series,
+                :doc_full_no,
+                :doc_assigned_at,
                 :required_onboarding,
                 :status,
                 :user_id,
@@ -110,6 +132,10 @@ class ContractsController
                 'title' => $title,
                 'doc_type' => $docType,
                 'contract_date' => $contractDate,
+                'doc_no' => isset($number['no']) ? (int) $number['no'] : null,
+                'doc_series' => isset($number['series']) && $number['series'] !== '' ? (string) $number['series'] : null,
+                'doc_full_no' => isset($number['full_no']) && $number['full_no'] !== '' ? (string) $number['full_no'] : null,
+                'doc_assigned_at' => isset($number['no']) ? date('Y-m-d H:i:s') : null,
                 'required_onboarding' => 0,
                 'status' => 'generated',
                 'user_id' => $user ? $user->id : null,
@@ -118,11 +144,22 @@ class ContractsController
         );
 
         $contractId = (int) Database::lastInsertId();
+        if ($contractId > 0 && isset($number['no'])) {
+            Audit::record('contract.number_assigned', 'contract', $contractId, [
+                'doc_type' => $docType,
+                'doc_full_no' => (string) ($number['full_no'] ?? ''),
+                'rows_count' => 1,
+            ]);
+        }
         $pdfPath = (new ContractPdfService())->generatePdfForContract($contractId);
         Audit::record('contract.generated', 'contract', $contractId ?: null, []);
 
-        if ($pdfPath === '') {
+        if ($pdfPath === '' && $numberWarning !== null) {
+            Session::flash('status', $numberWarning . ' PDF indisponibil momentan (verifica wkhtmltopdf).');
+        } elseif ($pdfPath === '') {
             Session::flash('status', 'Contract generat. PDF indisponibil momentan (verifica wkhtmltopdf).');
+        } elseif ($numberWarning !== null) {
+            Session::flash('status', 'Contract generat. ' . $numberWarning);
         } else {
             Session::flash('status', 'Contract generat.');
         }

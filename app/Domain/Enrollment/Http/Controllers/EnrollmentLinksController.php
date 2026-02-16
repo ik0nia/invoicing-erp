@@ -382,7 +382,181 @@ class EnrollmentLinksController
         ]);
 
         Session::flash('status', 'Inrolarea a fost aprobata si activata.');
-        Response::redirect('/admin/inrolari');
+        Response::redirect($this->resolveAdminReturnPath('/admin/inrolari'));
+    }
+
+    public function resetOnboarding(): void
+    {
+        Auth::requireInternalStaff();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id <= 0) {
+            Response::redirect($this->resolveAdminReturnPath('/admin/enrollment-links'));
+        }
+
+        $row = Database::fetchOne('SELECT * FROM enrollment_links WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$row) {
+            Response::abort(404, 'Inrolare inexistenta.');
+        }
+        if (!Database::columnExists('enrollment_links', 'onboarding_status')) {
+            Response::abort(500, 'Coloanele onboarding lipsesc.');
+        }
+
+        $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
+        $type = (string) ($row['type'] ?? '');
+        $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+        $relationSupplier = preg_replace('/\D+/', '', (string) ($row['relation_supplier_cui'] ?? ''));
+        $relationClient = preg_replace('/\D+/', '', (string) ($row['relation_client_cui'] ?? ''));
+
+        $contractsReset = 0;
+        if (Database::tableExists('contracts') && Database::columnExists('contracts', 'required_onboarding')) {
+            if ($relationSupplier !== '' && $relationClient !== '') {
+                $contractsReset = (int) (Database::fetchValue(
+                    'SELECT COUNT(*)
+                     FROM contracts
+                     WHERE supplier_cui = :supplier
+                       AND client_cui = :client
+                       AND required_onboarding = 1',
+                    ['supplier' => $relationSupplier, 'client' => $relationClient]
+                ) ?? 0);
+                Database::execute(
+                    'UPDATE contracts
+                     SET status = :status,
+                         signed_upload_path = :signed_upload_path,
+                         signed_file_path = :signed_file_path,
+                         updated_at = :updated_at
+                     WHERE supplier_cui = :supplier
+                       AND client_cui = :client
+                       AND required_onboarding = 1',
+                    [
+                        'status' => 'draft',
+                        'signed_upload_path' => null,
+                        'signed_file_path' => null,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                        'supplier' => $relationSupplier,
+                        'client' => $relationClient,
+                    ]
+                );
+            } elseif ($type === 'supplier' && $partnerCui !== '') {
+                $contractsReset = (int) (Database::fetchValue(
+                    'SELECT COUNT(*)
+                     FROM contracts
+                     WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                       AND required_onboarding = 1',
+                    ['partner' => $partnerCui]
+                ) ?? 0);
+                Database::execute(
+                    'UPDATE contracts
+                     SET status = :status,
+                         signed_upload_path = :signed_upload_path,
+                         signed_file_path = :signed_file_path,
+                         updated_at = :updated_at
+                     WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                       AND required_onboarding = 1',
+                    [
+                        'status' => 'draft',
+                        'signed_upload_path' => null,
+                        'signed_file_path' => null,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                        'partner' => $partnerCui,
+                    ]
+                );
+            } elseif ($type === 'client' && $partnerCui !== '') {
+                $effectiveSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
+                if ($effectiveSupplier !== '') {
+                    $contractsReset = (int) (Database::fetchValue(
+                        'SELECT COUNT(*)
+                         FROM contracts
+                         WHERE supplier_cui = :supplier
+                           AND client_cui = :client
+                           AND required_onboarding = 1',
+                        ['supplier' => $effectiveSupplier, 'client' => $partnerCui]
+                    ) ?? 0);
+                    Database::execute(
+                        'UPDATE contracts
+                         SET status = :status,
+                             signed_upload_path = :signed_upload_path,
+                             signed_file_path = :signed_file_path,
+                             updated_at = :updated_at
+                         WHERE supplier_cui = :supplier
+                           AND client_cui = :client
+                           AND required_onboarding = 1',
+                        [
+                            'status' => 'draft',
+                            'signed_upload_path' => null,
+                            'signed_file_path' => null,
+                            'updated_at' => date('Y-m-d H:i:s'),
+                            'supplier' => $effectiveSupplier,
+                            'client' => $partnerCui,
+                        ]
+                    );
+                } else {
+                    $contractsReset = (int) (Database::fetchValue(
+                        'SELECT COUNT(*)
+                         FROM contracts
+                         WHERE (partner_cui = :partner OR client_cui = :partner)
+                           AND required_onboarding = 1',
+                        ['partner' => $partnerCui]
+                    ) ?? 0);
+                    Database::execute(
+                        'UPDATE contracts
+                         SET status = :status,
+                             signed_upload_path = :signed_upload_path,
+                             signed_file_path = :signed_file_path,
+                             updated_at = :updated_at
+                         WHERE (partner_cui = :partner OR client_cui = :partner)
+                           AND required_onboarding = 1',
+                        [
+                            'status' => 'draft',
+                            'signed_upload_path' => null,
+                            'signed_file_path' => null,
+                            'updated_at' => date('Y-m-d H:i:s'),
+                            'partner' => $partnerCui,
+                        ]
+                    );
+                }
+            }
+        }
+
+        Database::execute(
+            'UPDATE enrollment_links
+             SET partner_cui = :partner_cui,
+                 relation_client_cui = :relation_client_cui,
+                 current_step = :current_step,
+                 uses = :uses,
+                 last_used_at = :last_used_at,
+                 confirmed_at = :confirmed_at,
+                 onboarding_status = :onboarding_status,
+                 submitted_at = :submitted_at,
+                 approved_at = :approved_at,
+                 approved_by_user_id = :approved_by_user_id,
+                 checkbox_confirmed = :checkbox_confirmed,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'partner_cui' => null,
+                'relation_client_cui' => null,
+                'current_step' => 1,
+                'uses' => 0,
+                'last_used_at' => null,
+                'confirmed_at' => null,
+                'onboarding_status' => 'draft',
+                'submitted_at' => null,
+                'approved_at' => null,
+                'approved_by_user_id' => null,
+                'checkbox_confirmed' => 0,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]
+        );
+        Audit::record('onboarding.reset', 'enrollment_link', $id, [
+            'rows_count' => 1,
+            'contracts_reset' => $contractsReset,
+            'partner_cui_before' => $partnerCui !== '' ? $partnerCui : null,
+        ]);
+
+        Session::flash('status', 'Onboarding resetat la Pasul 1.');
+        Response::redirect($this->resolveAdminReturnPath('/admin/enrollment-links'));
     }
 
     public function lookup(): void
@@ -434,5 +608,15 @@ class EnrollmentLinksController
         }
 
         return $base . $relative;
+    }
+
+    private function resolveAdminReturnPath(string $fallback): string
+    {
+        $returnTo = trim((string) ($_POST['return_to'] ?? ''));
+        if ($returnTo !== '' && str_starts_with($returnTo, '/admin/')) {
+            return $returnTo;
+        }
+
+        return $fallback;
     }
 }

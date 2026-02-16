@@ -2,16 +2,19 @@
 
 namespace App\Domain\Contracts\Services;
 
+use App\Support\Audit;
 use App\Support\Database;
 use App\Support\Logger;
 
 class ContractOnboardingService
 {
     private ContractTemplateService $templateService;
+    private DocumentNumberService $numberService;
 
-    public function __construct(?ContractTemplateService $templateService = null)
+    public function __construct(?ContractTemplateService $templateService = null, ?DocumentNumberService $numberService = null)
     {
         $this->templateService = $templateService ?? new ContractTemplateService();
+        $this->numberService = $numberService ?? new DocumentNumberService();
     }
 
     public function ensureDraftContractForEnrollment(string $linkType, string $partnerCui, ?string $supplierCui, ?string $clientCui): array
@@ -30,6 +33,7 @@ class ContractOnboardingService
 
             $created = 0;
             $titles = [];
+            $warnings = [];
             foreach ($templates as $template) {
                 $templateId = (int) ($template['id'] ?? 0);
                 if (!$templateId) {
@@ -49,6 +53,16 @@ class ContractOnboardingService
                 $meta = json_encode([
                     'doc_kind' => $docKind,
                 ], JSON_UNESCAPED_UNICODE);
+                $number = null;
+                try {
+                    $number = $this->numberService->allocateNumber($docType);
+                } catch (\Throwable $exception) {
+                    Logger::logWarning('document_number_allocate_failed', [
+                        'doc_type' => $docType,
+                        'error' => $exception->getMessage(),
+                    ]);
+                    $warnings[] = 'Numerotarea automata nu este disponibila pentru doc_type "' . $docType . '".';
+                }
 
                 Database::execute(
                     'INSERT INTO contracts (
@@ -59,6 +73,10 @@ class ContractOnboardingService
                         title,
                         doc_type,
                         contract_date,
+                        doc_no,
+                        doc_series,
+                        doc_full_no,
+                        doc_assigned_at,
                         status,
                         required_onboarding,
                         metadata_json,
@@ -71,6 +89,10 @@ class ContractOnboardingService
                         :title,
                         :doc_type,
                         :contract_date,
+                        :doc_no,
+                        :doc_series,
+                        :doc_full_no,
+                        :doc_assigned_at,
                         :status,
                         :required_onboarding,
                         :meta,
@@ -84,12 +106,24 @@ class ContractOnboardingService
                         'title' => $title !== '' ? $title : 'Contract',
                         'doc_type' => $docType,
                         'contract_date' => date('Y-m-d'),
+                        'doc_no' => isset($number['no']) ? (int) $number['no'] : null,
+                        'doc_series' => isset($number['series']) && $number['series'] !== '' ? (string) $number['series'] : null,
+                        'doc_full_no' => isset($number['full_no']) && $number['full_no'] !== '' ? (string) $number['full_no'] : null,
+                        'doc_assigned_at' => isset($number['no']) ? date('Y-m-d H:i:s') : null,
                         'status' => 'draft',
                         'required_onboarding' => 1,
                         'meta' => $meta,
                         'created_at' => date('Y-m-d H:i:s'),
                     ]
                 );
+                $contractId = (int) Database::lastInsertId();
+                if ($contractId > 0 && isset($number['no'])) {
+                    Audit::record('contract.number_assigned', 'contract', $contractId, [
+                        'doc_type' => $docType,
+                        'doc_full_no' => (string) ($number['full_no'] ?? ''),
+                        'rows_count' => 1,
+                    ]);
+                }
                 $created++;
                 $titles[] = [
                     'title' => $title !== '' ? $title : 'Contract',
@@ -103,6 +137,7 @@ class ContractOnboardingService
                 'total_templates' => count($templates),
                 'has_templates' => true,
                 'created_titles' => $titles,
+                'warnings' => array_values(array_unique($warnings)),
             ];
         } catch (\Throwable $exception) {
             Logger::logWarning('contract_onboarding_failed', ['error' => $exception->getMessage()]);
@@ -111,6 +146,7 @@ class ContractOnboardingService
                 'total_templates' => 0,
                 'has_templates' => false,
                 'created_titles' => [],
+                'warnings' => [],
             ];
         }
     }

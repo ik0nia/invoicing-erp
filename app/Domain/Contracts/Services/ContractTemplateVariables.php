@@ -35,7 +35,13 @@ class ContractTemplateVariables
             ['key' => 'contract.created_at', 'label' => 'Data creare contract'],
             ['key' => 'contract.date', 'label' => 'Data contract'],
             ['key' => 'contract.doc_type', 'label' => 'Tip document (doc_type)'],
+            ['key' => 'contract.no', 'label' => 'Numar document'],
+            ['key' => 'contract.series', 'label' => 'Serie document'],
+            ['key' => 'contract.full_no', 'label' => 'Numar complet document'],
             ['key' => 'doc.type', 'label' => 'Tip document (shortcut)'],
+            ['key' => 'doc.no', 'label' => 'Numar document (shortcut)'],
+            ['key' => 'doc.series', 'label' => 'Serie document (shortcut)'],
+            ['key' => 'doc.full_no', 'label' => 'Numar complet document (shortcut)'],
             ['key' => 'date.today', 'label' => 'Data curenta'],
         ];
     }
@@ -85,12 +91,27 @@ class ContractTemplateVariables
         if ($contractDate === '') {
             $contractDate = date('Y-m-d');
         }
+        $docNo = isset($contractContext['doc_no']) && (int) $contractContext['doc_no'] > 0
+            ? (string) (int) $contractContext['doc_no']
+            : '';
+        $docSeries = trim((string) ($contractContext['doc_series'] ?? ''));
+        $docFullNo = trim((string) ($contractContext['doc_full_no'] ?? ''));
+        if ($docFullNo === '' && $docNo !== '') {
+            $paddedNo = str_pad($docNo, 6, '0', STR_PAD_LEFT);
+            $docFullNo = $docSeries !== '' ? ($docSeries . '-' . $paddedNo) : $paddedNo;
+        }
 
         $vars['contract.title'] = (string) ($contractContext['title'] ?? '');
         $vars['contract.created_at'] = (string) ($contractContext['created_at'] ?? date('Y-m-d'));
         $vars['contract.date'] = $contractDate;
         $vars['contract.doc_type'] = $docType;
+        $vars['contract.no'] = $docNo;
+        $vars['contract.series'] = $docSeries;
+        $vars['contract.full_no'] = $docFullNo;
         $vars['doc.type'] = $docType;
+        $vars['doc.no'] = $docNo;
+        $vars['doc.series'] = $docSeries;
+        $vars['doc.full_no'] = $docFullNo;
         $vars['date.today'] = date('Y-m-d');
 
         return $vars;

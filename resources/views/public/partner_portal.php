@@ -369,6 +369,17 @@
             <?php if ($partnerCui === ''): ?>
                 <div class="mt-4 text-sm text-slate-500">Salvati mai intai datele companiei (Pasul 1).</div>
             <?php else: ?>
+                <?php
+                    $registryMissing = [];
+                    foreach ($contracts as $contractItem) {
+                        if (!empty($contractItem['required_onboarding']) && empty($contractItem['doc_no'])) {
+                            $registryMissing[] = [
+                                'title' => (string) ($contractItem['title'] ?? 'Document'),
+                                'doc_type' => (string) ($contractItem['doc_type'] ?? 'contract'),
+                            ];
+                        }
+                    }
+                ?>
                 <div class="mt-4 rounded border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     Progres documente obligatorii: <strong><?= $requiredSigned ?>/<?= $requiredTotal ?></strong>.
                     <?php if (!$allRequiredSigned): ?>
@@ -391,6 +402,11 @@
                         </ul>
                     </div>
                 <?php endif; ?>
+                <?php if (!empty($registryMissing)): ?>
+                    <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Unele documente nu au numar de registru alocat. Contactati un angajat intern pentru configurarea registrului documente.
+                    </div>
+                <?php endif; ?>
 
                 <div class="mt-4 overflow-x-auto">
                     <table class="w-full text-left text-sm">
@@ -398,6 +414,7 @@
                             <tr>
                                 <th class="px-3 py-2">Titlu</th>
                                 <th class="px-3 py-2">Doc type</th>
+                                <th class="px-3 py-2">Nr. registru</th>
                                 <th class="px-3 py-2">Data contract</th>
                                 <th class="px-3 py-2">Obligatoriu</th>
                                 <th class="px-3 py-2">Status</th>
@@ -407,7 +424,7 @@
                         <tbody>
                             <?php if (empty($contracts)): ?>
                                 <tr>
-                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
+                                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($contracts as $contract): ?>
@@ -418,6 +435,15 @@
                                         $isRequired = !empty($contract['required_onboarding']);
                                         $hasSigned = !empty($contract['signed_upload_path']) || !empty($contract['signed_file_path']);
                                         $hasGeneratedPdf = !empty($contract['generated_pdf_path']);
+                                        $docNoDisplay = trim((string) ($contract['doc_full_no'] ?? ''));
+                                        if ($docNoDisplay === '') {
+                                            $docNo = (int) ($contract['doc_no'] ?? 0);
+                                            if ($docNo > 0) {
+                                                $series = trim((string) ($contract['doc_series'] ?? ''));
+                                                $docNoPadded = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+                                                $docNoDisplay = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
+                                            }
+                                        }
                                         $previewUrl = App\Support\Url::to('p/' . $token . '/preview?id=' . (int) $contract['id']);
                                         $downloadGenerated = App\Support\Url::to('p/' . $token . '/download?kind=generated&id=' . (int) $contract['id']);
                                         $downloadSigned = App\Support\Url::to('p/' . $token . '/download?kind=signed&id=' . (int) $contract['id']);
@@ -425,6 +451,13 @@
                                     <tr class="border-t border-slate-100">
                                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
                                         <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
+                                        <td class="px-3 py-2 text-slate-600">
+                                            <?php if ($docNoDisplay !== ''): ?>
+                                                <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
+                                            <?php else: ?>
+                                                <span class="text-amber-700">Fara numar</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['contract_date'] ?? '—')) ?></td>
                                         <td class="px-3 py-2 text-slate-600"><?= $isRequired ? 'Da' : 'Nu' ?></td>
                                         <td class="px-3 py-2 text-slate-600">
@@ -459,9 +492,21 @@
                         <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
                             <option value="">Selecteaza document</option>
                             <?php foreach ($contracts as $contract): ?>
+                                <?php
+                                    $optionDocNo = trim((string) ($contract['doc_full_no'] ?? ''));
+                                    if ($optionDocNo === '') {
+                                        $optionNo = (int) ($contract['doc_no'] ?? 0);
+                                        if ($optionNo > 0) {
+                                            $optionSeries = trim((string) ($contract['doc_series'] ?? ''));
+                                            $optionNoPadded = str_pad((string) $optionNo, 6, '0', STR_PAD_LEFT);
+                                            $optionDocNo = $optionSeries !== '' ? ($optionSeries . '-' . $optionNoPadded) : $optionNoPadded;
+                                        }
+                                    }
+                                ?>
                                 <option value="<?= (int) $contract['id'] ?>">
                                     <?= htmlspecialchars((string) ($contract['title'] ?? 'Document')) ?>
                                     [<?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?>]
+                                    <?= $optionDocNo !== '' ? ' [' . htmlspecialchars($optionDocNo) . ']' : '' ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>

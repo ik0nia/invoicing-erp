@@ -39,6 +39,10 @@
         si seteaza „Se aplica la”.
         Prioritatea controleaza ordinea documentelor create.
     </div>
+    <div class="mt-2 text-xs">
+        Numerotarea documentelor se administreaza din
+        <a href="<?= App\Support\Url::to('admin/registru-documente') ?>" class="font-semibold text-blue-700 hover:text-blue-800">Registru documente</a>.
+    </div>
 </div>
 
 <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

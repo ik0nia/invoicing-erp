@@ -129,8 +129,20 @@
         <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
             <option value="">Selecteaza contract</option>
             <?php foreach ($contracts as $contract): ?>
+                <?php
+                    $optionDocNo = trim((string) ($contract['doc_full_no'] ?? ''));
+                    if ($optionDocNo === '') {
+                        $optionNo = (int) ($contract['doc_no'] ?? 0);
+                        if ($optionNo > 0) {
+                            $optionSeries = trim((string) ($contract['doc_series'] ?? ''));
+                            $optionNoPadded = str_pad((string) $optionNo, 6, '0', STR_PAD_LEFT);
+                            $optionDocNo = $optionSeries !== '' ? ($optionSeries . '-' . $optionNoPadded) : $optionNoPadded;
+                        }
+                    }
+                ?>
                 <option value="<?= (int) $contract['id'] ?>">
                     <?= htmlspecialchars((string) ($contract['title'] ?? '')) ?>
+                    <?= $optionDocNo !== '' ? ' [' . htmlspecialchars($optionDocNo) . ']' : '' ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -147,6 +159,7 @@
             <tr>
                 <th class="px-3 py-2">Titlu</th>
                 <th class="px-3 py-2">Doc type</th>
+                <th class="px-3 py-2">Nr. registru</th>
                 <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
                 <th class="px-3 py-2">Relatie</th>
@@ -157,7 +170,7 @@
         <tbody>
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -176,10 +189,26 @@
                             || !empty($contract['signed_file_path'])
                             || !empty($contract['generated_pdf_path'])
                             || $pdfAvailable;
+                        $docNoDisplay = trim((string) ($contract['doc_full_no'] ?? ''));
+                        if ($docNoDisplay === '') {
+                            $docNo = (int) ($contract['doc_no'] ?? 0);
+                            if ($docNo > 0) {
+                                $series = trim((string) ($contract['doc_series'] ?? ''));
+                                $docNoPadded = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+                                $docNoDisplay = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
+                            }
+                        }
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?php if ($docNoDisplay !== ''): ?>
+                                <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
+                            <?php else: ?>
+                                <span class="text-amber-700">Fara numar</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contract['contract_date'] ?? '—')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">

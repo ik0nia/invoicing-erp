@@ -48,6 +48,14 @@ class SchemaEnsurer
             self::ensureContractsTable();
         });
 
+        self::runStep('document_registry_table', static function (): void {
+            self::ensureDocumentRegistryTable();
+        });
+
+        self::runStep('contracts_doc_no_columns', static function (): void {
+            self::ensureContractsDocNoColumns();
+        });
+
         self::runStep('relation_documents_table', static function (): void {
             self::ensureRelationDocumentsTable();
         });
@@ -418,6 +426,10 @@ class SchemaEnsurer
                     title VARCHAR(255) NOT NULL,
                     doc_type VARCHAR(64) NOT NULL DEFAULT "contract",
                     contract_date DATE NULL,
+                    doc_no INT NULL,
+                    doc_series VARCHAR(16) NULL,
+                    doc_full_no VARCHAR(64) NULL,
+                    doc_assigned_at DATETIME NULL,
                     required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
                     status ENUM("draft", "generated", "sent", "signed_uploaded", "approved") NOT NULL DEFAULT "draft",
                     generated_file_path VARCHAR(255) NULL,
@@ -432,7 +444,8 @@ class SchemaEnsurer
                     INDEX idx_contracts_partner (partner_cui),
                     INDEX idx_contracts_relation (supplier_cui, client_cui),
                     INDEX idx_contracts_created (created_at),
-                    INDEX idx_contracts_doc_date (doc_type, contract_date)
+                    INDEX idx_contracts_doc_date (doc_type, contract_date),
+                    INDEX idx_contracts_doc_no (doc_type, doc_no)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
                 [],
                 'contracts_create'
@@ -527,7 +540,89 @@ class SchemaEnsurer
                 );
             }
             self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
+            self::ensureIndex('contracts', 'idx_contracts_doc_no', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_no (doc_type, doc_no)');
         }
+    }
+
+    public static function ensureDocumentRegistryTable(): void
+    {
+        if (!self::tableExists('document_registry')) {
+            self::safeExecute(
+                'CREATE TABLE IF NOT EXISTS document_registry (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    doc_type VARCHAR(64) NOT NULL,
+                    series VARCHAR(16) NULL,
+                    next_no INT NOT NULL DEFAULT 1,
+                    start_no INT NOT NULL DEFAULT 1,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_document_registry_doc_type (doc_type)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+                [],
+                'document_registry_create'
+            );
+            unset(self::$tableCache['document_registry']);
+            self::$tableCache['document_registry'] = self::tableExists('document_registry');
+        }
+
+        if (self::tableExists('document_registry')) {
+            self::ensureIndex(
+                'document_registry',
+                'uq_document_registry_doc_type',
+                'ALTER TABLE document_registry ADD UNIQUE INDEX uq_document_registry_doc_type (doc_type)'
+            );
+            if (!self::columnExists('document_registry', 'series')) {
+                self::safeExecute('ALTER TABLE document_registry ADD COLUMN series VARCHAR(16) NULL AFTER doc_type', [], 'document_registry_series');
+                unset(self::$columnCache['document_registry.series']);
+            }
+            if (!self::columnExists('document_registry', 'next_no')) {
+                self::safeExecute('ALTER TABLE document_registry ADD COLUMN next_no INT NOT NULL DEFAULT 1 AFTER series', [], 'document_registry_next_no');
+                unset(self::$columnCache['document_registry.next_no']);
+            }
+            if (!self::columnExists('document_registry', 'start_no')) {
+                self::safeExecute('ALTER TABLE document_registry ADD COLUMN start_no INT NOT NULL DEFAULT 1 AFTER next_no', [], 'document_registry_start_no');
+                unset(self::$columnCache['document_registry.start_no']);
+            }
+            if (!self::columnExists('document_registry', 'updated_at')) {
+                self::safeExecute(
+                    'ALTER TABLE document_registry ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER start_no',
+                    [],
+                    'document_registry_updated_at'
+                );
+                unset(self::$columnCache['document_registry.updated_at']);
+            }
+            self::safeExecute(
+                'UPDATE document_registry
+                 SET start_no = CASE WHEN start_no < 1 THEN 1 ELSE start_no END,
+                     next_no = CASE WHEN next_no < 1 THEN 1 WHEN next_no < start_no THEN start_no ELSE next_no END',
+                [],
+                'document_registry_numbers_backfill'
+            );
+        }
+    }
+
+    public static function ensureContractsDocNoColumns(): void
+    {
+        if (!self::tableExists('contracts')) {
+            return;
+        }
+
+        if (!self::columnExists('contracts', 'doc_no')) {
+            self::safeExecute('ALTER TABLE contracts ADD COLUMN doc_no INT NULL AFTER contract_date', [], 'contracts_doc_no');
+            unset(self::$columnCache['contracts.doc_no']);
+        }
+        if (!self::columnExists('contracts', 'doc_series')) {
+            self::safeExecute('ALTER TABLE contracts ADD COLUMN doc_series VARCHAR(16) NULL AFTER doc_no', [], 'contracts_doc_series');
+            unset(self::$columnCache['contracts.doc_series']);
+        }
+        if (!self::columnExists('contracts', 'doc_full_no')) {
+            self::safeExecute('ALTER TABLE contracts ADD COLUMN doc_full_no VARCHAR(64) NULL AFTER doc_series', [], 'contracts_doc_full_no');
+            unset(self::$columnCache['contracts.doc_full_no']);
+        }
+        if (!self::columnExists('contracts', 'doc_assigned_at')) {
+            self::safeExecute('ALTER TABLE contracts ADD COLUMN doc_assigned_at DATETIME NULL AFTER doc_full_no', [], 'contracts_doc_assigned_at');
+            unset(self::$columnCache['contracts.doc_assigned_at']);
+        }
+        self::ensureIndex('contracts', 'idx_contracts_doc_no', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_no (doc_type, doc_no)');
     }
 
     public static function ensureRelationDocumentsTable(): void
