@@ -79,12 +79,12 @@
         id="create-enrollment-link-form"
         method="POST"
         action="<?= App\Support\Url::to('admin/enrollment-links/create') ?>"
-        class="<?= $createFormMarginClass ?>rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 p-5 shadow-sm ring-1 ring-blue-100"
+        class="<?= $createFormMarginClass ?>rounded-xl border border-blue-100 bg-blue-50 p-5 shadow-sm ring-1 ring-blue-100"
     >
         <?= App\Support\Csrf::input() ?>
-        <div class="mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
-            <div class="text-sm font-semibold text-blue-900">Creeaza rapid un link nou pentru onboarding</div>
-            <p class="mt-1 text-xs text-blue-800">Alege tipul inrolarii, completeaza precompletarile si trimite linkul partenerului.</p>
+        <div class="mb-4 rounded-lg border border-blue-100 bg-white px-4 py-3">
+            <div class="text-sm font-semibold text-slate-900">Creeaza rapid un link nou pentru onboarding</div>
+            <p class="mt-1 text-xs text-slate-600">Alege tipul inrolarii, completeaza precompletarile si trimite linkul partenerului.</p>
         </div>
 
         <div>
