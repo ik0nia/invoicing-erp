@@ -303,6 +303,8 @@ CREATE TABLE contract_templates (
     doc_kind ENUM('contract', 'acord', 'anexa') NOT NULL DEFAULT 'contract',
     priority INT NOT NULL DEFAULT 100,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
+    stamp_image_path VARCHAR(255) NULL,
+    stamp_image_meta TEXT NULL,
     html_content TEXT NULL,
     created_by_user_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -311,7 +313,8 @@ CREATE TABLE contract_templates (
     INDEX idx_templates_doc_type (doc_type),
     INDEX idx_templates_auto (auto_on_enrollment, applies_to),
     INDEX idx_templates_active (is_active),
-    INDEX idx_templates_priority (priority)
+    INDEX idx_templates_priority (priority),
+    INDEX idx_templates_stamp_path (stamp_image_path)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE contracts (

@@ -431,7 +431,7 @@ class PublicPartnerController
             Response::abort(403, 'Acces interzis.');
         }
 
-        $html = (new ContractPdfService())->renderHtmlForContract($contract);
+        $html = (new ContractPdfService())->renderHtmlForContract($contract, 'public');
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
         Audit::record('public_contract.preview', 'contract', $id, ['rows_count' => 1]);
@@ -481,7 +481,7 @@ class PublicPartnerController
         } else {
             $path = (string) ($contract['generated_pdf_path'] ?? '');
             if ($path === '') {
-                $path = (new ContractPdfService())->generatePdfForContract((int) ($contract['id'] ?? 0));
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($contract['id'] ?? 0), 'public');
             }
         }
         if ($path === '') {

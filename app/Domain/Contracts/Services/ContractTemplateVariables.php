@@ -3,9 +3,14 @@
 namespace App\Domain\Contracts\Services;
 
 use App\Support\Database;
+use App\Support\Url;
 
 class ContractTemplateVariables
 {
+    private const STAMP_UPLOAD_SUBDIR = 'contract_templates/stamps';
+    private const STAMP_INLINE_MAX_BYTES = 204800;
+    private const STAMP_ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+
     public function listPlaceholders(): array
     {
         return [
@@ -28,6 +33,8 @@ class ContractTemplateVariables
             ['key' => 'company.legal_representative_role', 'label' => 'Functie reprezentant companie (contract)'],
             ['key' => 'company.bank', 'label' => 'Banca companie (contract)'],
             ['key' => 'company.iban', 'label' => 'IBAN companie (contract)'],
+            ['key' => 'stamp.image', 'label' => 'Imagine stampila model (HTML img)'],
+            ['key' => 'stamp.url', 'label' => 'URL stampila model (protejat/admin)'],
             ['key' => 'supplier.name', 'label' => 'Denumire furnizor'],
             ['key' => 'supplier.cui', 'label' => 'CUI furnizor'],
             ['key' => 'supplier.email', 'label' => 'Email furnizor'],
@@ -158,6 +165,12 @@ class ContractTemplateVariables
         $vars['relation.supplier_cui'] = $supplierCui ?? '';
         $vars['relation.client_cui'] = $clientCui ?? '';
         $vars['relation.invoice_inbox_email'] = $this->fetchRelationEmail($supplierCui, $clientCui);
+        $stampVars = $this->resolveStampVariables(
+            isset($contractContext['template_id']) ? (int) $contractContext['template_id'] : 0,
+            trim((string) ($contractContext['render_context'] ?? 'admin'))
+        );
+        $vars['stamp.image'] = $stampVars['image'];
+        $vars['stamp.url'] = $stampVars['url'];
 
         $docType = trim((string) ($contractContext['doc_type'] ?? ''));
         if ($docType === '') {
@@ -274,6 +287,171 @@ class ContractTemplateVariables
              FROM companies WHERE cui = :cui LIMIT 1',
             ['cui' => $cui]
         ) ?? [];
+    }
+
+    private function resolveStampVariables(int $templateId, string $renderContext): array
+    {
+        if ($templateId <= 0) {
+            return ['image' => '', 'url' => ''];
+        }
+
+        $stamp = $this->fetchTemplateStamp($templateId);
+        $path = trim((string) ($stamp['stamp_image_path'] ?? ''));
+        if ($path === '') {
+            return ['image' => '', 'url' => ''];
+        }
+
+        $renderContext = strtolower($renderContext);
+        if ($renderContext === 'public') {
+            $dataUri = $this->resolveStampDataUri($path, self::STAMP_INLINE_MAX_BYTES);
+            if ($dataUri === '') {
+                return ['image' => '', 'url' => ''];
+            }
+
+            $escaped = htmlspecialchars($dataUri, ENT_QUOTES, 'UTF-8');
+            return [
+                'image' => '<img src="' . $escaped . '" style="max-width:200px;max-height:120px;" alt="Stampila" />',
+                'url' => $dataUri,
+            ];
+        }
+
+        $url = $this->buildStampProtectedUrl($templateId, (string) ($stamp['stamp_image_meta'] ?? ''), $path);
+        if ($url === '') {
+            return ['image' => '', 'url' => ''];
+        }
+
+        $escaped = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+        return [
+            'image' => '<img src="' . $escaped . '" style="max-width:200px;max-height:120px;" alt="Stampila" />',
+            'url' => $url,
+        ];
+    }
+
+    private function fetchTemplateStamp(int $templateId): array
+    {
+        if ($templateId <= 0 || !Database::tableExists('contract_templates')) {
+            return [];
+        }
+
+        $select = [
+            'id',
+            $this->optionalColumn('contract_templates', 'stamp_image_path'),
+            $this->optionalColumn('contract_templates', 'stamp_image_meta'),
+        ];
+
+        return Database::fetchOne(
+            'SELECT ' . implode(', ', $select) . '
+             FROM contract_templates WHERE id = :id LIMIT 1',
+            ['id' => $templateId]
+        ) ?? [];
+    }
+
+    private function buildStampProtectedUrl(int $templateId, string $metaJson, string $path): string
+    {
+        if ($templateId <= 0) {
+            return '';
+        }
+
+        $cacheBuster = '';
+        if (trim($metaJson) !== '') {
+            $decoded = json_decode($metaJson, true);
+            if (is_array($decoded)) {
+                $cacheBuster = trim((string) ($decoded['uploaded_at'] ?? ''));
+            }
+        }
+        if ($cacheBuster === '') {
+            $cacheBuster = substr(sha1($path), 0, 12);
+        }
+
+        return Url::to('admin/contract-templates/stamp?id=' . $templateId . '&t=' . urlencode($cacheBuster));
+    }
+
+    private function resolveStampDataUri(string $relativePath, int $maxBytes): string
+    {
+        $absolute = $this->resolveStampAbsolutePath($relativePath);
+        if ($absolute === '' || !is_file($absolute) || !is_readable($absolute)) {
+            return '';
+        }
+
+        $size = filesize($absolute);
+        if (!is_int($size) && !is_float($size)) {
+            return '';
+        }
+        if ((int) $size <= 0 || (int) $size > $maxBytes) {
+            return '';
+        }
+
+        $mime = $this->detectImageMime($absolute);
+        if ($mime === null || !in_array($mime, self::STAMP_ALLOWED_MIMES, true)) {
+            return '';
+        }
+
+        $raw = @file_get_contents($absolute);
+        if ($raw === false || $raw === '') {
+            return '';
+        }
+
+        return 'data:' . $mime . ';base64,' . base64_encode($raw);
+    }
+
+    private function resolveStampAbsolutePath(string $relativePath): string
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '' || !str_starts_with($relativePath, 'storage/uploads/' . self::STAMP_UPLOAD_SUBDIR . '/')) {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $root = realpath($basePath . '/storage/uploads/' . self::STAMP_UPLOAD_SUBDIR);
+        if ($root === false) {
+            return '';
+        }
+
+        $absolute = realpath($basePath . '/' . $relativePath);
+        if ($absolute === false || !str_starts_with($absolute, $root)) {
+            return '';
+        }
+
+        return $absolute;
+    }
+
+    private function detectImageMime(string $path): ?string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $mime = null;
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = finfo_file($finfo, $path);
+                if (is_string($detected) && $detected !== '') {
+                    $mime = strtolower($detected);
+                }
+                finfo_close($finfo);
+            }
+        }
+        if ($mime === null && function_exists('mime_content_type')) {
+            $detected = mime_content_type($path);
+            if (is_string($detected) && $detected !== '') {
+                $mime = strtolower($detected);
+            }
+        }
+
+        if ($mime === null) {
+            return null;
+        }
+
+        $mime = strtolower(trim($mime));
+        if ($mime === 'image/jpg') {
+            return 'image/jpeg';
+        }
+        if ($mime === 'image/x-png') {
+            return 'image/png';
+        }
+
+        return $mime;
     }
 
     private function resolveBankAccount(array $company, array $partner): string

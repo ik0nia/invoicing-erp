@@ -4,6 +4,7 @@ namespace App\Domain\Contracts\Http\Controllers;
 
 use App\Domain\Contracts\Services\ContractTemplateVariables;
 use App\Domain\Contracts\Services\TemplateRenderer;
+use App\Support\Audit;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
@@ -11,6 +12,11 @@ use App\Support\Session;
 
 class ContractTemplatesController
 {
+    private const STAMP_UPLOAD_SUBDIR = 'contract_templates/stamps';
+    private const MAX_STAMP_UPLOAD_BYTES = 5242880;
+    private const ALLOWED_STAMP_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
+    private const ALLOWED_STAMP_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+
     public function index(): void
     {
         $this->requireTemplateRole();
@@ -299,6 +305,8 @@ class ContractTemplatesController
             $supplierCui !== '' ? $supplierCui : null,
             $clientCui !== '' ? $clientCui : null,
             [
+                'template_id' => (int) ($template['id'] ?? 0),
+                'render_context' => 'admin',
                 'title' => (string) ($template['name'] ?? ''),
                 'created_at' => date('Y-m-d'),
                 'contract_date' => date('Y-m-d'),
@@ -321,6 +329,119 @@ class ContractTemplatesController
         ]);
     }
 
+    public function uploadStamp(): void
+    {
+        $this->requireTemplateRole();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id <= 0) {
+            Response::redirect('/admin/contract-templates');
+        }
+
+        $template = Database::fetchOne('SELECT id FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$template) {
+            Response::abort(404, 'Model inexistent.');
+        }
+
+        $stored = $this->storeStampUpload($_FILES['stamp_image'] ?? null);
+        if ($stored === null) {
+            Session::flash('error', 'Fisier invalid. Sunt acceptate PNG/JPG/JPEG/WEBP (maxim 5MB).');
+            Response::redirect('/admin/contract-templates/edit?id=' . $id);
+        }
+
+        $metaJson = json_encode([
+            'original_name' => $stored['original_name'],
+            'size' => $stored['size'],
+            'mime' => $stored['mime'],
+            'uploaded_at' => date('Y-m-d H:i:s'),
+        ], JSON_UNESCAPED_UNICODE);
+
+        Database::execute(
+            'UPDATE contract_templates
+             SET stamp_image_path = :path,
+                 stamp_image_meta = :meta,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'path' => $stored['path'],
+                'meta' => $metaJson !== false ? $metaJson : null,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]
+        );
+
+        Audit::record('contract_template.stamp_uploaded', 'contract_template', $id, ['rows_count' => 1]);
+        Session::flash('status', 'Stampila a fost incarcata.');
+        Response::redirect('/admin/contract-templates/edit?id=' . $id);
+    }
+
+    public function removeStamp(): void
+    {
+        $this->requireTemplateRole();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id <= 0) {
+            Response::redirect('/admin/contract-templates');
+        }
+
+        $template = Database::fetchOne('SELECT id FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$template) {
+            Response::abort(404, 'Model inexistent.');
+        }
+
+        Database::execute(
+            'UPDATE contract_templates
+             SET stamp_image_path = NULL,
+                 stamp_image_meta = NULL,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $id,
+            ]
+        );
+
+        Audit::record('contract_template.stamp_removed', 'contract_template', $id, ['rows_count' => 1]);
+        Session::flash('status', 'Stampila a fost stearsa din model.');
+        Response::redirect('/admin/contract-templates/edit?id=' . $id);
+    }
+
+    public function stamp(): void
+    {
+        $this->requireTemplateRole();
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id <= 0) {
+            Response::abort(404, 'Stampila indisponibila.');
+        }
+
+        $template = Database::fetchOne(
+            'SELECT stamp_image_path FROM contract_templates WHERE id = :id LIMIT 1',
+            ['id' => $id]
+        );
+        if (!$template) {
+            Response::abort(404, 'Model inexistent.');
+        }
+
+        $path = trim((string) ($template['stamp_image_path'] ?? ''));
+        $absolute = $this->resolveStampAbsolutePath($path);
+        if ($absolute === '' || !is_file($absolute) || !is_readable($absolute)) {
+            Response::abort(404, 'Stampila indisponibila.');
+        }
+
+        $mime = $this->detectImageMime($absolute);
+        if ($mime === null || !in_array($mime, self::ALLOWED_STAMP_MIMES, true)) {
+            Response::abort(404, 'Stampila indisponibila.');
+        }
+
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . filesize($absolute));
+        header('Cache-Control: private, max-age=300');
+        header('X-Content-Type-Options: nosniff');
+        readfile($absolute);
+        exit;
+    }
+
     private function requireTemplateRole(): ?\App\Domain\Users\Models\User
     {
         Auth::requireLogin();
@@ -330,5 +451,119 @@ class ContractTemplatesController
         }
 
         return $user;
+    }
+
+    private function storeStampUpload(?array $file): ?array
+    {
+        if (!$file || !isset($file['tmp_name']) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+        if (!is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            return null;
+        }
+        $size = isset($file['size']) ? (int) $file['size'] : 0;
+        if ($size <= 0 || $size > self::MAX_STAMP_UPLOAD_BYTES) {
+            return null;
+        }
+
+        $originalName = (string) ($file['name'] ?? '');
+        $extRaw = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $ext = preg_replace('/[^a-z0-9]/i', '', $extRaw);
+        if ($ext === '' || !in_array($ext, self::ALLOWED_STAMP_EXTENSIONS, true)) {
+            return null;
+        }
+
+        $tmp = (string) ($file['tmp_name'] ?? '');
+        if (!is_readable($tmp)) {
+            return null;
+        }
+
+        $mime = $this->detectImageMime($tmp);
+        if ($mime === null || !in_array($mime, self::ALLOWED_STAMP_MIMES, true)) {
+            return null;
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $dir = $basePath . '/storage/uploads/' . self::STAMP_UPLOAD_SUBDIR;
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        try {
+            $targetName = bin2hex(random_bytes(16)) . '.' . $ext;
+        } catch (\Throwable $exception) {
+            return null;
+        }
+        $target = $dir . '/' . $targetName;
+        if (!move_uploaded_file($tmp, $target)) {
+            return null;
+        }
+
+        return [
+            'path' => 'storage/uploads/' . self::STAMP_UPLOAD_SUBDIR . '/' . $targetName,
+            'mime' => $mime,
+            'size' => $size,
+            'original_name' => $originalName,
+        ];
+    }
+
+    private function resolveStampAbsolutePath(string $relativePath): string
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '' || !str_starts_with($relativePath, 'storage/uploads/' . self::STAMP_UPLOAD_SUBDIR . '/')) {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $root = realpath($basePath . '/storage/uploads/' . self::STAMP_UPLOAD_SUBDIR);
+        if ($root === false) {
+            return '';
+        }
+
+        $target = realpath($basePath . '/' . $relativePath);
+        if ($target === false || !str_starts_with($target, $root)) {
+            return '';
+        }
+
+        return $target;
+    }
+
+    private function detectImageMime(string $path): ?string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $mime = null;
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = finfo_file($finfo, $path);
+                if (is_string($detected) && $detected !== '') {
+                    $mime = strtolower($detected);
+                }
+                finfo_close($finfo);
+            }
+        }
+        if ($mime === null && function_exists('mime_content_type')) {
+            $detected = mime_content_type($path);
+            if (is_string($detected) && $detected !== '') {
+                $mime = strtolower($detected);
+            }
+        }
+
+        if ($mime === null) {
+            return null;
+        }
+
+        $mime = strtolower(trim($mime));
+        if ($mime === 'image/jpg') {
+            return 'image/jpeg';
+        }
+        if ($mime === 'image/x-png') {
+            return 'image/png';
+        }
+
+        return $mime;
     }
 }

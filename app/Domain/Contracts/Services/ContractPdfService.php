@@ -27,7 +27,7 @@ class ContractPdfService
         return $this->resolveWkhtmltopdfPath() !== '';
     }
 
-    public function renderHtmlForContract(array $contract): string
+    public function renderHtmlForContract(array $contract, string $renderContext = 'admin'): string
     {
         $title = (string) ($contract['title'] ?? 'Contract');
         $templateId = isset($contract['template_id']) ? (int) $contract['template_id'] : 0;
@@ -60,6 +60,8 @@ class ContractPdfService
                 'created_at' => $contractDate,
                 'contract_date' => $contractDate,
                 'doc_type' => $docType,
+                'template_id' => $templateId,
+                'render_context' => $renderContext,
                 'doc_no' => (int) ($contract['doc_no'] ?? 0),
                 'doc_series' => (string) ($contract['doc_series'] ?? ''),
                 'doc_full_no' => (string) ($contract['doc_full_no'] ?? ''),
@@ -71,7 +73,7 @@ class ContractPdfService
         return $this->wrapPrintableDocument($renderedBody);
     }
 
-    public function generatePdfForContract(int $contractId): string
+    public function generatePdfForContract(int $contractId, string $renderContext = 'admin'): string
     {
         if ($contractId <= 0 || !Database::tableExists('contracts')) {
             return '';
@@ -82,7 +84,7 @@ class ContractPdfService
             return '';
         }
 
-        $html = $this->renderHtmlForContract($contract);
+        $html = $this->renderHtmlForContract($contract, $renderContext);
         if ($html === '') {
             return '';
         }

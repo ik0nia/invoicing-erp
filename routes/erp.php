@@ -46,6 +46,9 @@ $router->get('/admin/contract-templates/edit', [ContractTemplatesController::cla
 $router->post('/admin/contract-templates/update', [ContractTemplatesController::class, 'update']);
 $router->post('/admin/contract-templates/duplicate', [ContractTemplatesController::class, 'duplicate']);
 $router->post('/admin/contract-templates/preview', [ContractTemplatesController::class, 'preview']);
+$router->post('/admin/contract-templates/upload-stamp', [ContractTemplatesController::class, 'uploadStamp']);
+$router->post('/admin/contract-templates/remove-stamp', [ContractTemplatesController::class, 'removeStamp']);
+$router->get('/admin/contract-templates/stamp', [ContractTemplatesController::class, 'stamp']);
 $router->post('/admin/contacts/create', [ContactsController::class, 'create']);
 $router->post('/admin/contacts/delete', [ContactsController::class, 'delete']);
 

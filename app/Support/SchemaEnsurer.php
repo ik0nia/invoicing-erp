@@ -422,6 +422,8 @@ class SchemaEnsurer
                     doc_kind ENUM("contract", "acord", "anexa") NOT NULL DEFAULT "contract",
                     priority INT NOT NULL DEFAULT 100,
                     is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    stamp_image_path VARCHAR(255) NULL,
+                    stamp_image_meta TEXT NULL,
                     html_content TEXT NULL,
                     created_by_user_id INT NULL,
                     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -430,7 +432,8 @@ class SchemaEnsurer
                     INDEX idx_templates_doc_type (doc_type),
                     INDEX idx_templates_auto (auto_on_enrollment, applies_to),
                     INDEX idx_templates_active (is_active),
-                    INDEX idx_templates_priority (priority)
+                    INDEX idx_templates_priority (priority),
+                    INDEX idx_templates_stamp_path (stamp_image_path)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
                 [],
                 'contract_templates_create'
@@ -472,6 +475,14 @@ class SchemaEnsurer
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER priority', [], 'contract_templates_active');
                 unset(self::$columnCache['contract_templates.is_active']);
             }
+            if (!self::columnExists('contract_templates', 'stamp_image_path')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN stamp_image_path VARCHAR(255) NULL AFTER is_active', [], 'contract_templates_stamp_image_path');
+                unset(self::$columnCache['contract_templates.stamp_image_path']);
+            }
+            if (!self::columnExists('contract_templates', 'stamp_image_meta')) {
+                self::safeExecute('ALTER TABLE contract_templates ADD COLUMN stamp_image_meta TEXT NULL AFTER stamp_image_path', [], 'contract_templates_stamp_image_meta');
+                unset(self::$columnCache['contract_templates.stamp_image_meta']);
+            }
             if (self::columnExists('contract_templates', 'doc_type')) {
                 self::safeExecute(
                     'UPDATE contract_templates
@@ -491,6 +502,7 @@ class SchemaEnsurer
                 );
             }
             self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
+            self::ensureIndex('contract_templates', 'idx_templates_stamp_path', 'ALTER TABLE contract_templates ADD INDEX idx_templates_stamp_path (stamp_image_path)');
         }
     }
 

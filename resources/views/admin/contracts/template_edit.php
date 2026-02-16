@@ -137,6 +137,83 @@
     </div>
 </form>
 
+<?php
+    $stampPath = trim((string) ($template['stamp_image_path'] ?? ''));
+    $stampMetaRaw = (string) ($template['stamp_image_meta'] ?? '');
+    $stampMeta = [];
+    if ($stampMetaRaw !== '') {
+        $decodedMeta = json_decode($stampMetaRaw, true);
+        if (is_array($decodedMeta)) {
+            $stampMeta = $decodedMeta;
+        }
+    }
+    $stampOriginalName = (string) ($stampMeta['original_name'] ?? '');
+    $stampUploadedAt = (string) ($stampMeta['uploaded_at'] ?? '');
+    $stampPreviewUrl = $stampPath !== ''
+        ? App\Support\Url::to('admin/contract-templates/stamp?id=' . (int) ($template['id'] ?? 0) . '&t=' . urlencode((string) ($template['updated_at'] ?? $stampUploadedAt ?? '')))
+        : '';
+?>
+
+<div class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div class="text-sm font-semibold text-slate-700">Stampila / Semnatura (optional)</div>
+    <p class="mt-1 text-xs text-slate-500">
+        Stampila este specifica acestui model. O poti insera in document cu variabila {{stamp.image}}.
+    </p>
+
+    <?php if ($stampPreviewUrl !== ''): ?>
+        <div class="mt-4">
+            <div class="text-xs font-medium text-slate-600">Imagine curenta</div>
+            <img
+                src="<?= htmlspecialchars($stampPreviewUrl) ?>"
+                alt="Stampila model"
+                class="mt-2 max-h-28 rounded border border-slate-200 bg-slate-50 p-1"
+            >
+            <?php if ($stampOriginalName !== '' || $stampUploadedAt !== ''): ?>
+                <div class="mt-2 text-xs text-slate-500">
+                    <?php if ($stampOriginalName !== ''): ?>
+                        Fisier: <?= htmlspecialchars($stampOriginalName) ?>
+                    <?php endif; ?>
+                    <?php if ($stampUploadedAt !== ''): ?>
+                        <span class="ml-2">Incarcat la: <?= htmlspecialchars($stampUploadedAt) ?></span>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/upload-stamp') ?>" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-end gap-3">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="stamp_image">Incarca imagine stampila</label>
+            <input
+                id="stamp_image"
+                name="stamp_image"
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                class="mt-1 block rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+            <p class="mt-1 text-xs text-slate-500">Formate acceptate: PNG, JPG, JPEG, WEBP. Maxim 5MB.</p>
+        </div>
+        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+            Salveaza stampila
+        </button>
+    </form>
+
+    <?php if ($stampPreviewUrl !== ''): ?>
+        <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/remove-stamp') ?>" class="mt-3">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
+            <button
+                class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                onclick="return confirm('Stergi stampila din acest model?')"
+            >
+                Sterge stampila
+            </button>
+        </form>
+    <?php endif; ?>
+</div>
+
 <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/preview') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
