@@ -21,13 +21,6 @@
     ];
 ?>
 
-<div class="flex items-center justify-between">
-    <div>
-        <h1 class="text-xl font-semibold text-slate-900">Registru documente</h1>
-        <p class="mt-1 text-sm text-slate-500">Lista documentelor numerotate in registru.</p>
-    </div>
-</div>
-
 <div class="mt-4">
     <div class="flex flex-wrap items-center gap-2">
         <?php foreach ($tabLabels as $tabKey => $tabLabel): ?>
