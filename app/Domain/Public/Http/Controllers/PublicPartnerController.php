@@ -528,7 +528,8 @@ class PublicPartnerController
         $failedFiles = 0;
         $uploadMode = 'single';
 
-        $allInOne = !empty($_POST['all_in_one_signed']);
+        $uploadModeInput = trim((string) ($_POST['upload_mode'] ?? ''));
+        $allInOne = !empty($_POST['all_in_one_signed']) || $uploadModeInput === 'all_in_one';
         if ($allInOne) {
             $uploadMode = 'all_in_one';
             $path = $this->storeUpload($_FILES['all_signed_file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);

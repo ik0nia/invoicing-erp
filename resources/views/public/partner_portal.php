@@ -561,11 +561,28 @@
 
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/upload-signed') ?>" enctype="multipart/form-data" class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-5">
                         <?= App\Support\Csrf::input() ?>
-                        <div class="text-sm font-semibold text-blue-900">Incarcare pe documente (multi-fisier)</div>
+                        <div class="text-sm font-semibold text-blue-900">Incarcare documente semnate</div>
                         <p class="mt-1 text-sm text-blue-800">
-                            Selectati fisierele semnate. Pentru fiecare fisier puteti alege documentul corespunzator din dropdown.
+                            Alegeti modul de incarcare: fie fisiere separate pe document, fie un singur fisier care contine toate documentele obligatorii.
                         </p>
-                        <div class="mt-4 rounded-xl border-2 border-dashed border-blue-300 bg-white p-5">
+                        <div class="mt-4 grid gap-3 md:grid-cols-2">
+                            <label class="flex cursor-pointer items-start gap-2 rounded border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700">
+                                <input type="radio" name="upload_mode" value="batch" checked class="mt-0.5">
+                                <span>
+                                    <span class="font-semibold text-slate-800">Fisiere separate pe documente</span>
+                                    <span class="mt-0.5 block text-xs text-slate-500">Incarcati mai multe fisiere si alegeti documentul pentru fiecare.</span>
+                                </span>
+                            </label>
+                            <label class="flex cursor-pointer items-start gap-2 rounded border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700">
+                                <input type="radio" name="upload_mode" value="all_in_one" class="mt-0.5">
+                                <span>
+                                    <span class="font-semibold text-slate-800">Fisier unic pentru toate documentele</span>
+                                    <span class="mt-0.5 block text-xs text-slate-500">Pentru un singur scan/PDF cu toate documentele semnate.</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <div id="upload-mode-batch" class="mt-4 rounded-xl border-2 border-dashed border-blue-300 bg-white p-5">
                             <label class="block text-center text-sm font-medium text-slate-700" for="signed-files-input">
                                 Alege fisierele semnate
                             </label>
@@ -575,42 +592,34 @@
                                 name="signed_files[]"
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 multiple
+                                required
                                 class="mt-3 block w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-700"
                             >
                             <p class="mt-2 text-xs text-slate-500">
                                 Dupa selectie, pentru fiecare fisier va aparea campul de alegere document.
                             </p>
+                            <div id="signed-files-mapping" class="mt-4 hidden space-y-3"></div>
                         </div>
-                        <div id="signed-files-mapping" class="mt-4 hidden space-y-3"></div>
-                        <div class="mt-4">
-                            <button class="rounded bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                                Salveaza fisierele selectate
-                            </button>
-                        </div>
-                    </form>
 
-                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/upload-signed') ?>" enctype="multipart/form-data" class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-5">
-                        <?= App\Support\Csrf::input() ?>
-                        <input type="hidden" name="all_in_one_signed" value="1">
-                        <div class="text-sm font-semibold text-amber-900">Un singur fisier pentru toate documentele</div>
-                        <p class="mt-1 text-sm text-amber-800">
-                            Daca aveti toate documentele semnate intr-un singur fisier scanat, incarcati fisierul aici.
-                            Sistemul il va considera semnat pentru toate documentele obligatorii.
-                        </p>
-                        <div class="mt-4 rounded-xl border-2 border-dashed border-amber-300 bg-white p-5">
-                            <label class="block text-sm font-medium text-slate-700" for="all-signed-file">Fisier semnat (toate documentele)</label>
+                        <div id="upload-mode-all-in-one" class="mt-4 hidden rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-5">
+                            <label class="block text-sm font-medium text-slate-700" for="all-signed-file">
+                                Fisier cu toate documentele obligatorii semnate
+                            </label>
                             <input
                                 id="all-signed-file"
                                 type="file"
                                 name="all_signed_file"
                                 accept=".pdf,.jpg,.jpeg,.png"
-                                required
                                 class="mt-2 block w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-700"
                             >
+                            <p class="mt-2 text-xs text-slate-600">
+                                Fisierul incarcat aici va fi atasat automat la toate documentele obligatorii.
+                            </p>
                         </div>
+
                         <div class="mt-4">
-                            <button class="rounded bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700">
-                                Salveaza document unic pentru toate
+                            <button id="signed-upload-submit" class="rounded bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                Salveaza documentele semnate
                             </button>
                         </div>
                     </form>
@@ -703,9 +712,14 @@
 
     (function () {
         const fileInput = document.getElementById('signed-files-input');
+        const allFileInput = document.getElementById('all-signed-file');
         const mappingContainer = document.getElementById('signed-files-mapping');
+        const batchPanel = document.getElementById('upload-mode-batch');
+        const allInOnePanel = document.getElementById('upload-mode-all-in-one');
+        const submitButton = document.getElementById('signed-upload-submit');
+        const modeInputs = Array.from(document.querySelectorAll('input[name="upload_mode"]'));
         const optionsNode = document.getElementById('signed-contract-options');
-        if (!fileInput || !mappingContainer || !optionsNode) {
+        if (!fileInput || !allFileInput || !mappingContainer || !batchPanel || !allInOnePanel || !submitButton || !optionsNode || modeInputs.length === 0) {
             return;
         }
 
@@ -740,7 +754,18 @@
             return option;
         };
 
+        const selectedMode = () => {
+            const checked = modeInputs.find((input) => input.checked);
+            return checked ? checked.value : 'batch';
+        };
+
         const renderMapping = () => {
+            if (selectedMode() !== 'batch') {
+                mappingContainer.classList.add('hidden');
+                mappingContainer.innerHTML = '';
+                return;
+            }
+
             const files = Array.from(fileInput.files || []);
             mappingContainer.innerHTML = '';
             if (files.length === 0) {
@@ -787,6 +812,27 @@
             });
         };
 
+        const syncMode = () => {
+            const allInOne = selectedMode() === 'all_in_one';
+            batchPanel.classList.toggle('hidden', allInOne);
+            allInOnePanel.classList.toggle('hidden', !allInOne);
+            fileInput.required = !allInOne;
+            allFileInput.required = allInOne;
+            submitButton.textContent = allInOne
+                ? 'Salveaza fisierul pentru toate documentele'
+                : 'Salveaza documentele semnate';
+
+            if (allInOne) {
+                mappingContainer.classList.add('hidden');
+            } else {
+                renderMapping();
+            }
+        };
+
         fileInput.addEventListener('change', renderMapping);
+        modeInputs.forEach((input) => {
+            input.addEventListener('change', syncMode);
+        });
+        syncMode();
     })();
 </script>
