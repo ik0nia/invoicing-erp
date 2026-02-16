@@ -1,5 +1,4 @@
 <?php
-    $title = 'Wizard inrolare partener';
     $context = $context ?? [];
     $prefill = $prefill ?? [];
     $partnerCui = $partnerCui ?? '';
@@ -62,11 +61,15 @@
         'approved' => 'bg-emerald-100 text-emerald-700',
     ];
     $contactDepartments = $contactDepartments ?? ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
+    $companyDisplayName = trim((string) ($prefill['denumire'] ?? ($company?->denumire ?? '')));
+    $title = $companyDisplayName !== ''
+        ? ('Inrolare partener: ' . $companyDisplayName)
+        : 'Inrolare partener';
 ?>
 
 <div class="max-w-6xl">
     <div>
-        <h1 class="text-2xl font-semibold text-slate-900">Wizard inrolare partener</h1>
+        <h1 class="text-2xl font-semibold text-slate-900"><?= htmlspecialchars($title) ?></h1>
         <p class="mt-1 text-sm text-slate-600">Link unic pentru completare date, incarcare documente si trimitere spre activare manuala.</p>
     </div>
 
@@ -132,26 +135,15 @@
                 <div class="grid gap-4 md:grid-cols-2">
                     <div>
                         <label class="block text-sm font-medium text-slate-700" for="cui">CUI</label>
-                        <div class="mt-1 flex gap-2">
-                            <input
-                                id="cui"
-                                name="cui"
-                                type="text"
-                                value="<?= htmlspecialchars((string) ($prefill['cui'] ?? '')) ?>"
-                                class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                                required
-                                <?= $isReadOnly ? 'readonly' : '' ?>
-                            >
-                            <?php if (!$isReadOnly): ?>
-                                <button
-                                    type="button"
-                                    id="openapi-fetch"
-                                    class="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                >
-                                    OpenAPI
-                                </button>
-                            <?php endif; ?>
-                        </div>
+                        <input
+                            id="cui"
+                            name="cui"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['cui'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            required
+                            readonly
+                        >
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-slate-700" for="denumire">Denumire</label>
@@ -162,7 +154,7 @@
                             value="<?= htmlspecialchars((string) ($prefill['denumire'] ?? '')) ?>"
                             class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                             required
-                            <?= $isReadOnly ? 'readonly' : '' ?>
+                            readonly
                         >
                     </div>
                     <div>
@@ -691,25 +683,6 @@
 </div>
 
 <script>
-    (function () {
-        const button = document.getElementById('openapi-fetch');
-        const cuiInput = document.getElementById('cui');
-        if (!button || !cuiInput) {
-            return;
-        }
-        button.addEventListener('click', () => {
-            const cui = (cuiInput.value || '').trim();
-            if (!cui) {
-                alert('Completeaza CUI-ul pentru precompletare.');
-                return;
-            }
-            const url = new URL(window.location.href);
-            url.searchParams.set('lookup', '1');
-            url.searchParams.set('lookup_cui', cui);
-            window.location.href = url.toString();
-        });
-    })();
-
     (function () {
         const fileInput = document.getElementById('signed-files-input');
         const allFileInput = document.getElementById('all-signed-file');
