@@ -39,6 +39,8 @@ $router->post('/p/{token}/delete-contact', [PublicPartnerController::class, 'del
 $router->post('/p/{token}/set-step', [PublicPartnerController::class, 'setStep']);
 $router->get('/p/{token}/preview', [PublicPartnerController::class, 'preview']);
 $router->get('/p/{token}/download', [PublicPartnerController::class, 'download']);
+$router->get('/p/{token}/resource', [PublicPartnerController::class, 'downloadOnboardingResource']);
+$router->get('/p/{token}/download-dosar', [PublicPartnerController::class, 'downloadDossier']);
 $router->post('/p/{token}/upload-signed', [PublicPartnerController::class, 'uploadSigned']);
 $router->post('/p/{token}/submit-activation', [PublicPartnerController::class, 'submitForActivation']);
 

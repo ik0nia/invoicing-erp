@@ -20,6 +20,7 @@ class PublicPartnerController
 {
     private const MAX_UPLOAD_BYTES = 20971520;
     private const SIGNED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+    private const RESOURCE_UPLOAD_SUBDIR = 'enrollment/resources';
     private const EDITABLE_ONBOARDING_STATUSES = ['draft', 'waiting_signature', 'rejected'];
     private const CONTACT_DEPARTMENTS = ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
     private const WIZARD_MAX_STEP = 4;
@@ -55,6 +56,7 @@ class PublicPartnerController
         $partnerCui = $this->resolvePartnerCui($context);
         $prefill = $this->resolvePrefill($context, $partnerCui);
         $scope = $this->resolveScope($context, $partnerCui);
+        $onboardingResources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
@@ -109,6 +111,7 @@ class PublicPartnerController
             'contracts' => $contracts,
             'documentsProgress' => $documentsProgress,
             'scope' => $scope,
+            'onboardingResources' => $onboardingResources,
             'currentStep' => $currentStep,
             'onboardingStatus' => $onboardingStatus,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
@@ -491,6 +494,198 @@ class PublicPartnerController
             'kind' => $kind,
         ]);
         $this->streamFile($path);
+    }
+
+    public function downloadOnboardingResource(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $resourceId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($resourceId <= 0) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        $resource = $this->findOnboardingResourceForLink($resourceId, (string) ($context['link']['type'] ?? 'client'));
+        if ($resource === null) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_onboarding_resource.download', 'enrollment_resource', $resourceId, ['rows_count' => 1]);
+        $this->streamFile(
+            (string) ($resource['file_path'] ?? ''),
+            $this->buildResourceDownloadFilename($resource)
+        );
+    }
+
+    public function downloadDossier(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        $resources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
+        $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
+
+        $archiveEntries = [];
+        $archivePaths = [];
+        $pdfMergeFiles = [];
+        $pdfMergeMap = [];
+
+        foreach ($resources as $resource) {
+            $relativePath = trim((string) ($resource['file_path'] ?? ''));
+            $relativePathClean = ltrim($relativePath, '/');
+            if ($relativePathClean === '' || !str_starts_with($relativePathClean, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+                continue;
+            }
+            $absolutePath = $this->resolveUploadAbsolutePath($relativePath);
+            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+                continue;
+            }
+            if (!isset($archivePaths[$absolutePath])) {
+                $archivePaths[$absolutePath] = true;
+                $archiveEntries[] = [
+                    'absolute_path' => $absolutePath,
+                    'filename' => $this->buildResourceDownloadFilename($resource),
+                ];
+            }
+
+            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+            if ($ext === 'pdf' && !isset($pdfMergeMap[$absolutePath])) {
+                $pdfMergeMap[$absolutePath] = true;
+                $pdfMergeFiles[] = $absolutePath;
+            }
+        }
+
+        foreach ($contracts as $contract) {
+            $contractId = (int) ($contract['id'] ?? 0);
+            if ($contractId <= 0) {
+                continue;
+            }
+
+            $generatedPath = trim((string) ($contract['generated_pdf_path'] ?? ''));
+            if ($generatedPath === '') {
+                $generatedPath = (new ContractPdfService())->generatePdfForContract($contractId, 'public');
+            }
+            if ($generatedPath === '') {
+                $generatedPath = trim((string) ($contract['generated_file_path'] ?? ''));
+            }
+            if ($generatedPath !== '') {
+                $generatedAbsolute = $this->resolveUploadAbsolutePath($generatedPath);
+                if ($generatedAbsolute !== '' && is_file($generatedAbsolute) && is_readable($generatedAbsolute)) {
+                    if (!isset($archivePaths[$generatedAbsolute])) {
+                        $archivePaths[$generatedAbsolute] = true;
+                        $archiveEntries[] = [
+                            'absolute_path' => $generatedAbsolute,
+                            'filename' => $this->buildContractDownloadFilename($contract, false),
+                        ];
+                    }
+                    if (!isset($pdfMergeMap[$generatedAbsolute])) {
+                        $pdfMergeMap[$generatedAbsolute] = true;
+                        $pdfMergeFiles[] = $generatedAbsolute;
+                    }
+                }
+            }
+
+            $signedPath = trim((string) ($contract['signed_upload_path'] ?? ''));
+            if ($signedPath === '') {
+                $signedPath = trim((string) ($contract['signed_file_path'] ?? ''));
+            }
+            if ($signedPath !== '') {
+                $signedAbsolute = $this->resolveUploadAbsolutePath($signedPath);
+                if ($signedAbsolute !== '' && is_file($signedAbsolute) && is_readable($signedAbsolute)) {
+                    if (!isset($archivePaths[$signedAbsolute])) {
+                        $archivePaths[$signedAbsolute] = true;
+                        $archiveEntries[] = [
+                            'absolute_path' => $signedAbsolute,
+                            'filename' => $this->buildContractDownloadFilename($contract, true),
+                        ];
+                    }
+                    $ext = strtolower(pathinfo($signedAbsolute, PATHINFO_EXTENSION));
+                    if ($ext === 'pdf' && !isset($pdfMergeMap[$signedAbsolute])) {
+                        $pdfMergeMap[$signedAbsolute] = true;
+                        $pdfMergeFiles[] = $signedAbsolute;
+                    }
+                }
+            }
+        }
+
+        if (empty($archiveEntries) && empty($pdfMergeFiles)) {
+            Session::flash('error', 'Nu exista fisiere disponibile pentru dosar.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
+        }
+
+        $timestamp = date('Ymd-His');
+        $baseFilename = 'dosar-onboarding-' . $timestamp;
+
+        if (count($pdfMergeFiles) >= 2) {
+            $mergedPdf = $this->mergePdfFiles($pdfMergeFiles);
+            if ($mergedPdf !== '') {
+                $currentStep = (int) ($context['link']['current_step'] ?? 1);
+                $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+                Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                    'rows_count' => count($pdfMergeFiles),
+                    'mode' => 'merged_pdf',
+                ]);
+                $this->streamAbsoluteFile($mergedPdf, $baseFilename . '.pdf', 'application/pdf', true);
+            }
+        }
+
+        $zipPath = $this->createZipArchive($archiveEntries);
+        if ($zipPath !== '') {
+            $currentStep = (int) ($context['link']['current_step'] ?? 1);
+            $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+            Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                'rows_count' => count($archiveEntries),
+                'mode' => 'zip',
+            ]);
+            $this->streamAbsoluteFile($zipPath, $baseFilename . '.zip', 'application/zip', true);
+        }
+
+        if (count($pdfMergeFiles) === 1) {
+            $singlePdf = reset($pdfMergeFiles);
+            if (is_string($singlePdf) && $singlePdf !== '' && is_file($singlePdf) && is_readable($singlePdf)) {
+                $currentStep = (int) ($context['link']['current_step'] ?? 1);
+                $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+                Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                    'rows_count' => 1,
+                    'mode' => 'single_pdf',
+                ]);
+                $this->streamAbsoluteFile($singlePdf, $baseFilename . '.pdf', 'application/pdf', false);
+            }
+        }
+
+        Session::flash('error', 'Dosarul nu poate fi generat momentan. Lipseste extensia ZipArchive sau utilitarul de merge PDF.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
     }
 
     public function uploadSigned(): void
@@ -918,6 +1113,80 @@ class PublicPartnerController
             'SELECT * FROM contracts WHERE partner_cui = :partner OR client_cui = :client ORDER BY ' . $orderBy,
             ['partner' => $scope['client_cui'], 'client' => $scope['client_cui']]
         );
+    }
+
+    private function fetchOnboardingResourcesForType(string $linkType): array
+    {
+        if (!Database::tableExists('enrollment_resources')) {
+            return [];
+        }
+
+        $normalized = trim($linkType);
+        if (!in_array($normalized, ['supplier', 'client'], true)) {
+            $normalized = 'client';
+        }
+
+        $where = [];
+        $params = [];
+        if (Database::columnExists('enrollment_resources', 'is_active')) {
+            $where[] = 'is_active = :is_active';
+            $params['is_active'] = 1;
+        }
+        if (Database::columnExists('enrollment_resources', 'applies_to')) {
+            $where[] = '(applies_to = :applies_to OR applies_to = :applies_to_both)';
+            $params['applies_to'] = $normalized;
+            $params['applies_to_both'] = 'both';
+        }
+
+        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $orderParts = [];
+        if (Database::columnExists('enrollment_resources', 'sort_order')) {
+            $orderParts[] = 'sort_order ASC';
+        }
+        if (Database::columnExists('enrollment_resources', 'created_at')) {
+            $orderParts[] = 'created_at DESC';
+        }
+        $orderParts[] = 'id DESC';
+
+        return Database::fetchAll(
+            'SELECT * FROM enrollment_resources ' . $whereSql . ' ORDER BY ' . implode(', ', $orderParts),
+            $params
+        );
+    }
+
+    private function findOnboardingResourceForLink(int $resourceId, string $linkType): ?array
+    {
+        if ($resourceId <= 0 || !Database::tableExists('enrollment_resources')) {
+            return null;
+        }
+
+        $row = Database::fetchOne(
+            'SELECT * FROM enrollment_resources WHERE id = :id LIMIT 1',
+            ['id' => $resourceId]
+        );
+        if (!$row) {
+            return null;
+        }
+
+        if (Database::columnExists('enrollment_resources', 'is_active') && empty($row['is_active'])) {
+            return null;
+        }
+
+        $resourceType = trim((string) ($row['applies_to'] ?? 'both'));
+        $normalizedType = trim($linkType);
+        if (!in_array($normalizedType, ['supplier', 'client'], true)) {
+            $normalizedType = 'client';
+        }
+        if ($resourceType !== 'both' && $resourceType !== $normalizedType) {
+            return null;
+        }
+
+        $resourcePath = ltrim(trim((string) ($row['file_path'] ?? '')), '/');
+        if ($resourcePath === '' || !str_starts_with($resourcePath, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+            return null;
+        }
+
+        return $row;
     }
 
     private function contractAllowed(array $row, array $scope): bool
@@ -1577,27 +1846,280 @@ class PublicPartnerController
         return 'storage/uploads/' . trim($subdir, '/') . '/' . $name;
     }
 
-    private function streamFile(string $relativePath): void
+    private function buildResourceDownloadFilename(array $resource): string
     {
+        $originalName = trim((string) ($resource['original_name'] ?? ''));
+        if ($originalName !== '') {
+            return $this->sanitizeDownloadFilename($originalName, 'document-onboarding');
+        }
+
+        $title = trim((string) ($resource['title'] ?? 'document-onboarding'));
+        $ext = strtolower(pathinfo((string) ($resource['file_path'] ?? ''), PATHINFO_EXTENSION));
+        $filename = $title !== '' ? $title : 'document-onboarding';
+        if ($ext !== '') {
+            $filename .= '.' . $ext;
+        }
+
+        return $this->sanitizeDownloadFilename($filename, 'document-onboarding' . ($ext !== '' ? ('.' . $ext) : ''));
+    }
+
+    private function buildContractDownloadFilename(array $contract, bool $signed): string
+    {
+        $docNo = trim((string) ($contract['doc_full_no'] ?? ''));
+        if ($docNo === '') {
+            $docNoRaw = (int) ($contract['doc_no'] ?? 0);
+            if ($docNoRaw > 0) {
+                $series = trim((string) ($contract['doc_series'] ?? ''));
+                $docNoPadded = str_pad((string) $docNoRaw, 6, '0', STR_PAD_LEFT);
+                $docNo = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
+            }
+        }
+
+        $baseName = $docNo !== '' ? ('document-' . $docNo) : trim((string) ($contract['title'] ?? 'document'));
+        if ($baseName === '') {
+            $baseName = 'document';
+        }
+        $baseName = preg_replace('/\s+/', '-', $baseName);
+        $baseName = trim((string) $baseName, '-');
+        if ($baseName === '') {
+            $baseName = 'document';
+        }
+        if ($signed) {
+            $baseName .= '-semnat';
+        }
+
+        $candidatePath = $signed
+            ? trim((string) ($contract['signed_upload_path'] ?? $contract['signed_file_path'] ?? ''))
+            : trim((string) ($contract['generated_pdf_path'] ?? $contract['generated_file_path'] ?? ''));
+        $ext = strtolower(pathinfo($candidatePath, PATHINFO_EXTENSION));
+        if ($ext === '') {
+            $ext = 'pdf';
+        }
+
+        return $this->sanitizeDownloadFilename($baseName . '.' . $ext, $baseName . '.' . $ext);
+    }
+
+    private function sanitizeDownloadFilename(string $filename, string $fallback): string
+    {
+        $filename = trim($filename);
+        $filename = str_replace(["\r", "\n", "\0", '/', '\\'], '-', $filename);
+        $filename = preg_replace('/[^a-zA-Z0-9._ -]/', '-', (string) $filename);
+        $filename = preg_replace('/\s+/', ' ', (string) $filename);
+        $filename = trim((string) $filename, " .-");
+        if ($filename === '') {
+            $filename = trim($fallback);
+        }
+        if ($filename === '') {
+            $filename = 'document';
+        }
+        if (strlen($filename) > 180) {
+            $filename = substr($filename, 0, 180);
+        }
+
+        return $filename;
+    }
+
+    private function resolveUploadAbsolutePath(string $relativePath): string
+    {
+        $clean = ltrim(trim($relativePath), '/');
+        if ($clean === '' || !str_starts_with($clean, 'storage/uploads/')) {
+            return '';
+        }
         $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $clean = ltrim($relativePath, '/');
-        if (!str_starts_with($clean, 'storage/uploads/')) {
-            Response::abort(404);
-        }
-        $sub = substr($clean, strlen('storage/uploads/'));
-        $path = realpath($base . '/storage/uploads/' . ltrim($sub, '/'));
         $root = realpath($base . '/storage/uploads');
-        if (!$path || !$root || !str_starts_with($path, $root) || !is_readable($path)) {
+        if ($root === false) {
+            return '';
+        }
+        $path = realpath($base . '/' . $clean);
+        if ($path === false || !str_starts_with($path, $root)) {
+            return '';
+        }
+
+        return $path;
+    }
+
+    private function createZipArchive(array $entries): string
+    {
+        if (empty($entries) || !class_exists(\ZipArchive::class)) {
+            return '';
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'onboarding_dossier_');
+        if ($tmp === false) {
+            return '';
+        }
+        $zipPath = $tmp . '.zip';
+        @rename($tmp, $zipPath);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmp);
+            @unlink($zipPath);
+            return '';
+        }
+
+        $usedNames = [];
+        $addedFiles = 0;
+        foreach ($entries as $entry) {
+            $absolutePath = trim((string) ($entry['absolute_path'] ?? ''));
+            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+                continue;
+            }
+
+            $baseName = $this->sanitizeDownloadFilename(
+                (string) ($entry['filename'] ?? basename($absolutePath)),
+                basename($absolutePath)
+            );
+            $candidate = $baseName;
+            $nameBase = pathinfo($baseName, PATHINFO_FILENAME);
+            $nameExt = pathinfo($baseName, PATHINFO_EXTENSION);
+            $suffix = 2;
+            while (isset($usedNames[strtolower($candidate)])) {
+                $candidate = $nameBase . '-' . $suffix;
+                if ($nameExt !== '') {
+                    $candidate .= '.' . $nameExt;
+                }
+                $suffix++;
+            }
+            $usedNames[strtolower($candidate)] = true;
+            if ($zip->addFile($absolutePath, $candidate)) {
+                $addedFiles++;
+            }
+        }
+        $zip->close();
+
+        if ($addedFiles <= 0 || !is_file($zipPath) || filesize($zipPath) <= 0) {
+            @unlink($zipPath);
+            return '';
+        }
+
+        return $zipPath;
+    }
+
+    private function mergePdfFiles(array $files): string
+    {
+        if (count($files) < 2) {
+            return '';
+        }
+
+        $binary = $this->findGhostscriptBinary();
+        if ($binary === '') {
+            return '';
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'onboarding_merge_');
+        if ($tmp === false) {
+            return '';
+        }
+        $output = $tmp . '.pdf';
+        @rename($tmp, $output);
+
+        $args = [
+            escapeshellarg($binary),
+            '-dBATCH',
+            '-dNOPAUSE',
+            '-q',
+            '-sDEVICE=pdfwrite',
+            '-dCompatibilityLevel=1.4',
+            '-sOutputFile=' . escapeshellarg($output),
+        ];
+        foreach ($files as $file) {
+            $absolute = trim((string) $file);
+            if ($absolute === '' || !is_file($absolute) || !is_readable($absolute)) {
+                continue;
+            }
+            $args[] = escapeshellarg($absolute);
+        }
+        if (count($args) <= 7) {
+            @unlink($output);
+            return '';
+        }
+
+        $command = implode(' ', $args);
+        $descriptors = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $process = @proc_open($command, $descriptors, $pipes);
+        if (!is_resource($process)) {
+            @unlink($output);
+            return '';
+        }
+        if (isset($pipes[1]) && is_resource($pipes[1])) {
+            stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+        }
+        if (isset($pipes[2]) && is_resource($pipes[2])) {
+            stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+        }
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0 || !is_file($output) || filesize($output) <= 0) {
+            @unlink($output);
+            return '';
+        }
+
+        return $output;
+    }
+
+    private function findGhostscriptBinary(): string
+    {
+        $candidates = [
+            '/usr/bin/gs',
+            '/usr/local/bin/gs',
+            '/bin/gs',
+            'gs',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (str_contains($candidate, '/')) {
+                if (is_file($candidate) && is_executable($candidate)) {
+                    return $candidate;
+                }
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return '';
+    }
+
+    private function streamAbsoluteFile(string $absolutePath, string $downloadFilename, string $contentType, bool $deleteAfterSend): void
+    {
+        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
             Response::abort(404);
         }
-        $filename = basename($path);
-        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-        $contentType = $ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
-        header('Content-Type: ' . $contentType);
+
+        if ($deleteAfterSend) {
+            register_shutdown_function(static function () use ($absolutePath): void {
+                @unlink($absolutePath);
+            });
+        }
+
+        $filename = $this->sanitizeDownloadFilename($downloadFilename, basename($absolutePath));
+        header('Content-Type: ' . ($contentType !== '' ? $contentType : 'application/octet-stream'));
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($path));
-        readfile($path);
+        header('Content-Length: ' . filesize($absolutePath));
+        header('X-Content-Type-Options: nosniff');
+        readfile($absolutePath);
         exit;
+    }
+
+    private function streamFile(string $relativePath, ?string $downloadFilename = null): void
+    {
+        $path = $this->resolveUploadAbsolutePath($relativePath);
+        if ($path === '' || !is_readable($path)) {
+            Response::abort(404);
+        }
+
+        $filename = $downloadFilename !== null
+            ? $this->sanitizeDownloadFilename($downloadFilename, basename($path))
+            : basename($path);
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $contentType = $ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+        $this->streamAbsoluteFile($path, $filename, $contentType, false);
     }
 
     private function throttle(string $hash): bool

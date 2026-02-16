@@ -31,6 +31,9 @@ $router->post('/admin/enrollment-links/regenerate', [EnrollmentLinksController::
 $router->post('/admin/enrollment-links/lookup', [EnrollmentLinksController::class, 'lookup']);
 $router->get('/admin/enrollment-links/supplier-search', [EnrollmentLinksController::class, 'supplierSearch']);
 $router->get('/admin/enrollment-links/supplier-info', [EnrollmentLinksController::class, 'supplierInfo']);
+$router->post('/admin/enrollment-links/resources/upload', [EnrollmentLinksController::class, 'uploadResource']);
+$router->post('/admin/enrollment-links/resources/delete', [EnrollmentLinksController::class, 'deleteResource']);
+$router->get('/admin/enrollment-links/resources/download', [EnrollmentLinksController::class, 'downloadResource']);
 $router->post('/admin/enrollment-links/approve-onboarding', [EnrollmentLinksController::class, 'approveOnboarding']);
 $router->post('/admin/enrollment-links/reset-onboarding', [EnrollmentLinksController::class, 'resetOnboarding']);
 $router->get('/admin/contracts', [ContractsController::class, 'index']);

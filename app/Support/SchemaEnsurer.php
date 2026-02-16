@@ -44,6 +44,10 @@ class SchemaEnsurer
             self::ensureEnrollmentLinksTable();
         });
 
+        self::runStep('enrollment_resources_table', static function (): void {
+            self::ensureEnrollmentResourcesTable();
+        });
+
         self::runStep('partner_relations_table', static function (): void {
             self::ensurePartnerRelationsTable();
         });
@@ -343,6 +347,142 @@ class SchemaEnsurer
                 unset(self::$columnCache['enrollment_links.checkbox_confirmed']);
             }
             self::ensureIndex('enrollment_links', 'idx_enrollment_onboarding', 'ALTER TABLE enrollment_links ADD INDEX idx_enrollment_onboarding (onboarding_status)');
+        }
+    }
+
+    public static function ensureEnrollmentResourcesTable(): void
+    {
+        if (!self::tableExists('enrollment_resources')) {
+            self::safeExecute(
+                'CREATE TABLE IF NOT EXISTS enrollment_resources (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    applies_to ENUM("supplier", "client", "both") NOT NULL DEFAULT "both",
+                    file_path VARCHAR(255) NOT NULL,
+                    original_name VARCHAR(255) NULL,
+                    mime_type VARCHAR(128) NULL,
+                    file_ext VARCHAR(16) NULL,
+                    sort_order INT NOT NULL DEFAULT 100,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_by_user_id INT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL,
+                    INDEX idx_enrollment_resources_applies (applies_to, is_active),
+                    INDEX idx_enrollment_resources_order (sort_order, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+                [],
+                'enrollment_resources_create'
+            );
+            unset(self::$tableCache['enrollment_resources']);
+            self::$tableCache['enrollment_resources'] = self::tableExists('enrollment_resources');
+        }
+
+        if (!self::tableExists('enrollment_resources')) {
+            return;
+        }
+
+        if (!self::columnExists('enrollment_resources', 'title')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN title VARCHAR(255) NOT NULL',
+                [],
+                'enrollment_resources_add_title'
+            );
+            unset(self::$columnCache['enrollment_resources.title']);
+        }
+        if (!self::columnExists('enrollment_resources', 'applies_to')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN applies_to ENUM("supplier", "client", "both") NOT NULL DEFAULT "both" AFTER title',
+                [],
+                'enrollment_resources_add_applies_to'
+            );
+            unset(self::$columnCache['enrollment_resources.applies_to']);
+        }
+        if (!self::columnExists('enrollment_resources', 'file_path')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN file_path VARCHAR(255) NOT NULL AFTER applies_to',
+                [],
+                'enrollment_resources_add_file_path'
+            );
+            unset(self::$columnCache['enrollment_resources.file_path']);
+        }
+        if (!self::columnExists('enrollment_resources', 'original_name')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN original_name VARCHAR(255) NULL AFTER file_path',
+                [],
+                'enrollment_resources_add_original_name'
+            );
+            unset(self::$columnCache['enrollment_resources.original_name']);
+        }
+        if (!self::columnExists('enrollment_resources', 'mime_type')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN mime_type VARCHAR(128) NULL AFTER original_name',
+                [],
+                'enrollment_resources_add_mime_type'
+            );
+            unset(self::$columnCache['enrollment_resources.mime_type']);
+        }
+        if (!self::columnExists('enrollment_resources', 'file_ext')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN file_ext VARCHAR(16) NULL AFTER mime_type',
+                [],
+                'enrollment_resources_add_file_ext'
+            );
+            unset(self::$columnCache['enrollment_resources.file_ext']);
+        }
+        if (!self::columnExists('enrollment_resources', 'sort_order')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN sort_order INT NOT NULL DEFAULT 100 AFTER file_ext',
+                [],
+                'enrollment_resources_add_sort_order'
+            );
+            unset(self::$columnCache['enrollment_resources.sort_order']);
+        }
+        if (!self::columnExists('enrollment_resources', 'is_active')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER sort_order',
+                [],
+                'enrollment_resources_add_is_active'
+            );
+            unset(self::$columnCache['enrollment_resources.is_active']);
+        }
+        if (!self::columnExists('enrollment_resources', 'created_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN created_by_user_id INT NULL AFTER is_active',
+                [],
+                'enrollment_resources_add_created_by'
+            );
+            unset(self::$columnCache['enrollment_resources.created_by_user_id']);
+        }
+        if (!self::columnExists('enrollment_resources', 'created_at')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER created_by_user_id',
+                [],
+                'enrollment_resources_add_created_at'
+            );
+            unset(self::$columnCache['enrollment_resources.created_at']);
+        }
+        if (!self::columnExists('enrollment_resources', 'updated_at')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN updated_at DATETIME NULL AFTER created_at',
+                [],
+                'enrollment_resources_add_updated_at'
+            );
+            unset(self::$columnCache['enrollment_resources.updated_at']);
+        }
+
+        if (self::columnExists('enrollment_resources', 'applies_to') && self::columnExists('enrollment_resources', 'is_active')) {
+            self::ensureIndex(
+                'enrollment_resources',
+                'idx_enrollment_resources_applies',
+                'ALTER TABLE enrollment_resources ADD INDEX idx_enrollment_resources_applies (applies_to, is_active)'
+            );
+        }
+        if (self::columnExists('enrollment_resources', 'sort_order') && self::columnExists('enrollment_resources', 'created_at')) {
+            self::ensureIndex(
+                'enrollment_resources',
+                'idx_enrollment_resources_order',
+                'ALTER TABLE enrollment_resources ADD INDEX idx_enrollment_resources_order (sort_order, created_at)'
+            );
         }
     }
 

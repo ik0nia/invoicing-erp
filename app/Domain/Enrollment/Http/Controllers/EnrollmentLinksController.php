@@ -16,6 +16,23 @@ use App\Support\Url;
 
 class EnrollmentLinksController
 {
+    private const RESOURCE_UPLOAD_SUBDIR = 'enrollment/resources';
+    private const MAX_RESOURCE_UPLOAD_BYTES = 26214400;
+    private const ALLOWED_RESOURCE_EXTENSIONS = [
+        'pdf',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'ppt',
+        'pptx',
+        'txt',
+        'jpg',
+        'jpeg',
+        'png',
+        'zip',
+    ];
+
     public function index(): void
     {
         $user = $this->requireEnrollmentRole();
@@ -101,6 +118,8 @@ class EnrollmentLinksController
             'end' => $total > 0 ? min($total, $offset + count($rows)) : 0,
         ];
 
+        $onboardingResources = $this->fetchEnrollmentResources(null, true);
+
         $suppliers = [];
         if ($user->isSupplierUser()) {
             UserSupplierAccess::ensureTable();
@@ -114,6 +133,8 @@ class EnrollmentLinksController
             'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
             'canApproveOnboarding' => Auth::isInternalStaff(),
+            'canManageOnboardingResources' => Auth::isInternalStaff(),
+            'onboardingResources' => $onboardingResources,
             'isPendingPage' => $isPendingPage,
         ]);
     }
@@ -588,6 +609,142 @@ class EnrollmentLinksController
         $this->json(['success' => true, 'data' => $response['data']]);
     }
 
+    public function uploadResource(): void
+    {
+        Auth::requireInternalStaff();
+        $user = Auth::user();
+
+        if (!Database::tableExists('enrollment_resources')) {
+            Session::flash('error', 'Sectiunea de fisiere onboarding nu este disponibila momentan.');
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        $appliesTo = trim((string) ($_POST['applies_to'] ?? 'both'));
+        if (!in_array($appliesTo, ['supplier', 'client', 'both'], true)) {
+            $appliesTo = 'both';
+        }
+        $sortOrder = isset($_POST['sort_order']) ? (int) $_POST['sort_order'] : 100;
+        if ($sortOrder < 0) {
+            $sortOrder = 0;
+        }
+        if ($sortOrder > 9999) {
+            $sortOrder = 9999;
+        }
+
+        $stored = $this->storeResourceUpload($_FILES['resource_file'] ?? null);
+        if ($stored === null) {
+            Session::flash(
+                'error',
+                'Fisier invalid. Sunt acceptate PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/TXT/JPG/PNG/ZIP (maxim 25MB).'
+            );
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        $title = $this->sanitizeResourceTitle((string) ($_POST['title'] ?? ''));
+        if ($title === '') {
+            $title = $this->sanitizeResourceTitle($stored['title_fallback']);
+        }
+        if ($title === '') {
+            $title = 'Document onboarding';
+        }
+
+        Database::execute(
+            'INSERT INTO enrollment_resources (
+                title,
+                applies_to,
+                file_path,
+                original_name,
+                mime_type,
+                file_ext,
+                sort_order,
+                is_active,
+                created_by_user_id,
+                created_at,
+                updated_at
+            ) VALUES (
+                :title,
+                :applies_to,
+                :file_path,
+                :original_name,
+                :mime_type,
+                :file_ext,
+                :sort_order,
+                :is_active,
+                :created_by_user_id,
+                :created_at,
+                :updated_at
+            )',
+            [
+                'title' => $title,
+                'applies_to' => $appliesTo,
+                'file_path' => $stored['path'],
+                'original_name' => $stored['original_name'] !== '' ? $stored['original_name'] : null,
+                'mime_type' => $stored['mime_type'] !== '' ? $stored['mime_type'] : null,
+                'file_ext' => $stored['file_ext'] !== '' ? $stored['file_ext'] : null,
+                'sort_order' => $sortOrder,
+                'is_active' => 1,
+                'created_by_user_id' => $user ? (int) $user->id : null,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+        $resourceId = (int) Database::lastInsertId();
+        Audit::record('enrollment_resource.upload', 'enrollment_resource', $resourceId > 0 ? $resourceId : null, [
+            'rows_count' => 1,
+            'applies_to' => $appliesTo,
+        ]);
+
+        Session::flash('status', 'Fisierul de onboarding a fost incarcat.');
+        Response::redirect('/admin/enrollment-links');
+    }
+
+    public function deleteResource(): void
+    {
+        Auth::requireInternalStaff();
+
+        $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
+        if ($id <= 0 || !Database::tableExists('enrollment_resources')) {
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        $row = Database::fetchOne('SELECT * FROM enrollment_resources WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$row) {
+            Session::flash('error', 'Fisierul nu a fost gasit.');
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        Database::execute('DELETE FROM enrollment_resources WHERE id = :id', ['id' => $id]);
+        $absolute = $this->resolveResourceAbsolutePath((string) ($row['file_path'] ?? ''));
+        if ($absolute !== '' && is_file($absolute)) {
+            @unlink($absolute);
+        }
+
+        Audit::record('enrollment_resource.delete', 'enrollment_resource', $id, ['rows_count' => 1]);
+        Session::flash('status', 'Fisierul de onboarding a fost sters.');
+        Response::redirect('/admin/enrollment-links');
+    }
+
+    public function downloadResource(): void
+    {
+        Auth::requireInternalStaff();
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id <= 0 || !Database::tableExists('enrollment_resources')) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        $row = Database::fetchOne('SELECT * FROM enrollment_resources WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (
+            !$row
+            || (Database::columnExists('enrollment_resources', 'is_active') && empty($row['is_active']))
+        ) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        Audit::record('enrollment_resource.download', 'enrollment_resource', $id, ['rows_count' => 1]);
+        $this->streamResourceFile($row);
+    }
+
     private function searchSuppliers(\App\Domain\Users\Models\User $user, string $term, int $limit): array
     {
         if (!Database::tableExists('partners')) {
@@ -787,6 +944,201 @@ class EnrollmentLinksController
         }
 
         return (float) ($row['default_commission'] ?? 0.0);
+    }
+
+    private function fetchEnrollmentResources(?string $linkType = null, bool $onlyActive = true): array
+    {
+        if (!Database::tableExists('enrollment_resources')) {
+            return [];
+        }
+
+        $where = [];
+        $params = [];
+
+        if ($onlyActive && Database::columnExists('enrollment_resources', 'is_active')) {
+            $where[] = 'is_active = :is_active';
+            $params['is_active'] = 1;
+        }
+
+        if ($linkType !== null && Database::columnExists('enrollment_resources', 'applies_to')) {
+            $normalizedType = trim($linkType);
+            if (!in_array($normalizedType, ['supplier', 'client'], true)) {
+                $normalizedType = 'client';
+            }
+            $where[] = '(applies_to = :applies_to OR applies_to = :applies_to_both)';
+            $params['applies_to'] = $normalizedType;
+            $params['applies_to_both'] = 'both';
+        }
+
+        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $orderParts = [];
+        if (Database::columnExists('enrollment_resources', 'sort_order')) {
+            $orderParts[] = 'sort_order ASC';
+        }
+        if (Database::columnExists('enrollment_resources', 'created_at')) {
+            $orderParts[] = 'created_at DESC';
+        }
+        $orderParts[] = 'id DESC';
+        $orderBy = implode(', ', $orderParts);
+
+        return Database::fetchAll(
+            'SELECT * FROM enrollment_resources ' . $whereSql . ' ORDER BY ' . $orderBy,
+            $params
+        );
+    }
+
+    private function sanitizeResourceTitle(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        if (strlen($value) > 255) {
+            return substr($value, 0, 255);
+        }
+
+        return $value;
+    }
+
+    private function storeResourceUpload(?array $file): ?array
+    {
+        if (!$file || !isset($file['tmp_name']) || (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+        if (!is_uploaded_file((string) ($file['tmp_name'] ?? ''))) {
+            return null;
+        }
+
+        $size = isset($file['size']) ? (int) $file['size'] : 0;
+        if ($size <= 0 || $size > self::MAX_RESOURCE_UPLOAD_BYTES) {
+            return null;
+        }
+
+        $originalName = trim((string) ($file['name'] ?? ''));
+        $extRaw = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $ext = preg_replace('/[^a-z0-9]/i', '', $extRaw);
+        if ($ext === '' || !in_array($ext, self::ALLOWED_RESOURCE_EXTENSIONS, true)) {
+            return null;
+        }
+
+        $tmp = (string) ($file['tmp_name'] ?? '');
+        if (!is_readable($tmp)) {
+            return null;
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $dir = $basePath . '/storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR;
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        if (!is_dir($dir) || !is_writable($dir)) {
+            return null;
+        }
+
+        try {
+            $targetName = bin2hex(random_bytes(16)) . '.' . $ext;
+        } catch (\Throwable $exception) {
+            return null;
+        }
+        $targetPath = $dir . '/' . $targetName;
+        if (!move_uploaded_file($tmp, $targetPath)) {
+            return null;
+        }
+
+        $titleFallback = (string) pathinfo($originalName, PATHINFO_FILENAME);
+
+        return [
+            'path' => 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/' . $targetName,
+            'original_name' => $originalName,
+            'mime_type' => $this->detectMimeType($targetPath),
+            'file_ext' => $ext,
+            'title_fallback' => $titleFallback,
+        ];
+    }
+
+    private function resolveResourceAbsolutePath(string $relativePath): string
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '' || !str_starts_with($relativePath, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $root = realpath($basePath . '/storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR);
+        if ($root === false) {
+            return '';
+        }
+
+        $target = realpath($basePath . '/' . $relativePath);
+        if ($target === false || !str_starts_with($target, $root)) {
+            return '';
+        }
+
+        return $target;
+    }
+
+    private function detectMimeType(string $path): string
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return '';
+        }
+
+        $mime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = finfo_file($finfo, $path);
+                if (is_string($detected) && trim($detected) !== '') {
+                    $mime = strtolower(trim($detected));
+                }
+                finfo_close($finfo);
+            }
+        }
+        if ($mime === '' && function_exists('mime_content_type')) {
+            $detected = mime_content_type($path);
+            if (is_string($detected) && trim($detected) !== '') {
+                $mime = strtolower(trim($detected));
+            }
+        }
+
+        return $mime;
+    }
+
+    private function streamResourceFile(array $resource): void
+    {
+        $absolute = $this->resolveResourceAbsolutePath((string) ($resource['file_path'] ?? ''));
+        if ($absolute === '' || !is_file($absolute) || !is_readable($absolute)) {
+            Response::abort(404, 'Fisier indisponibil.');
+        }
+
+        $filename = trim((string) ($resource['original_name'] ?? ''));
+        $filename = str_replace(["\r", "\n", "\0", '"', "'", '/', '\\'], '-', $filename);
+        if ($filename === '') {
+            $title = $this->sanitizeResourceTitle((string) ($resource['title'] ?? 'document-onboarding'));
+            $ext = strtolower(pathinfo($absolute, PATHINFO_EXTENSION));
+            if ($ext !== '') {
+                $filename = $title !== '' ? ($title . '.' . $ext) : ('document-onboarding.' . $ext);
+            } else {
+                $filename = $title !== '' ? $title : 'document-onboarding';
+            }
+        }
+
+        $mimeType = trim((string) ($resource['mime_type'] ?? ''));
+        if ($mimeType === '') {
+            $mimeType = $this->detectMimeType($absolute);
+        }
+        if ($mimeType === '') {
+            $mimeType = 'application/octet-stream';
+        }
+
+        header('Content-Type: ' . $mimeType);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . filesize($absolute));
+        header('X-Content-Type-Options: nosniff');
+        readfile($absolute);
+        exit;
     }
 
     private function requireEnrollmentRole(): \App\Domain\Users\Models\User

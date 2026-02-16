@@ -6,6 +6,7 @@
     $contacts = $contacts ?? [];
     $relationContacts = $relationContacts ?? [];
     $contracts = $contracts ?? [];
+    $onboardingResources = $onboardingResources ?? [];
     $documentsProgress = $documentsProgress ?? [
         'required_total' => 0,
         'required_signed' => 0,
@@ -157,6 +158,78 @@
                         <li>Pasul 4: gestioneaza documentele obligatorii si confirma trimiterea.</li>
                     </ul>
                 <?php endif; ?>
+
+                <?php if (!empty($onboardingResources)): ?>
+                    <div class="mt-5 rounded border border-slate-200 bg-slate-50 p-4">
+                        <div class="text-sm font-semibold text-slate-800">Documente pentru descarcare (Pasul 1)</div>
+                        <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                            <?php foreach ($onboardingResources as $resource): ?>
+                                <?php
+                                    $resourceId = (int) ($resource['id'] ?? 0);
+                                    $resourceTitle = trim((string) ($resource['title'] ?? 'Document onboarding'));
+                                    if ($resourceTitle === '') {
+                                        $resourceTitle = 'Document onboarding';
+                                    }
+                                    $resourceOriginalName = trim((string) ($resource['original_name'] ?? ''));
+                                    $resourceDownloadUrl = App\Support\Url::to('p/' . $token . '/resource?id=' . $resourceId);
+                                ?>
+                                <li class="flex flex-wrap items-center gap-2">
+                                    <a href="<?= htmlspecialchars($resourceDownloadUrl) ?>" class="font-semibold text-blue-700 hover:text-blue-800">
+                                        <?= htmlspecialchars($resourceTitle) ?>
+                                    </a>
+                                    <?php if ($resourceOriginalName !== ''): ?>
+                                        <span class="text-xs text-slate-500">(<?= htmlspecialchars($resourceOriginalName) ?>)</span>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
+                <div class="mt-5 rounded border border-slate-200 bg-white p-4">
+                    <div class="text-sm font-semibold text-slate-800">Preview-uri contracte onboarding</div>
+                    <?php if (empty($contracts)): ?>
+                        <p class="mt-2 text-sm text-slate-500">
+                            Link-urile de preview apar dupa ce exista documente generate pentru acest onboarding (de obicei dupa completarea Pasului 2).
+                        </p>
+                    <?php else: ?>
+                        <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                            <?php foreach ($contracts as $contractPreview): ?>
+                                <?php
+                                    $contractId = (int) ($contractPreview['id'] ?? 0);
+                                    if ($contractId <= 0) {
+                                        continue;
+                                    }
+                                    $contractTitle = trim((string) ($contractPreview['title'] ?? 'Document'));
+                                    if ($contractTitle === '') {
+                                        $contractTitle = 'Document';
+                                    }
+                                    $previewUrl = App\Support\Url::to('p/' . $token . '/preview?id=' . $contractId);
+                                    $downloadGeneratedUrl = App\Support\Url::to('p/' . $token . '/download?kind=generated&id=' . $contractId);
+                                ?>
+                                <li class="flex flex-wrap items-center gap-3">
+                                    <span class="font-medium text-slate-700"><?= htmlspecialchars($contractTitle) ?></span>
+                                    <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Preview</a>
+                                    <a href="<?= htmlspecialchars($downloadGeneratedUrl) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+
+                    <?php if (!empty($onboardingResources) || !empty($contracts)): ?>
+                        <div class="mt-4">
+                            <a
+                                href="<?= htmlspecialchars(App\Support\Url::to('p/' . $token . '/download-dosar')) ?>"
+                                class="inline-flex items-center rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                                Descarca dosar onboarding
+                            </a>
+                            <p class="mt-1 text-xs text-slate-500">
+                                Dosarul incearca sa uneasca PDF-urile disponibile; daca merge-ul nu este disponibil pe server, vei primi ZIP.
+                            </p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php endif; ?>
 
