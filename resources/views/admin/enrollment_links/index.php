@@ -7,10 +7,11 @@
         'status' => '',
         'type' => '',
         'onboarding_status' => '',
-        'supplier_cui' => '',
+        'company_cui' => '',
         'page' => 1,
         'per_page' => 50,
     ];
+    $companyFilterDisplay = trim((string) ($companyFilterDisplay ?? ''));
     $pagination = $pagination ?? [
         'page' => 1,
         'per_page' => (int) ($filters['per_page'] ?? 50),
@@ -28,10 +29,7 @@
         'status' => $filters['status'] ?? '',
         'type' => $filters['type'] ?? '',
         'onboarding_status' => $filters['onboarding_status'] ?? '',
-        'supplier_cui' => $filters['supplier_cui'] ?? '',
-        'partner_cui' => $filters['partner_cui'] ?? '',
-        'relation_supplier_cui' => $filters['relation_supplier_cui'] ?? '',
-        'relation_client_cui' => $filters['relation_client_cui'] ?? '',
+        'company_cui' => $filters['company_cui'] ?? '',
     ];
     $filterParams = array_filter($filterParams, static fn ($value) => $value !== '' && $value !== null);
     $returnToPath = '/' . ltrim($listPath, '/');
@@ -252,7 +250,7 @@
                 disabled
                 class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
             >
-                Creeaza link public
+                Adauga partener
             </button>
             <p class="text-xs text-slate-500">La creare, datele de precompletare se completeaza automat din OpenAPI pe baza CUI-ului.</p>
         </div>
@@ -260,8 +258,8 @@
 <?php endif; ?>
 
 <form method="GET" action="<?= App\Support\Url::to($listPath) ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div>
+    <div class="flex flex-wrap items-end gap-3 xl:flex-nowrap">
+        <div class="min-w-[130px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-status">Status</label>
             <select id="filter-status" name="status" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="">Toate</option>
@@ -269,7 +267,7 @@
                 <option value="disabled" <?= ($filters['status'] ?? '') === 'disabled' ? 'selected' : '' ?>>Dezactivate</option>
             </select>
         </div>
-        <div>
+        <div class="min-w-[130px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-type">Tip</label>
             <select id="filter-type" name="type" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="">Toate</option>
@@ -277,7 +275,7 @@
                 <option value="client" <?= ($filters['type'] ?? '') === 'client' ? 'selected' : '' ?>>Client</option>
             </select>
         </div>
-        <div>
+        <div class="min-w-[180px]">
             <label class="block text-sm font-medium text-slate-700" for="filter-onboarding-status">Status onboarding</label>
             <select id="filter-onboarding-status" name="onboarding_status" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
                 <option value="">Toate</option>
@@ -288,53 +286,32 @@
                 <option value="rejected" <?= ($filters['onboarding_status'] ?? '') === 'rejected' ? 'selected' : '' ?>>Respins</option>
             </select>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-supplier">Furnizor</label>
+        <div
+            class="relative min-w-[280px] flex-1"
+            data-company-filter-picker
+            data-search-url="<?= App\Support\Url::to('admin/enrollment-links/company-search') ?>"
+        >
+            <label class="block text-sm font-medium text-slate-700" for="filter-company-display">Companie</label>
             <input
-                id="filter-supplier"
-                name="supplier_cui"
+                id="filter-company-display"
                 type="text"
-                value="<?= htmlspecialchars((string) ($filters['supplier_cui'] ?? '')) ?>"
+                autocomplete="off"
+                value="<?= htmlspecialchars($companyFilterDisplay !== '' ? $companyFilterDisplay : (string) ($filters['company_cui'] ?? '')) ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="CUI furnizor"
+                placeholder="Cauta dupa denumire sau CUI"
+                data-company-filter-display
             >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-partner">Partner CUI</label>
             <input
-                id="filter-partner"
-                name="partner_cui"
-                type="text"
-                value="<?= htmlspecialchars((string) ($filters['partner_cui'] ?? '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="CUI partener"
+                type="hidden"
+                name="company_cui"
+                value="<?= htmlspecialchars((string) ($filters['company_cui'] ?? '')) ?>"
+                data-company-filter-value
             >
+            <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-company-filter-list></div>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-relation-supplier">Relatie furnizor</label>
-            <input
-                id="filter-relation-supplier"
-                name="relation_supplier_cui"
-                type="text"
-                value="<?= htmlspecialchars((string) ($filters['relation_supplier_cui'] ?? '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="CUI furnizor relatie"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-relation-client">Relatie client</label>
-            <input
-                id="filter-relation-client"
-                name="relation_client_cui"
-                type="text"
-                value="<?= htmlspecialchars((string) ($filters['relation_client_cui'] ?? '')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                placeholder="CUI client relatie"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Per pagina</label>
-            <select id="filter-per-page" name="per_page" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+        <div class="w-20 shrink-0">
+            <label class="block text-sm font-medium text-slate-700" for="filter-per-page">Rez.</label>
+            <select id="filter-per-page" name="per_page" class="mt-1 block w-full rounded border border-slate-300 px-2 py-2 text-sm">
                 <?php foreach ([25, 50, 100] as $option): ?>
                     <option value="<?= $option ?>" <?= (int) ($filters['per_page'] ?? 50) === $option ? 'selected' : '' ?>>
                         <?= $option ?>
@@ -342,17 +319,17 @@
                 <?php endforeach; ?>
             </select>
         </div>
-    </div>
-    <div class="mt-4 flex flex-wrap items-center gap-2">
-        <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            Filtreaza
-        </button>
-        <a
-            href="<?= App\Support\Url::to($listPath) ?>"
-            class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-            Reseteaza
-        </a>
+        <div class="flex shrink-0 items-end gap-2">
+            <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Filtreaza
+            </button>
+            <a
+                href="<?= App\Support\Url::to($listPath) ?>"
+                class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                Reseteaza
+            </a>
+        </div>
     </div>
 </form>
 
@@ -906,6 +883,170 @@
                 resolveSupplierByCui(hiddenInput.value.trim(), true);
             }
             updateCreateSubmitState();
+        }
+
+        const companyFilterPicker = document.querySelector('[data-company-filter-picker]');
+        if (companyFilterPicker) {
+            const companyDisplayInput = companyFilterPicker.querySelector('[data-company-filter-display]');
+            const companyValueInput = companyFilterPicker.querySelector('[data-company-filter-value]');
+            const companyList = companyFilterPicker.querySelector('[data-company-filter-list]');
+            const companySearchUrl = companyFilterPicker.getAttribute('data-search-url') || '';
+            const parentForm = companyFilterPicker.closest('form');
+            let companyRequestId = 0;
+            let companyTimer = null;
+
+            const companyDigitsOnly = (value) => String(value || '').replace(/\D+/g, '');
+
+            const extractCompanyCuiCandidate = (value) => {
+                const raw = String(value || '').trim();
+                if (raw === '') {
+                    return '';
+                }
+                if (/^\d+$/.test(raw)) {
+                    return raw;
+                }
+                const compact = raw.replace(/\s+/g, '').toUpperCase();
+                if (/^RO\d+$/.test(compact)) {
+                    return compact.replace(/^RO/, '');
+                }
+                const suffix = raw.match(/(?:^|[-\s])(RO)?(\d{2,16})$/i);
+                if (suffix && suffix[2]) {
+                    return companyDigitsOnly(suffix[2]);
+                }
+
+                return '';
+            };
+
+            const clearCompanyList = () => {
+                if (!companyList) {
+                    return;
+                }
+                companyList.innerHTML = '';
+                companyList.classList.add('hidden');
+            };
+
+            const applyCompanySelection = (item) => {
+                if (!companyDisplayInput || !companyValueInput || !item) {
+                    return;
+                }
+                const cui = companyDigitsOnly(item.cui || '');
+                const name = String(item.name || '').trim();
+                const label = name && name !== cui ? `${name} - ${cui}` : cui;
+                companyValueInput.value = cui;
+                companyDisplayInput.value = label;
+                clearCompanyList();
+            };
+
+            const renderCompanyItems = (items) => {
+                if (!companyList) {
+                    return;
+                }
+                if (!Array.isArray(items) || items.length === 0) {
+                    companyList.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                    companyList.classList.remove('hidden');
+                    return;
+                }
+                companyList.innerHTML = items
+                    .map((item) => {
+                        const cui = escapeHtml(item.cui || '');
+                        const name = escapeHtml(item.name || item.cui || '');
+                        const label = escapeHtml(item.label || `${item.name || item.cui || ''} - ${item.cui || ''}`);
+                        return `
+                            <button
+                                type="button"
+                                class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                                data-company-item
+                                data-cui="${cui}"
+                                data-name="${name}"
+                            >
+                                <div class="font-medium text-slate-900">${label}</div>
+                            </button>
+                        `;
+                    })
+                    .join('');
+                companyList.classList.remove('hidden');
+            };
+
+            const fetchCompanies = (term) => {
+                if (!companySearchUrl) {
+                    return;
+                }
+                const currentRequestId = ++companyRequestId;
+                const url = new URL(companySearchUrl, window.location.origin);
+                url.searchParams.set('term', term);
+                url.searchParams.set('limit', '20');
+                fetch(url.toString(), { credentials: 'same-origin' })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (currentRequestId !== companyRequestId) {
+                            return;
+                        }
+                        if (!data || data.success !== true) {
+                            renderCompanyItems([]);
+                            return;
+                        }
+                        renderCompanyItems(data.items || []);
+                    })
+                    .catch(() => {
+                        if (currentRequestId !== companyRequestId) {
+                            return;
+                        }
+                        renderCompanyItems([]);
+                    });
+            };
+
+            if (companyDisplayInput && companyValueInput) {
+                if (parentForm) {
+                    parentForm.addEventListener('submit', () => {
+                        if (companyValueInput.value.trim() !== '') {
+                            return;
+                        }
+                        const maybeCui = extractCompanyCuiCandidate(companyDisplayInput.value);
+                        if (maybeCui !== '') {
+                            companyValueInput.value = maybeCui;
+                        }
+                    });
+                }
+                companyDisplayInput.addEventListener('focus', () => {
+                    fetchCompanies(companyDisplayInput.value.trim());
+                });
+                companyDisplayInput.addEventListener('input', () => {
+                    companyValueInput.value = '';
+                    const query = companyDisplayInput.value.trim();
+                    if (companyTimer) {
+                        clearTimeout(companyTimer);
+                    }
+                    companyTimer = setTimeout(() => {
+                        fetchCompanies(query);
+                    }, 200);
+                });
+                companyDisplayInput.addEventListener('blur', () => {
+                    window.setTimeout(() => {
+                        clearCompanyList();
+                        if (companyValueInput.value.trim() !== '') {
+                            return;
+                        }
+                        const maybeCui = extractCompanyCuiCandidate(companyDisplayInput.value);
+                        if (maybeCui !== '') {
+                            companyValueInput.value = maybeCui;
+                            companyDisplayInput.value = maybeCui;
+                        }
+                    }, 150);
+                });
+            }
+
+            if (companyList) {
+                companyList.addEventListener('click', (event) => {
+                    const target = event.target.closest('[data-company-item]');
+                    if (!target) {
+                        return;
+                    }
+                    applyCompanySelection({
+                        cui: target.getAttribute('data-cui') || '',
+                        name: target.getAttribute('data-name') || '',
+                    });
+                });
+            }
         }
 
         const prefillCuiInput = prefillCuiField;

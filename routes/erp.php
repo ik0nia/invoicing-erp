@@ -30,6 +30,7 @@ $router->post('/admin/enrollment-links/disable', [EnrollmentLinksController::cla
 $router->post('/admin/enrollment-links/regenerate', [EnrollmentLinksController::class, 'regenerate']);
 $router->post('/admin/enrollment-links/lookup', [EnrollmentLinksController::class, 'lookup']);
 $router->get('/admin/enrollment-links/supplier-search', [EnrollmentLinksController::class, 'supplierSearch']);
+$router->get('/admin/enrollment-links/company-search', [EnrollmentLinksController::class, 'companySearch']);
 $router->get('/admin/enrollment-links/supplier-info', [EnrollmentLinksController::class, 'supplierInfo']);
 $router->post('/admin/enrollment-links/resources/upload', [EnrollmentLinksController::class, 'uploadResource']);
 $router->post('/admin/enrollment-links/resources/delete', [EnrollmentLinksController::class, 'deleteResource']);

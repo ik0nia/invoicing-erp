@@ -65,10 +65,7 @@ class EnrollmentLinksController
             'status' => trim((string) ($_GET['status'] ?? '')),
             'type' => trim((string) ($_GET['type'] ?? '')),
             'onboarding_status' => trim((string) ($_GET['onboarding_status'] ?? '')),
-            'supplier_cui' => trim((string) ($_GET['supplier_cui'] ?? '')),
-            'partner_cui' => trim((string) ($_GET['partner_cui'] ?? '')),
-            'relation_supplier_cui' => trim((string) ($_GET['relation_supplier_cui'] ?? '')),
-            'relation_client_cui' => trim((string) ($_GET['relation_client_cui'] ?? '')),
+            'company_cui' => trim((string) ($_GET['company_cui'] ?? '')),
             'page' => (int) ($_GET['page'] ?? 1),
             'per_page' => (int) ($_GET['per_page'] ?? 50),
         ];
@@ -82,6 +79,7 @@ class EnrollmentLinksController
         if ($filters['page'] < 1) {
             $filters['page'] = 1;
         }
+        $filters['company_cui'] = preg_replace('/\D+/', '', $filters['company_cui']);
 
         $where = [];
         $params = [];
@@ -98,26 +96,34 @@ class EnrollmentLinksController
             $where[] = 'onboarding_status = :onboarding_status';
             $params['onboarding_status'] = $filters['onboarding_status'];
         }
+        $hasSupplierCui = Database::columnExists('enrollment_links', 'supplier_cui');
         $hasPartnerCui = Database::columnExists('enrollment_links', 'partner_cui');
         $hasRelationSupplier = Database::columnExists('enrollment_links', 'relation_supplier_cui');
         $hasRelationClient = Database::columnExists('enrollment_links', 'relation_client_cui');
-        if ($filters['supplier_cui'] !== '') {
-            $where[] = 'supplier_cui = :supplier_cui';
-            $params['supplier_cui'] = preg_replace('/\D+/', '', $filters['supplier_cui']);
+        if ($filters['company_cui'] !== '') {
+            $companyColumns = [];
+            if ($hasSupplierCui) {
+                $companyColumns[] = 'supplier_cui';
+            }
+            if ($hasPartnerCui) {
+                $companyColumns[] = 'partner_cui';
+            }
+            if ($hasRelationSupplier) {
+                $companyColumns[] = 'relation_supplier_cui';
+            }
+            if ($hasRelationClient) {
+                $companyColumns[] = 'relation_client_cui';
+            }
+            if (!empty($companyColumns)) {
+                $companyConditions = [];
+                foreach ($companyColumns as $index => $column) {
+                    $paramName = 'company_cui_' . $index;
+                    $companyConditions[] = $column . ' = :' . $paramName;
+                    $params[$paramName] = $filters['company_cui'];
+                }
+                $where[] = '(' . implode(' OR ', $companyConditions) . ')';
+            }
         }
-        if ($filters['partner_cui'] !== '' && $hasPartnerCui) {
-            $where[] = 'partner_cui = :partner_cui';
-            $params['partner_cui'] = preg_replace('/\D+/', '', $filters['partner_cui']);
-        }
-        if ($filters['relation_supplier_cui'] !== '' && $hasRelationSupplier) {
-            $where[] = 'relation_supplier_cui = :relation_supplier_cui';
-            $params['relation_supplier_cui'] = preg_replace('/\D+/', '', $filters['relation_supplier_cui']);
-        }
-        if ($filters['relation_client_cui'] !== '' && $hasRelationClient) {
-            $where[] = 'relation_client_cui = :relation_client_cui';
-            $params['relation_client_cui'] = preg_replace('/\D+/', '', $filters['relation_client_cui']);
-        }
-
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
         $total = (int) (Database::fetchValue('SELECT COUNT(*) FROM enrollment_links ' . $whereSql, $params) ?? 0);
         $totalPages = (int) max(1, ceil($total / $filters['per_page']));
@@ -145,11 +151,13 @@ class EnrollmentLinksController
             UserSupplierAccess::ensureTable();
             $suppliers = UserSupplierAccess::suppliersForUser($user->id);
         }
+        $companyFilterDisplay = $this->resolveCompanyFilterDisplay((string) ($filters['company_cui'] ?? ''));
 
         Response::view('admin/enrollment_links/index', [
             'rows' => $rows,
             'filters' => $filters,
             'pagination' => $pagination,
+            'companyFilterDisplay' => $companyFilterDisplay,
             'newLink' => Session::pull('public_link'),
             'userSuppliers' => $suppliers,
             'canApproveOnboarding' => Auth::isInternalStaff(),
@@ -341,6 +349,19 @@ class EnrollmentLinksController
         $term = trim((string) ($_GET['term'] ?? ''));
         $limit = min(25, max(1, (int) ($_GET['limit'] ?? 15)));
         $items = $this->searchSuppliers($user, $term, $limit);
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
+    public function companySearch(): void
+    {
+        $this->requireEnrollmentRole();
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(30, max(1, (int) ($_GET['limit'] ?? 15)));
+        $items = $this->searchCompanies($term, $limit);
 
         $this->json([
             'success' => true,
@@ -792,6 +813,193 @@ class EnrollmentLinksController
         }
 
         return array_map(fn (array $row) => $this->mapSupplierLookupRow($row), $rows);
+    }
+
+    private function searchCompanies(string $term, int $limit): array
+    {
+        $term = trim($term);
+        $termDigits = preg_replace('/\D+/', '', $term);
+        $itemsByCui = [];
+
+        $appendItem = static function (array &$bucket, array $item): void {
+            $cui = preg_replace('/\D+/', '', (string) ($item['cui'] ?? ''));
+            if ($cui === '') {
+                return;
+            }
+            $name = trim((string) ($item['name'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            if (!isset($bucket[$cui])) {
+                $bucket[$cui] = [
+                    'cui' => $cui,
+                    'name' => $name,
+                    'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                ];
+                return;
+            }
+            if ($bucket[$cui]['name'] === $cui && $name !== '') {
+                $bucket[$cui]['name'] = $name;
+                $bucket[$cui]['label'] = $name !== $cui ? ($name . ' - ' . $cui) : $cui;
+            }
+        };
+
+        if (Database::tableExists('partners')) {
+            $where = [];
+            $params = [];
+            if ($term !== '') {
+                $parts = ['denumire LIKE :partners_name_term'];
+                $params['partners_name_term'] = '%' . $term . '%';
+                if ($termDigits !== '') {
+                    $parts[] = 'cui LIKE :partners_cui_term';
+                    $params['partners_cui_term'] = '%' . $termDigits . '%';
+                }
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            }
+            $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM partners
+                 ' . $whereSql . '
+                 ORDER BY denumire ASC, cui ASC
+                 LIMIT ' . (int) max($limit * 3, $limit),
+                $params
+            );
+            foreach ($rows as $row) {
+                $appendItem($itemsByCui, $this->mapCompanyLookupRow($row));
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $where = [];
+            $params = [];
+            if ($term !== '') {
+                $parts = ['denumire LIKE :companies_name_term'];
+                $params['companies_name_term'] = '%' . $term . '%';
+                if ($termDigits !== '') {
+                    $parts[] = 'cui LIKE :companies_cui_term';
+                    $params['companies_cui_term'] = '%' . $termDigits . '%';
+                }
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            }
+            $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM companies
+                 ' . $whereSql . '
+                 ORDER BY denumire ASC, cui ASC
+                 LIMIT ' . (int) max($limit * 3, $limit),
+                $params
+            );
+            foreach ($rows as $row) {
+                $appendItem($itemsByCui, $this->mapCompanyLookupRow($row));
+            }
+        }
+
+        if ($termDigits !== '' && !isset($itemsByCui[$termDigits])) {
+            $appendItem($itemsByCui, [
+                'cui' => $termDigits,
+                'name' => $termDigits,
+                'label' => $termDigits,
+            ]);
+        }
+
+        $items = array_values($itemsByCui);
+        $termLower = strtolower($term);
+        usort($items, static function (array $a, array $b) use ($termDigits, $termLower): int {
+            $score = static function (array $item) use ($termDigits, $termLower): int {
+                $cui = (string) ($item['cui'] ?? '');
+                $name = strtolower((string) ($item['name'] ?? ''));
+                $rank = 100;
+
+                if ($termDigits !== '') {
+                    if (str_starts_with($cui, $termDigits)) {
+                        $rank = min($rank, 0);
+                    } elseif (strpos($cui, $termDigits) !== false) {
+                        $rank = min($rank, 10);
+                    }
+                }
+
+                if ($termLower !== '') {
+                    if ($name !== '' && str_starts_with($name, $termLower)) {
+                        $rank = min($rank, 1);
+                    } elseif ($name !== '' && strpos($name, $termLower) !== false) {
+                        $rank = min($rank, 20);
+                    }
+                }
+
+                return $rank;
+            };
+
+            $scoreA = $score($a);
+            $scoreB = $score($b);
+            if ($scoreA !== $scoreB) {
+                return $scoreA <=> $scoreB;
+            }
+
+            $nameCompare = strcmp(
+                strtolower((string) ($a['name'] ?? '')),
+                strtolower((string) ($b['name'] ?? ''))
+            );
+            if ($nameCompare !== 0) {
+                return $nameCompare;
+            }
+
+            return strcmp((string) ($a['cui'] ?? ''), (string) ($b['cui'] ?? ''));
+        });
+
+        if (count($items) > $limit) {
+            $items = array_slice($items, 0, $limit);
+        }
+
+        return $items;
+    }
+
+    private function mapCompanyLookupRow(array $row): array
+    {
+        $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+        $name = trim((string) ($row['denumire'] ?? $row['name'] ?? ''));
+        if ($name === '') {
+            $name = $cui;
+        }
+
+        return [
+            'cui' => $cui,
+            'name' => $name,
+            'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+        ];
+    }
+
+    private function resolveCompanyFilterDisplay(string $companyCui): string
+    {
+        $companyCui = preg_replace('/\D+/', '', $companyCui);
+        if ($companyCui === '') {
+            return '';
+        }
+
+        if (Database::tableExists('partners')) {
+            $row = Database::fetchOne(
+                'SELECT denumire FROM partners WHERE cui = :cui LIMIT 1',
+                ['cui' => $companyCui]
+            );
+            if ($row && trim((string) ($row['denumire'] ?? '')) !== '') {
+                $name = trim((string) $row['denumire']);
+                return $name . ' - ' . $companyCui;
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $row = Database::fetchOne(
+                'SELECT denumire FROM companies WHERE cui = :cui LIMIT 1',
+                ['cui' => $companyCui]
+            );
+            if ($row && trim((string) ($row['denumire'] ?? '')) !== '') {
+                $name = trim((string) $row['denumire']);
+                return $name . ' - ' . $companyCui;
+            }
+        }
+
+        return $companyCui;
     }
 
     private function findSupplierByCui(\App\Domain\Users\Models\User $user, string $cui): ?array
