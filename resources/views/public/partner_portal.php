@@ -313,28 +313,21 @@
                                     <th class="px-3 py-2">Departament</th>
                                     <th class="px-3 py-2">Email</th>
                                     <th class="px-3 py-2">Telefon</th>
-                                    <th class="px-3 py-2">Tip</th>
                                     <th class="px-3 py-2"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (empty($contacts) && empty($relationContacts)): ?>
                                     <tr>
-                                        <td colspan="6" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
+                                        <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($contacts as $contact): ?>
                                         <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700">
-                                                <?= htmlspecialchars((string) ($contact['name'] ?? '')) ?>
-                                                <?php if (!empty($contact['is_primary'])): ?>
-                                                    <span class="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Principal</span>
-                                                <?php endif; ?>
-                                            </td>
+                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600">Partener</td>
                                             <td class="px-3 py-2 text-right">
                                                 <?php if (!$isReadOnly): ?>
                                                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
@@ -348,16 +341,10 @@
                                     <?php endforeach; ?>
                                     <?php foreach ($relationContacts as $contact): ?>
                                         <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700">
-                                                <?= htmlspecialchars((string) ($contact['name'] ?? '')) ?>
-                                                <?php if (!empty($contact['is_primary'])): ?>
-                                                    <span class="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Principal</span>
-                                                <?php endif; ?>
-                                            </td>
+                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
                                             <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600">Relatie</td>
                                             <td class="px-3 py-2 text-right">
                                                 <?php if (!$isReadOnly): ?>
                                                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
@@ -375,32 +362,18 @@
                     </div>
 
                     <?php if (!$isReadOnly): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-6">
+                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-5">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
                             <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
                             <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
-                                <option value="">Departament</option>
                                 <?php foreach ($contactDepartments as $department): ?>
                                     <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
                                 <?php endforeach; ?>
                             </select>
                             <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
                             <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                            <div class="flex items-center gap-2 text-sm text-slate-600 md:col-span-2">
-                                <input type="checkbox" name="is_primary" id="is_primary">
-                                <label for="is_primary">Contact principal</label>
-                            </div>
-                            <?php if (($scope['type'] ?? '') === 'relation'): ?>
-                                <div class="md:col-span-2">
-                                    <label class="block text-xs text-slate-500">Tip contact</label>
-                                    <select name="contact_scope" class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm">
-                                        <option value="partner">Contact general</option>
-                                        <option value="relation">Contact relatie</option>
-                                    </select>
-                                </div>
-                            <?php endif; ?>
-                            <div class="md:col-span-2">
+                            <div class="md:col-span-5">
                                 <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                                     Adauga contact
                                 </button>

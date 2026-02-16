@@ -258,19 +258,6 @@ class PublicPartnerController
             Session::flash('error', 'Selectati departamentul contactului.');
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
-        $isPrimary = !empty($_POST['is_primary']) ? 1 : 0;
-        $scope = $this->resolveScope($context, $partnerCui);
-        $contactScope = trim((string) ($_POST['contact_scope'] ?? 'partner'));
-
-        $supplierCui = null;
-        $clientCui = null;
-        $partnerValue = $partnerCui;
-
-        if ($contactScope === 'relation' && $scope['type'] === 'relation') {
-            $partnerValue = null;
-            $supplierCui = $scope['supplier_cui'];
-            $clientCui = $scope['client_cui'];
-        }
 
         if (!Database::tableExists('partner_contacts')) {
             Session::flash('error', 'Contactele nu sunt disponibile momentan.');
@@ -283,14 +270,14 @@ class PublicPartnerController
                 'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, is_primary, created_at)
                  VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :is_primary, :created_at)',
                 [
-                    'partner' => $partnerValue !== '' ? $partnerValue : null,
-                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
-                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'partner' => $partnerCui !== '' ? $partnerCui : null,
+                    'supplier' => null,
+                    'client' => null,
                     'name' => $name,
                     'email' => $email !== '' ? $email : null,
                     'phone' => $phone !== '' ? $phone : null,
                     'role' => $role !== '' ? $role : null,
-                    'is_primary' => $isPrimary,
+                    'is_primary' => 0,
                     'created_at' => date('Y-m-d H:i:s'),
                 ]
             );
@@ -299,9 +286,9 @@ class PublicPartnerController
                 'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, created_at)
                  VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :created_at)',
                 [
-                    'partner' => $partnerValue !== '' ? $partnerValue : null,
-                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
-                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'partner' => $partnerCui !== '' ? $partnerCui : null,
+                    'supplier' => null,
+                    'client' => null,
                     'name' => $name,
                     'email' => $email !== '' ? $email : null,
                     'phone' => $phone !== '' ? $phone : null,
