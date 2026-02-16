@@ -24,6 +24,10 @@ class ContractTemplateVariables
             ['key' => 'partner.representative_function', 'label' => 'Functie reprezentant companie'],
             ['key' => 'partner.bank_account', 'label' => 'Cont bancar companie (IBAN/cont)'],
             ['key' => 'partner.bank_name', 'label' => 'Banca companie'],
+            ['key' => 'company.legal_representative', 'label' => 'Reprezentant legal companie (contract)'],
+            ['key' => 'company.legal_representative_role', 'label' => 'Functie reprezentant companie (contract)'],
+            ['key' => 'company.bank', 'label' => 'Banca companie (contract)'],
+            ['key' => 'company.iban', 'label' => 'IBAN companie (contract)'],
             ['key' => 'supplier.name', 'label' => 'Denumire furnizor'],
             ['key' => 'supplier.cui', 'label' => 'CUI furnizor'],
             ['key' => 'supplier.email', 'label' => 'Email furnizor'],
@@ -88,17 +92,49 @@ class ContractTemplateVariables
             $partnerCompany['bank_account'] ?? '',
             $partner['bank_account'] ?? ''
         );
-        $vars['partner.representative_name'] = $this->firstNonEmpty($partnerCompany['representative_name'] ?? '', $partner['representative_name'] ?? '');
-        $vars['partner.representative_function'] = $this->firstNonEmpty($partnerCompany['representative_function'] ?? '', $partner['representative_function'] ?? '');
+        $vars['partner.representative_name'] = $this->firstNonEmpty(
+            $partnerCompany['legal_representative_name'] ?? '',
+            $partnerCompany['representative_name'] ?? '',
+            $partner['representative_name'] ?? ''
+        );
+        $vars['partner.representative_function'] = $this->firstNonEmpty(
+            $partnerCompany['legal_representative_role'] ?? '',
+            $partnerCompany['representative_function'] ?? '',
+            $partner['representative_function'] ?? ''
+        );
         $vars['partner.bank_account'] = $this->resolveBankAccount($partnerCompany, $partner);
         $vars['partner.bank_name'] = $this->resolveBankName($partnerCompany, $partner);
+        $vars['company.legal_representative'] = $this->firstNonEmpty(
+            $partnerCompany['legal_representative_name'] ?? '',
+            $partnerCompany['representative_name'] ?? '',
+            $partner['representative_name'] ?? ''
+        );
+        $vars['company.legal_representative_role'] = $this->firstNonEmpty(
+            $partnerCompany['legal_representative_role'] ?? '',
+            $partnerCompany['representative_function'] ?? '',
+            $partner['representative_function'] ?? ''
+        );
+        $vars['company.bank'] = $this->resolveBankName($partnerCompany, $partner);
+        $vars['company.iban'] = $this->firstNonEmpty(
+            $partnerCompany['iban'] ?? '',
+            $partnerCompany['bank_account'] ?? '',
+            $partner['bank_account'] ?? ''
+        );
 
         $vars['supplier.name'] = $this->firstNonEmpty($supplierCompany['denumire'] ?? '', $supplier['denumire'] ?? '');
         $vars['supplier.cui'] = $this->firstNonEmpty($supplierCompany['cui'] ?? '', $supplier['cui'] ?? '');
         $vars['supplier.email'] = $this->firstNonEmpty($supplierCompany['email'] ?? '', $supplier['email'] ?? '');
         $vars['supplier.phone'] = $this->firstNonEmpty($supplierCompany['telefon'] ?? '', $supplier['telefon'] ?? '');
-        $vars['supplier.representative_name'] = $this->firstNonEmpty($supplierCompany['representative_name'] ?? '', $supplier['representative_name'] ?? '');
-        $vars['supplier.representative_function'] = $this->firstNonEmpty($supplierCompany['representative_function'] ?? '', $supplier['representative_function'] ?? '');
+        $vars['supplier.representative_name'] = $this->firstNonEmpty(
+            $supplierCompany['legal_representative_name'] ?? '',
+            $supplierCompany['representative_name'] ?? '',
+            $supplier['representative_name'] ?? ''
+        );
+        $vars['supplier.representative_function'] = $this->firstNonEmpty(
+            $supplierCompany['legal_representative_role'] ?? '',
+            $supplierCompany['representative_function'] ?? '',
+            $supplier['representative_function'] ?? ''
+        );
         $vars['supplier.bank_account'] = $this->resolveBankAccount($supplierCompany, $supplier);
         $vars['supplier.bank_name'] = $this->resolveBankName($supplierCompany, $supplier);
 
@@ -106,8 +142,16 @@ class ContractTemplateVariables
         $vars['client.cui'] = $this->firstNonEmpty($clientCompany['cui'] ?? '', $client['cui'] ?? '');
         $vars['client.email'] = $this->firstNonEmpty($clientCompany['email'] ?? '', $client['email'] ?? '');
         $vars['client.phone'] = $this->firstNonEmpty($clientCompany['telefon'] ?? '', $client['telefon'] ?? '');
-        $vars['client.representative_name'] = $this->firstNonEmpty($clientCompany['representative_name'] ?? '', $client['representative_name'] ?? '');
-        $vars['client.representative_function'] = $this->firstNonEmpty($clientCompany['representative_function'] ?? '', $client['representative_function'] ?? '');
+        $vars['client.representative_name'] = $this->firstNonEmpty(
+            $clientCompany['legal_representative_name'] ?? '',
+            $clientCompany['representative_name'] ?? '',
+            $client['representative_name'] ?? ''
+        );
+        $vars['client.representative_function'] = $this->firstNonEmpty(
+            $clientCompany['legal_representative_role'] ?? '',
+            $clientCompany['representative_function'] ?? '',
+            $client['representative_function'] ?? ''
+        );
         $vars['client.bank_account'] = $this->resolveBankAccount($clientCompany, $client);
         $vars['client.bank_name'] = $this->resolveBankName($clientCompany, $client);
 
@@ -215,6 +259,8 @@ class ContractTemplateVariables
             $this->optionalColumn('companies', 'tara'),
             $this->optionalColumn('companies', 'email'),
             $this->optionalColumn('companies', 'telefon'),
+            $this->optionalColumn('companies', 'legal_representative_name'),
+            $this->optionalColumn('companies', 'legal_representative_role'),
             $this->optionalColumn('companies', 'representative_name'),
             $this->optionalColumn('companies', 'representative_function'),
             $this->optionalColumn('companies', 'banca'),

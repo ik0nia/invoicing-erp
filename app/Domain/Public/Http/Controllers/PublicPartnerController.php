@@ -61,6 +61,9 @@ class PublicPartnerController
         if ($partnerCui === '' && $currentStep > 1) {
             $currentStep = 1;
         }
+        if ($partnerCui !== '' && $currentStep > 1 && !$this->hasMandatoryCompanyProfile($partnerCui)) {
+            $currentStep = 1;
+        }
         if (in_array($onboardingStatus, ['submitted', 'approved'], true)) {
             $currentStep = 3;
         }
@@ -141,14 +144,32 @@ class PublicPartnerController
             Response::redirect('/p/' . $token);
         }
 
-        $partnerProfile = [
-            'representative_name' => trim((string) ($_POST['representative_name'] ?? '')),
-            'representative_function' => trim((string) ($_POST['representative_function'] ?? '')),
-            'bank_account' => trim((string) ($_POST['bank_account'] ?? ($_POST['iban'] ?? ''))),
-            'bank_name' => trim((string) ($_POST['bank_name'] ?? ($_POST['banca'] ?? ''))),
-        ];
-        Partner::upsert($cui, $denumire, $partnerProfile);
-        $this->upsertCompanyFromPayload($cui, $context, $_POST);
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($_POST['legal_representative_name'] ?? ($_POST['representative_name'] ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($_POST['legal_representative_role'] ?? ($_POST['representative_function'] ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($_POST['bank_name'] ?? ($_POST['banca'] ?? '')));
+        $iban = $this->sanitizeIban((string) ($_POST['iban'] ?? ($_POST['bank_account'] ?? '')));
+
+        if ($legalRepresentativeName === '' || $legalRepresentativeRole === '' || $bankName === '' || $iban === '') {
+            Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-1');
+        }
+        if (!$this->isValidIban($iban)) {
+            Session::flash('error', 'IBAN invalid. Folositi un IBAN cu lungime intre 15 si 34 caractere.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-1');
+        }
+
+        $payload = $_POST;
+        $payload['legal_representative_name'] = $legalRepresentativeName;
+        $payload['legal_representative_role'] = $legalRepresentativeRole;
+        $payload['bank_name'] = $bankName;
+        $payload['iban'] = $iban;
+        $payload['representative_name'] = $legalRepresentativeName;
+        $payload['representative_function'] = $legalRepresentativeRole;
+        $payload['banca'] = $bankName;
+        $payload['bank_account'] = $iban;
+
+        Partner::upsert($cui, $denumire);
+        $this->upsertCompanyFromPayload($cui, $context, $payload);
 
         $linkType = (string) ($context['link']['type'] ?? '');
         $isSupplier = $linkType === 'supplier';
@@ -354,6 +375,10 @@ class PublicPartnerController
         $scope = $this->resolveScope($context, $partnerCui);
         if ($step > 1 && $partnerCui === '') {
             Session::flash('error', 'Completeaza datele companiei pentru a continua.');
+            $step = 1;
+        }
+        if ($step > 1 && $partnerCui !== '' && !$this->hasMandatoryCompanyProfile($partnerCui)) {
+            Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
             $step = 1;
         }
         if ($step === 2 && $partnerCui !== '') {
@@ -569,6 +594,10 @@ class PublicPartnerController
             Session::flash('error', 'Datele companiei nu sunt complete. Salvati Pasul 1 inainte de trimitere.');
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
+        if (!$this->hasMandatoryCompanyProfile($partnerCui)) {
+            Session::flash('error', 'Completati reprezentantul legal, functia, banca si IBAN-ul in Pasul 1.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
+        }
 
         $scope = $this->resolveScope($context, $partnerCui);
         $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
@@ -698,10 +727,10 @@ class PublicPartnerController
             $data['judet'] = $company->judet;
             $data['telefon'] = $company->telefon;
             $data['email'] = $company->email;
-            $data['representative_name'] = (string) ($company->representative_name ?? '');
-            $data['representative_function'] = (string) ($company->representative_function ?? '');
-            $data['bank_account'] = (string) ($company->bank_account ?? $company->iban ?? '');
+            $data['legal_representative_name'] = (string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? ''));
+            $data['legal_representative_role'] = (string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? ''));
             $data['bank_name'] = (string) ($company->bank_name ?? $company->banca ?? '');
+            $data['iban'] = (string) ($company->iban ?? $company->bank_account ?? '');
         }
         if ($partner) {
             if (empty($data['cui'])) {
@@ -710,19 +739,23 @@ class PublicPartnerController
             if (empty($data['denumire'])) {
                 $data['denumire'] = $partner->denumire;
             }
-            if (empty($data['representative_name'])) {
-                $data['representative_name'] = (string) ($partner->representative_name ?? '');
+            if (empty($data['legal_representative_name'])) {
+                $data['legal_representative_name'] = (string) ($partner->representative_name ?? '');
             }
-            if (empty($data['representative_function'])) {
-                $data['representative_function'] = (string) ($partner->representative_function ?? '');
-            }
-            if (empty($data['bank_account'])) {
-                $data['bank_account'] = (string) ($partner->bank_account ?? '');
+            if (empty($data['legal_representative_role'])) {
+                $data['legal_representative_role'] = (string) ($partner->representative_function ?? '');
             }
             if (empty($data['bank_name'])) {
                 $data['bank_name'] = (string) ($partner->bank_name ?? '');
             }
+            if (empty($data['iban'])) {
+                $data['iban'] = (string) ($partner->bank_account ?? '');
+            }
         }
+
+        $data['representative_name'] = (string) ($data['legal_representative_name'] ?? '');
+        $data['representative_function'] = (string) ($data['legal_representative_role'] ?? '');
+        $data['bank_account'] = (string) ($data['iban'] ?? '');
 
         return $data;
     }
@@ -903,12 +936,10 @@ class PublicPartnerController
             'tara' => $existing ? $existing->tara : 'Romania',
             'email' => $existing ? $existing->email : '',
             'telefon' => $existing ? $existing->telefon : '',
-            'representative_name' => $existing ? ($existing->representative_name ?? null) : ($partner?->representative_name ?? null),
-            'representative_function' => $existing ? ($existing->representative_function ?? null) : ($partner?->representative_function ?? null),
-            'banca' => $existing ? $existing->banca : null,
-            'iban' => $existing ? $existing->iban : null,
-            'bank_account' => $existing ? ($existing->bank_account ?? null) : ($partner?->bank_account ?? null),
-            'bank_name' => $existing ? ($existing->bank_name ?? null) : ($partner?->bank_name ?? null),
+            'legal_representative_name' => $existing ? ($existing->legal_representative_name !== '' ? $existing->legal_representative_name : ($existing->representative_name ?? '')) : ($partner?->representative_name ?? ''),
+            'legal_representative_role' => $existing ? ($existing->legal_representative_role !== '' ? $existing->legal_representative_role : ($existing->representative_function ?? '')) : ($partner?->representative_function ?? ''),
+            'bank_name' => $existing ? ($existing->bank_name ?? $existing->banca ?? '') : ($partner?->bank_name ?? ''),
+            'iban' => $existing ? (string) ($existing->iban ?? $existing->bank_account ?? '') : (string) ($partner?->bank_account ?? ''),
             'tip_companie' => $companyType,
             'activ' => $existing ? (int) $existing->activ : 1,
         ];
@@ -921,26 +952,35 @@ class PublicPartnerController
             'judet' => 'judet',
             'email' => 'email',
             'telefon' => 'telefon',
-            'representative_name' => 'representative_name',
-            'representative_function' => 'representative_function',
-            'bank_account' => 'bank_account',
-            'bank_name' => 'bank_name',
         ];
         foreach ($map as $input => $field) {
-            $value = trim((string) ($payload[$input] ?? ''));
+            $value = $this->sanitizeCompanyValue((string) ($payload[$input] ?? ''));
             if ($value !== '') {
                 $data[$field] = $value;
             }
         }
-        if (trim((string) ($data['bank_account'] ?? '')) === '' && trim((string) ($data['iban'] ?? '')) !== '') {
-            $data['bank_account'] = (string) $data['iban'];
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($payload['legal_representative_name'] ?? ($payload['representative_name'] ?? '')));
+        if ($legalRepresentativeName !== '') {
+            $data['legal_representative_name'] = $legalRepresentativeName;
         }
-        if (trim((string) ($data['bank_name'] ?? '')) === '' && trim((string) ($data['banca'] ?? '')) !== '') {
-            $data['bank_name'] = (string) $data['banca'];
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($payload['legal_representative_role'] ?? ($payload['representative_function'] ?? '')));
+        if ($legalRepresentativeRole !== '') {
+            $data['legal_representative_role'] = $legalRepresentativeRole;
         }
-        if (trim((string) ($data['banca'] ?? '')) === '' && trim((string) ($data['bank_name'] ?? '')) !== '') {
-            $data['banca'] = (string) $data['bank_name'];
+        $bankName = $this->sanitizeCompanyValue((string) ($payload['bank_name'] ?? ($payload['banca'] ?? '')));
+        if ($bankName !== '') {
+            $data['bank_name'] = $bankName;
         }
+        $iban = $this->sanitizeIban((string) ($payload['iban'] ?? ($payload['bank_account'] ?? '')));
+        if ($iban !== '') {
+            $data['iban'] = $iban;
+        }
+
+        $data['representative_name'] = (string) ($data['legal_representative_name'] ?? '');
+        $data['representative_function'] = (string) ($data['legal_representative_role'] ?? '');
+        $data['banca'] = (string) ($data['bank_name'] ?? '');
+        $data['bank_account'] = (string) ($data['iban'] ?? '');
 
         Company::save($data);
     }
@@ -1165,6 +1205,53 @@ class PublicPartnerController
         }
     }
 
+    private function hasMandatoryCompanyProfile(string $cui): bool
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '' || !Database::tableExists('companies')) {
+            return false;
+        }
+
+        $company = Company::findByCui($cui);
+        if (!$company) {
+            return false;
+        }
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($company->bank_name ?? $company->banca ?? ''));
+        $iban = $this->sanitizeIban((string) ($company->iban ?? $company->bank_account ?? ''));
+
+        return $legalRepresentativeName !== ''
+            && $legalRepresentativeRole !== ''
+            && $bankName !== ''
+            && $this->isValidIban($iban);
+    }
+
+    private function sanitizeCompanyValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function sanitizeIban(string $value): string
+    {
+        $value = strtoupper($value);
+        $value = preg_replace('/\s+/', '', $value);
+        $value = preg_replace('/[^A-Z0-9]/', '', (string) $value);
+
+        return (string) $value;
+    }
+
+    private function isValidIban(string $iban): bool
+    {
+        $length = strlen($iban);
+
+        return $length >= 15 && $length <= 34;
+    }
+
     private function mergePrefill(array $prefill, array $incoming): array
     {
         $map = [
@@ -1176,13 +1263,19 @@ class PublicPartnerController
             'judet' => 'judet',
             'telefon' => 'telefon',
             'email' => 'email',
-            'representative_name' => 'representative_name',
-            'representative_function' => 'representative_function',
-            'bank_account' => 'bank_account',
+            'legal_representative_name' => 'legal_representative_name',
+            'legal_representative_role' => 'legal_representative_role',
             'bank_name' => 'bank_name',
+            'iban' => 'iban',
+            'representative_name' => 'legal_representative_name',
+            'representative_function' => 'legal_representative_role',
+            'banca' => 'bank_name',
+            'bank_account' => 'iban',
         ];
         foreach ($map as $key => $target) {
-            $value = trim((string) ($incoming[$key] ?? ''));
+            $value = $target === 'iban'
+                ? $this->sanitizeIban((string) ($incoming[$key] ?? ''))
+                : $this->sanitizeCompanyValue((string) ($incoming[$key] ?? ''));
             if ($value !== '') {
                 $prefill[$target] = $value;
             }

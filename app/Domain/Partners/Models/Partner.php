@@ -129,7 +129,7 @@ class Partner
         return self::findByCui($cui);
     }
 
-    public static function upsert(string $cui, string $denumire, array $profile = []): self
+    public static function upsert(string $cui, string $denumire): self
     {
         $now = date('Y-m-d H:i:s');
         $denumire = CompanyName::normalize($denumire);
@@ -146,44 +146,7 @@ class Partner
             ]
         );
 
-        if (!empty($profile)) {
-            self::updateProfileFields($cui, $profile);
-        }
-
         return self::findByCui($cui);
-    }
-
-    public static function updateProfileFields(string $cui, array $profile): void
-    {
-        if ($cui === '' || !Database::tableExists('partners')) {
-            return;
-        }
-
-        $columns = ['representative_name', 'representative_function', 'bank_account', 'bank_name'];
-        $updates = [];
-        $params = ['cui' => $cui];
-
-        foreach ($columns as $column) {
-            if (!array_key_exists($column, $profile) || !Database::columnExists('partners', $column)) {
-                continue;
-            }
-            $value = trim((string) ($profile[$column] ?? ''));
-            $updates[] = $column . ' = :' . $column;
-            $params[$column] = $value !== '' ? $value : null;
-        }
-
-        if (empty($updates)) {
-            return;
-        }
-        if (Database::columnExists('partners', 'updated_at')) {
-            $updates[] = 'updated_at = :updated_at';
-            $params['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        Database::execute(
-            'UPDATE partners SET ' . implode(', ', $updates) . ' WHERE cui = :cui',
-            $params
-        );
     }
 
     public static function updateFlags(string $cui, bool $isSupplier, bool $isClient): void

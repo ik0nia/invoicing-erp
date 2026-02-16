@@ -132,34 +132,23 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="representative_name">Reprezentant legal (nume)</label>
+            <label class="block text-sm font-medium text-slate-700" for="legal_representative_name">Reprezentant legal</label>
             <input
-                id="representative_name"
-                name="representative_name"
+                id="legal_representative_name"
+                name="legal_representative_name"
                 type="text"
-                value="<?= htmlspecialchars($form['representative_name'] ?? '') ?>"
+                value="<?= htmlspecialchars($form['legal_representative_name'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="representative_function">Functie reprezentant</label>
+            <label class="block text-sm font-medium text-slate-700" for="legal_representative_role">Functie reprezentant</label>
             <input
-                id="representative_function"
-                name="representative_function"
+                id="legal_representative_role"
+                name="legal_representative_role"
                 type="text"
-                value="<?= htmlspecialchars($form['representative_function'] ?? '') ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="bank_account">Cont bancar (IBAN/cont)</label>
-            <input
-                id="bank_account"
-                name="bank_account"
-                type="text"
-                value="<?= htmlspecialchars($form['bank_account'] ?? '') ?>"
+                value="<?= htmlspecialchars($form['legal_representative_role'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
@@ -176,18 +165,7 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="banca">Banca (compatibilitate)</label>
-            <input
-                id="banca"
-                name="banca"
-                type="text"
-                value="<?= htmlspecialchars($form['banca'] ?? '') ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="iban">IBAN (compatibilitate)</label>
+            <label class="block text-sm font-medium text-slate-700" for="iban">IBAN</label>
             <input
                 id="iban"
                 name="iban"
@@ -195,6 +173,7 @@
                 value="<?= htmlspecialchars($form['iban'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
+            <p class="mt-1 text-xs text-slate-500">Cont bancar al companiei, utilizat în contracte și facturi.</p>
         </div>
 
         <div>

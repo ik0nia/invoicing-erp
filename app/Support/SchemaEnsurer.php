@@ -28,6 +28,10 @@ class SchemaEnsurer
             self::ensurePartnerFlags();
         });
 
+        self::runStep('companies_legal_contract_columns', static function (): void {
+            self::ensureCompaniesLegalContractColumns();
+        });
+
         self::runStep('companies_profile_columns', static function (): void {
             self::ensureCompaniesProfileColumns();
         });
@@ -165,7 +169,6 @@ class SchemaEnsurer
             'representative_name' => 'ALTER TABLE companies ADD COLUMN representative_name VARCHAR(128) NULL',
             'representative_function' => 'ALTER TABLE companies ADD COLUMN representative_function VARCHAR(128) NULL',
             'bank_account' => 'ALTER TABLE companies ADD COLUMN bank_account VARCHAR(64) NULL',
-            'bank_name' => 'ALTER TABLE companies ADD COLUMN bank_name VARCHAR(128) NULL',
         ];
 
         foreach ($columns as $column => $sql) {
@@ -174,6 +177,32 @@ class SchemaEnsurer
             }
             self::safeExecute($sql, [], 'companies_add_' . $column);
             unset(self::$columnCache['companies.' . $column]);
+        }
+    }
+
+    public static function ensureCompaniesLegalContractColumns(): void
+    {
+        if (!self::tableExists('companies')) {
+            return;
+        }
+
+        $columns = [
+            'legal_representative_name' => 'ALTER TABLE companies ADD COLUMN legal_representative_name VARCHAR(255) NOT NULL DEFAULT ""',
+            'legal_representative_role' => 'ALTER TABLE companies ADD COLUMN legal_representative_role VARCHAR(255) NOT NULL DEFAULT ""',
+            'bank_name' => 'ALTER TABLE companies ADD COLUMN bank_name VARCHAR(255) NOT NULL DEFAULT ""',
+            'iban' => 'ALTER TABLE companies ADD COLUMN iban VARCHAR(64) NOT NULL DEFAULT ""',
+        ];
+
+        foreach ($columns as $column => $sql) {
+            if (self::columnExists('companies', $column)) {
+                continue;
+            }
+            self::safeExecute($sql, [], 'companies_add_' . $column);
+            unset(self::$columnCache['companies.' . $column]);
+        }
+
+        if (self::columnExists('companies', 'iban')) {
+            self::ensureIndex('companies', 'idx_companies_iban', 'ALTER TABLE companies ADD INDEX idx_companies_iban (iban)');
         }
     }
 
