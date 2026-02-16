@@ -62,6 +62,7 @@ class ContractPdfService
                 'doc_type' => $docType,
                 'template_id' => $templateId,
                 'render_context' => $renderContext,
+                'contract_id' => (int) ($contract['id'] ?? 0),
                 'doc_no' => (int) ($contract['doc_no'] ?? 0),
                 'doc_series' => (string) ($contract['doc_series'] ?? ''),
                 'doc_full_no' => (string) ($contract['doc_full_no'] ?? ''),

@@ -58,6 +58,10 @@ class ContractTemplateVariables
             ['key' => 'contract.title', 'label' => 'Titlu contract'],
             ['key' => 'contract.created_at', 'label' => 'Data creare contract'],
             ['key' => 'contract.date', 'label' => 'Data contract'],
+            ['key' => 'contract.reference_no', 'label' => 'Numar contract asociat documentului'],
+            ['key' => 'contract.reference_date', 'label' => 'Data contract asociat documentului'],
+            ['key' => 'contract.parent_no', 'label' => 'Alias numar contract asociat'],
+            ['key' => 'contract.parent_date', 'label' => 'Alias data contract asociat'],
             ['key' => 'contract.doc_type', 'label' => 'Tip document (doc_type)'],
             ['key' => 'contract.no', 'label' => 'Numar document'],
             ['key' => 'contract.series', 'label' => 'Serie document'],
@@ -192,10 +196,23 @@ class ContractTemplateVariables
             $paddedNo = str_pad($docNo, 6, '0', STR_PAD_LEFT);
             $docFullNo = $docSeries !== '' ? ($docSeries . '-' . $paddedNo) : $paddedNo;
         }
+        $reference = $this->resolvePrimaryContractReference(
+            $partnerCui,
+            $supplierCui,
+            $clientCui,
+            $contractContext,
+            $docType,
+            $docFullNo,
+            $contractDateDisplay
+        );
 
         $vars['contract.title'] = (string) ($contractContext['title'] ?? '');
         $vars['contract.created_at'] = (string) ($contractContext['created_at'] ?? date('Y-m-d'));
         $vars['contract.date'] = $contractDateDisplay;
+        $vars['contract.reference_no'] = (string) ($reference['no'] ?? '');
+        $vars['contract.reference_date'] = (string) ($reference['date'] ?? '');
+        $vars['contract.parent_no'] = (string) ($reference['no'] ?? '');
+        $vars['contract.parent_date'] = (string) ($reference['date'] ?? '');
         $vars['contract.doc_type'] = $docType;
         $vars['contract.no'] = $docNo;
         $vars['contract.series'] = $docSeries;
@@ -221,6 +238,160 @@ class ContractTemplateVariables
         }
 
         return date('d.m.Y', $timestamp);
+    }
+
+    private function resolvePrimaryContractReference(
+        ?string $partnerCui,
+        ?string $supplierCui,
+        ?string $clientCui,
+        array $contractContext,
+        string $docType,
+        string $currentDocFullNo,
+        string $currentContractDateDisplay
+    ): array {
+        $referenceNo = '';
+        $referenceDate = '';
+        if ($docType === 'contract') {
+            $referenceNo = trim($currentDocFullNo);
+            $referenceDate = trim($currentContractDateDisplay);
+        }
+
+        $primary = $this->fetchPrimaryContractForScope(
+            $partnerCui,
+            $supplierCui,
+            $clientCui,
+            isset($contractContext['contract_id']) ? (int) $contractContext['contract_id'] : 0
+        );
+        if ($primary) {
+            if ($referenceNo === '') {
+                $referenceNo = $this->formatContractNumberFromRow($primary);
+            }
+            if ($referenceDate === '') {
+                $primaryDateRaw = trim((string) ($primary['contract_date'] ?? $primary['created_at'] ?? ''));
+                $referenceDate = $this->formatDateForDisplay($primaryDateRaw);
+            }
+        }
+
+        if ($referenceNo === '') {
+            $referenceNo = $currentDocFullNo;
+        }
+        if ($referenceDate === '') {
+            $referenceDate = $currentContractDateDisplay;
+        }
+
+        return [
+            'no' => trim($referenceNo),
+            'date' => trim($referenceDate),
+        ];
+    }
+
+    private function fetchPrimaryContractForScope(
+        ?string $partnerCui,
+        ?string $supplierCui,
+        ?string $clientCui,
+        int $currentContractId
+    ): array {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        $scope = $this->resolvePrimaryCompanyScope($partnerCui, $supplierCui, $clientCui);
+        if ($scope['mode'] === 'none') {
+            return [];
+        }
+
+        $joinTemplate = Database::tableExists('contract_templates');
+        $sql = 'SELECT c.id, c.doc_no, c.doc_series, c.doc_full_no, c.contract_date, c.created_at
+                FROM contracts c';
+        if ($joinTemplate) {
+            $sql .= ' LEFT JOIN contract_templates t ON t.id = c.template_id';
+        }
+        $sql .= ' WHERE (' . $this->primaryContractConditionSql($joinTemplate) . ')';
+        $params = [
+            'contract_doc_type' => 'contract',
+        ];
+        if ($joinTemplate) {
+            $params['contract_doc_kind'] = 'contract';
+        }
+
+        if ($scope['mode'] === 'partner') {
+            $sql .= ' AND (c.partner_cui = :company OR c.client_cui = :company OR c.supplier_cui = :company)';
+            $params['company'] = $scope['company_cui'];
+        } elseif ($scope['mode'] === 'relation') {
+            $sql .= ' AND c.supplier_cui = :supplier AND c.client_cui = :client';
+            $params['supplier'] = $scope['supplier_cui'];
+            $params['client'] = $scope['client_cui'];
+        }
+
+        if ($currentContractId > 0) {
+            $sql .= ' ORDER BY (c.id = :current_id) DESC, c.created_at DESC, c.id DESC LIMIT 1';
+            $params['current_id'] = $currentContractId;
+        } else {
+            $sql .= ' ORDER BY c.created_at DESC, c.id DESC LIMIT 1';
+        }
+
+        return Database::fetchOne($sql, $params) ?? [];
+    }
+
+    private function resolvePrimaryCompanyScope(?string $partnerCui, ?string $supplierCui, ?string $clientCui): array
+    {
+        $partnerCui = $this->normalizeCui($partnerCui);
+        $supplierCui = $this->normalizeCui($supplierCui);
+        $clientCui = $this->normalizeCui($clientCui);
+
+        if ($partnerCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $partnerCui,
+            ];
+        }
+        if ($clientCui !== '' && $supplierCui !== '') {
+            return [
+                'mode' => 'relation',
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $clientCui,
+            ];
+        }
+        if ($clientCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $clientCui,
+            ];
+        }
+        if ($supplierCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $supplierCui,
+            ];
+        }
+
+        return ['mode' => 'none'];
+    }
+
+    private function primaryContractConditionSql(bool $joinTemplate): string
+    {
+        if ($joinTemplate) {
+            return 'c.doc_type = :contract_doc_type OR t.doc_kind = :contract_doc_kind';
+        }
+
+        return 'c.doc_type = :contract_doc_type';
+    }
+
+    private function formatContractNumberFromRow(array $contract): string
+    {
+        $fullNo = trim((string) ($contract['doc_full_no'] ?? ''));
+        if ($fullNo !== '') {
+            return $fullNo;
+        }
+
+        $docNo = (int) ($contract['doc_no'] ?? 0);
+        if ($docNo <= 0) {
+            return '';
+        }
+        $series = trim((string) ($contract['doc_series'] ?? ''));
+        $paddedNo = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+
+        return $series !== '' ? ($series . '-' . $paddedNo) : $paddedNo;
     }
 
     private function fetchPartner(string $cui): array

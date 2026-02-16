@@ -70,12 +70,29 @@ class ContractsController
         }
 
         $template = $templateId > 0 ? Database::fetchOne('SELECT * FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $templateId]) : null;
-        $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $template['doc_kind'] ?? ''));
-        if ($docType === '') {
-            $docType = 'contract';
-        }
+        $docKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
+        $docType = $this->resolveTemplateDocType($template, $docKind);
         if ($contractDate === '') {
             $contractDate = date('Y-m-d');
+        }
+        if ($docType === 'contract') {
+            $existingPrimary = $this->findExistingPrimaryContract($partnerCui, $supplierCui, $clientCui);
+            if ($existingPrimary) {
+                $existingNo = $this->formatContractNumber($existingPrimary);
+                $existingDateRaw = trim((string) ($existingPrimary['contract_date'] ?? ''));
+                $existingDateDisplay = '—';
+                if ($existingDateRaw !== '') {
+                    $timestamp = strtotime($existingDateRaw);
+                    $existingDateDisplay = $timestamp !== false ? date('d.m.Y', $timestamp) : $existingDateRaw;
+                }
+                Session::flash(
+                    'error',
+                    'Exista deja contractul principal pentru aceasta companie'
+                    . ($existingNo !== '' ? (' [' . $existingNo . ']') : '')
+                    . ' (data: ' . $existingDateDisplay . ').'
+                );
+                Response::redirect('/admin/contracts');
+            }
         }
         $numberService = new DocumentNumberService();
         $number = null;
@@ -89,6 +106,9 @@ class ContractsController
                 'error' => $exception->getMessage(),
             ]);
         }
+        $metadataJson = json_encode([
+            'doc_kind' => $docKind !== '' ? $docKind : ($docType === 'contract' ? 'contract' : 'document'),
+        ], JSON_UNESCAPED_UNICODE);
 
         Database::execute(
             'INSERT INTO contracts (
@@ -105,6 +125,7 @@ class ContractsController
                 doc_assigned_at,
                 required_onboarding,
                 status,
+                metadata_json,
                 created_by_user_id,
                 created_at
             ) VALUES (
@@ -121,6 +142,7 @@ class ContractsController
                 :doc_assigned_at,
                 :required_onboarding,
                 :status,
+                :metadata_json,
                 :user_id,
                 :created_at
             )',
@@ -138,6 +160,7 @@ class ContractsController
                 'doc_assigned_at' => isset($number['no']) ? date('Y-m-d H:i:s') : null,
                 'required_onboarding' => 0,
                 'status' => 'generated',
+                'metadata_json' => $metadataJson !== false ? $metadataJson : null,
                 'user_id' => $user ? $user->id : null,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -343,5 +366,120 @@ class ContractsController
         header('Content-Length: ' . filesize($path));
         readfile($path);
         exit;
+    }
+
+    private function resolveTemplateDocType(?array $template, string $docKind): string
+    {
+        if (!is_array($template) || empty($template)) {
+            return 'contract';
+        }
+        if ($docKind === 'contract') {
+            return 'contract';
+        }
+        $rawDocType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $template['doc_kind'] ?? ''));
+        if ($rawDocType === '') {
+            return 'document';
+        }
+        $sanitized = preg_replace('/[^a-zA-Z0-9_.-]/', '', $rawDocType);
+        $sanitized = strtolower(trim((string) $sanitized));
+
+        return $sanitized !== '' ? $sanitized : 'document';
+    }
+
+    private function findExistingPrimaryContract(string $partnerCui, string $supplierCui, string $clientCui): ?array
+    {
+        $scope = $this->resolvePrimaryCompanyScope($partnerCui, $supplierCui, $clientCui);
+        if ($scope['mode'] === 'none') {
+            return null;
+        }
+
+        $joinTemplate = Database::tableExists('contract_templates');
+        $sql = 'SELECT c.id, c.title, c.doc_full_no, c.doc_no, c.doc_series, c.contract_date
+                FROM contracts c';
+        if ($joinTemplate) {
+            $sql .= ' LEFT JOIN contract_templates t ON t.id = c.template_id';
+        }
+        $sql .= ' WHERE (' . $this->primaryContractConditionSql($joinTemplate) . ')';
+
+        $params = [
+            'contract_doc_type' => 'contract',
+        ];
+        if ($joinTemplate) {
+            $params['contract_doc_kind'] = 'contract';
+        }
+
+        if ($scope['mode'] === 'partner') {
+            $sql .= ' AND (c.partner_cui = :company OR c.client_cui = :company OR c.supplier_cui = :company)';
+            $params['company'] = $scope['company_cui'];
+        } elseif ($scope['mode'] === 'relation') {
+            $sql .= ' AND c.supplier_cui = :supplier AND c.client_cui = :client';
+            $params['supplier'] = $scope['supplier_cui'];
+            $params['client'] = $scope['client_cui'];
+        }
+
+        $sql .= ' ORDER BY c.created_at DESC, c.id DESC LIMIT 1';
+
+        return Database::fetchOne($sql, $params);
+    }
+
+    private function resolvePrimaryCompanyScope(string $partnerCui, string $supplierCui, string $clientCui): array
+    {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $clientCui = preg_replace('/\D+/', '', $clientCui);
+
+        if ($partnerCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $partnerCui,
+            ];
+        }
+        if ($clientCui !== '' && $supplierCui !== '') {
+            return [
+                'mode' => 'relation',
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $clientCui,
+            ];
+        }
+        if ($clientCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $clientCui,
+            ];
+        }
+        if ($supplierCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $supplierCui,
+            ];
+        }
+
+        return ['mode' => 'none'];
+    }
+
+    private function primaryContractConditionSql(bool $joinTemplate): string
+    {
+        if ($joinTemplate) {
+            return 'c.doc_type = :contract_doc_type OR t.doc_kind = :contract_doc_kind';
+        }
+
+        return 'c.doc_type = :contract_doc_type';
+    }
+
+    private function formatContractNumber(array $contract): string
+    {
+        $full = trim((string) ($contract['doc_full_no'] ?? ''));
+        if ($full !== '') {
+            return $full;
+        }
+
+        $docNo = (int) ($contract['doc_no'] ?? 0);
+        if ($docNo <= 0) {
+            return '';
+        }
+        $series = trim((string) ($contract['doc_series'] ?? ''));
+        $padded = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+
+        return $series !== '' ? ($series . '-' . $padded) : $padded;
     }
 }

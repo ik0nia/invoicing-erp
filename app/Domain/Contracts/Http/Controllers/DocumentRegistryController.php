@@ -21,23 +21,15 @@ class DocumentRegistryController
     public function index(): void
     {
         Auth::requireInternalStaff();
-        $this->ensureRowsForKnownDocTypes();
-
-        $rows = [];
-        if (Database::tableExists('document_registry')) {
-            $rows = Database::fetchAll('SELECT * FROM document_registry ORDER BY doc_type ASC');
-        }
+        $registry = $this->ensureGlobalRegistryRow();
         $filters = [
             'doc_type' => $this->sanitizeDocType((string) ($_GET['doc_type'] ?? '')),
         ];
-        $docTypeOptions = array_values(array_map(
-            static fn (array $row): string => (string) ($row['doc_type'] ?? ''),
-            $rows
-        ));
+        $docTypeOptions = $this->loadDocTypeOptions();
         $documents = $this->loadDocuments($filters['doc_type']);
 
         Response::view('admin/contracts/document_registry', [
-            'rows' => $rows,
+            'registry' => $registry,
             'filters' => $filters,
             'docTypeOptions' => $docTypeOptions,
             'documents' => $documents,
@@ -48,20 +40,15 @@ class DocumentRegistryController
     {
         Auth::requireInternalStaff();
 
-        $docType = $this->sanitizeDocType((string) ($_POST['doc_type'] ?? ''));
         $series = $this->sanitizeSeries((string) ($_POST['series'] ?? ''));
         $startNo = max(1, (int) ($_POST['start_no'] ?? 1));
         $nextNo = max(1, (int) ($_POST['next_no'] ?? $startNo));
         if ($nextNo < $startNo) {
             $nextNo = $startNo;
         }
+        $registryDocType = $this->numberService->registryKey();
 
-        if ($docType === '') {
-            Session::flash('error', 'Tipul documentului este obligatoriu.');
-            Response::redirect('/admin/registru-documente');
-        }
-
-        $this->numberService->ensureRegistryRow($docType, [
+        $this->numberService->ensureRegistryRow('contract', [
             'series' => $series,
             'start_no' => $startNo,
         ]);
@@ -77,11 +64,11 @@ class DocumentRegistryController
                 'start_no' => $startNo,
                 'next_no' => $nextNo,
                 'updated_at' => date('Y-m-d H:i:s'),
-                'doc_type' => $docType,
+                'doc_type' => $registryDocType,
             ]
         );
         Audit::record('document_registry.updated', 'document_registry', null, [
-            'doc_type' => $docType,
+            'registry_doc_type' => $registryDocType,
             'series' => $series !== '' ? $series : null,
             'start_no' => $startNo,
             'next_no' => $nextNo,
@@ -96,16 +83,11 @@ class DocumentRegistryController
     {
         Auth::requireInternalStaff();
 
-        $docType = $this->sanitizeDocType((string) ($_POST['doc_type'] ?? ''));
         $startNo = max(1, (int) ($_POST['start_no'] ?? 1));
         $series = $this->sanitizeSeries((string) ($_POST['series'] ?? ''));
+        $registryDocType = $this->numberService->registryKey();
 
-        if ($docType === '') {
-            Session::flash('error', 'Tipul documentului este obligatoriu.');
-            Response::redirect('/admin/registru-documente');
-        }
-
-        $this->numberService->ensureRegistryRow($docType, [
+        $this->numberService->ensureRegistryRow('contract', [
             'series' => $series,
             'start_no' => $startNo,
         ]);
@@ -121,11 +103,11 @@ class DocumentRegistryController
                 'start_no' => $startNo,
                 'next_no' => $startNo,
                 'updated_at' => date('Y-m-d H:i:s'),
-                'doc_type' => $docType,
+                'doc_type' => $registryDocType,
             ]
         );
         Audit::record('document_registry.start_set', 'document_registry', null, [
-            'doc_type' => $docType,
+            'registry_doc_type' => $registryDocType,
             'series' => $series !== '' ? $series : null,
             'start_no' => $startNo,
             'rows_count' => 1,
@@ -139,13 +121,9 @@ class DocumentRegistryController
     {
         Auth::requireInternalStaff();
 
-        $docType = $this->sanitizeDocType((string) ($_POST['doc_type'] ?? ''));
-        if ($docType === '') {
-            Session::flash('error', 'Tipul documentului este obligatoriu.');
-            Response::redirect('/admin/registru-documente');
-        }
+        $registryDocType = $this->numberService->registryKey();
 
-        $row = $this->numberService->ensureRegistryRow($docType);
+        $row = $this->numberService->ensureRegistryRow('contract');
         $startNo = max(1, (int) ($row['start_no'] ?? 1));
         Database::execute(
             'UPDATE document_registry
@@ -155,11 +133,11 @@ class DocumentRegistryController
             [
                 'next_no' => $startNo,
                 'updated_at' => date('Y-m-d H:i:s'),
-                'doc_type' => $docType,
+                'doc_type' => $registryDocType,
             ]
         );
         Audit::record('document_registry.reset_start', 'document_registry', null, [
-            'doc_type' => $docType,
+            'registry_doc_type' => $registryDocType,
             'start_no' => $startNo,
             'rows_count' => 1,
         ]);
@@ -168,39 +146,45 @@ class DocumentRegistryController
         Response::redirect('/admin/registru-documente');
     }
 
-    private function ensureRowsForKnownDocTypes(): void
+    private function ensureGlobalRegistryRow(): array
     {
-        $docTypes = [];
-        if (Database::tableExists('contract_templates')) {
-            $rows = Database::fetchAll(
-                'SELECT DISTINCT doc_type FROM contract_templates
-                 WHERE doc_type IS NOT NULL AND doc_type <> ""
-                 ORDER BY doc_type ASC'
-            );
-            foreach ($rows as $row) {
-                $docType = $this->sanitizeDocType((string) ($row['doc_type'] ?? ''));
-                if ($docType !== '') {
-                    $docTypes[$docType] = true;
-                }
-            }
+        $row = $this->numberService->ensureRegistryRow('contract');
+        if (!Database::tableExists('document_registry')) {
+            return $row;
         }
-        if (Database::tableExists('contracts')) {
-            $rows = Database::fetchAll(
-                'SELECT DISTINCT doc_type FROM contracts
-                 WHERE doc_type IS NOT NULL AND doc_type <> ""
-                 ORDER BY doc_type ASC'
-            );
-            foreach ($rows as $row) {
-                $docType = $this->sanitizeDocType((string) ($row['doc_type'] ?? ''));
-                if ($docType !== '') {
-                    $docTypes[$docType] = true;
-                }
+
+        return Database::fetchOne(
+            'SELECT * FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+            ['doc_type' => $this->numberService->registryKey()]
+        ) ?? $row;
+    }
+
+    private function loadDocTypeOptions(): array
+    {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT DISTINCT doc_type
+             FROM contracts
+             WHERE doc_type IS NOT NULL
+               AND doc_type <> ""
+             ORDER BY doc_type ASC'
+        );
+        if (empty($rows)) {
+            return [];
+        }
+
+        $options = [];
+        foreach ($rows as $row) {
+            $docType = $this->sanitizeDocType((string) ($row['doc_type'] ?? ''));
+            if ($docType !== '') {
+                $options[$docType] = true;
             }
         }
 
-        foreach (array_keys($docTypes) as $docType) {
-            $this->numberService->ensureRegistryRow($docType);
-        }
+        return array_keys($options);
     }
 
     private function sanitizeDocType(string $docType): string

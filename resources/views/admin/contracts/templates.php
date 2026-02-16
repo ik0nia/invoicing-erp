@@ -22,6 +22,9 @@
     <div class="mt-1 text-xs text-blue-700">
         Variabila <strong>{{contacts.table}}</strong> insereaza automat tabelul cu contactele companiei.
     </div>
+    <div class="mt-1 text-xs text-blue-700">
+        Pentru documente secundare, foloseste <strong>{{contract.reference_no}}</strong> si <strong>{{contract.reference_date}}</strong>.
+    </div>
     <div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <?php foreach ($variables as $item): ?>
             <div class="flex items-center justify-between gap-2 rounded border border-blue-100 bg-white px-2 py-1 text-xs text-blue-800">

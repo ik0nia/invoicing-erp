@@ -492,6 +492,16 @@ class SchemaEnsurer
                     'contract_templates_doc_type_backfill'
                 );
             }
+            if (self::columnExists('contract_templates', 'doc_type') && self::columnExists('contract_templates', 'doc_kind')) {
+                self::safeExecute(
+                    'UPDATE contract_templates
+                     SET doc_type = "contract"
+                     WHERE LOWER(TRIM(doc_kind)) = "contract"
+                       AND (doc_type IS NULL OR LOWER(TRIM(doc_type)) <> "contract")',
+                    [],
+                    'contract_templates_contract_doc_type_normalize'
+                );
+            }
             if (self::columnExists('contract_templates', 'required_onboarding') && self::columnExists('contract_templates', 'auto_on_enrollment')) {
                 self::safeExecute(
                     'UPDATE contract_templates
@@ -690,6 +700,33 @@ class SchemaEnsurer
                 [],
                 'document_registry_numbers_backfill'
             );
+            $globalRow = Database::fetchOne(
+                'SELECT id FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+                ['doc_type' => 'global']
+            );
+            if (!$globalRow) {
+                $seed = Database::fetchOne(
+                    'SELECT series, start_no, next_no
+                     FROM document_registry
+                     ORDER BY next_no DESC, id DESC
+                     LIMIT 1'
+                ) ?? [];
+                $startNo = max(1, (int) ($seed['start_no'] ?? 1));
+                $nextNo = max($startNo, (int) ($seed['next_no'] ?? $startNo));
+                $series = trim((string) ($seed['series'] ?? ''));
+                self::safeExecute(
+                    'INSERT INTO document_registry (doc_type, series, next_no, start_no, updated_at)
+                     VALUES (:doc_type, :series, :next_no, :start_no, :updated_at)',
+                    [
+                        'doc_type' => 'global',
+                        'series' => $series !== '' ? $series : null,
+                        'next_no' => $nextNo,
+                        'start_no' => $startNo,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ],
+                    'document_registry_seed_global'
+                );
+            }
         }
     }
 

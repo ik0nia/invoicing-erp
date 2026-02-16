@@ -70,6 +70,9 @@ class ContractTemplatesController
         if ($docType === '') {
             $docType = $docKind;
         }
+        if (strtolower($docKind) === 'contract') {
+            $docType = 'contract';
+        }
 
         if ($name === '' || $docKind === '' || $docType === '') {
             Session::flash('error', 'Completeaza numele si tipul template-ului.');
@@ -179,6 +182,9 @@ class ContractTemplatesController
         if ($docType === '') {
             $docType = $docKind;
         }
+        if (strtolower($docKind) === 'contract') {
+            $docType = 'contract';
+        }
 
         if ($name === '' || $docKind === '' || $docType === '') {
             Session::flash('error', 'Completeaza numele si tipul documentului.');
@@ -263,8 +269,12 @@ class ContractTemplatesController
             )',
             [
                 'name' => (string) ($template['name'] ?? '') . ' (copie)',
-                'type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
-                'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
+                'type' => (string) ($template['doc_kind'] ?? '') === 'contract'
+                    ? 'contract'
+                    : (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
+                'doc_type' => (string) ($template['doc_kind'] ?? '') === 'contract'
+                    ? 'contract'
+                    : (string) ($template['doc_type'] ?? $template['template_type'] ?? ''),
                 'doc_kind' => (string) ($template['doc_kind'] ?? 'contract'),
                 'applies_to' => (string) ($template['applies_to'] ?? 'both'),
                 'auto_on' => !empty($template['auto_on_enrollment']) ? 1 : 0,
@@ -300,6 +310,14 @@ class ContractTemplatesController
 
         $variablesService = new ContractTemplateVariables();
         $renderer = new TemplateRenderer();
+        $previewDocKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
+        $previewDocType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? 'contract'));
+        if ($previewDocKind === 'contract') {
+            $previewDocType = 'contract';
+        }
+        if ($previewDocType === '') {
+            $previewDocType = 'contract';
+        }
         $vars = $variablesService->buildVariables(
             $partnerCui !== '' ? $partnerCui : null,
             $supplierCui !== '' ? $supplierCui : null,
@@ -310,7 +328,7 @@ class ContractTemplatesController
                 'title' => (string) ($template['name'] ?? ''),
                 'created_at' => date('Y-m-d'),
                 'contract_date' => date('Y-m-d'),
-                'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? 'contract'),
+                'doc_type' => $previewDocType,
                 'doc_no' => 123,
                 'doc_series' => 'CTR',
                 'doc_full_no' => 'CTR-000123',

@@ -8,15 +8,23 @@ use PDOException;
 
 class DocumentNumberService
 {
+    private const GLOBAL_REGISTRY_KEY = 'global';
+
+    public function registryKey(): string
+    {
+        return self::GLOBAL_REGISTRY_KEY;
+    }
+
     public function ensureRegistryRow(string $docType, array $defaults = []): array
     {
-        $docType = $this->normalizeDocType($docType);
-        if ($docType === '') {
+        $requestedDocType = $this->normalizeDocType($docType);
+        if ($requestedDocType === '') {
             throw new \InvalidArgumentException('Tipul documentului este obligatoriu.');
         }
         if (!Database::tableExists('document_registry')) {
             throw new \RuntimeException('Registrul documentelor nu este disponibil.');
         }
+        $registryDocType = self::GLOBAL_REGISTRY_KEY;
 
         $startNo = max(1, (int) ($defaults['start_no'] ?? 1));
         $series = $this->normalizeSeries($defaults['series'] ?? null);
@@ -26,7 +34,7 @@ class DocumentNumberService
              VALUES (:doc_type, :series, :next_no, :start_no, :updated_at)
              ON DUPLICATE KEY UPDATE doc_type = doc_type',
             [
-                'doc_type' => $docType,
+                'doc_type' => $registryDocType,
                 'series' => $series !== '' ? $series : null,
                 'next_no' => $startNo,
                 'start_no' => $startNo,
@@ -39,25 +47,29 @@ class DocumentNumberService
              FROM document_registry
              WHERE doc_type = :doc_type
              LIMIT 1',
-            ['doc_type' => $docType]
+            ['doc_type' => $registryDocType]
         );
 
         if (!$row) {
             throw new \RuntimeException('Nu s-a putut initializa registrul pentru tipul de document.');
         }
 
+        $row['requested_doc_type'] = $requestedDocType;
+        $row['registry_doc_type'] = $registryDocType;
+
         return $row;
     }
 
     public function allocateNumber(string $docType, array $defaults = []): array
     {
-        $docType = $this->normalizeDocType($docType);
-        if ($docType === '') {
+        $requestedDocType = $this->normalizeDocType($docType);
+        if ($requestedDocType === '') {
             throw new \InvalidArgumentException('Tipul documentului este obligatoriu pentru alocarea numarului.');
         }
         if (!Database::tableExists('document_registry')) {
             throw new \RuntimeException('Registrul documentelor nu este disponibil.');
         }
+        $registryDocType = self::GLOBAL_REGISTRY_KEY;
 
         $startNo = max(1, (int) ($defaults['start_no'] ?? 1));
         $defaultSeries = $this->normalizeSeries($defaults['series'] ?? null);
@@ -76,7 +88,7 @@ class DocumentNumberService
                      LIMIT 1
                      FOR UPDATE'
                 );
-                $select->execute(['doc_type' => $docType]);
+                $select->execute(['doc_type' => $registryDocType]);
                 $row = $select->fetch(PDO::FETCH_ASSOC);
 
                 if (!$row) {
@@ -85,7 +97,7 @@ class DocumentNumberService
                          VALUES (:doc_type, :series, :next_no, :start_no, :updated_at)'
                     );
                     $insert->execute([
-                        'doc_type' => $docType,
+                        'doc_type' => $registryDocType,
                         'series' => $defaultSeries !== '' ? $defaultSeries : null,
                         'next_no' => $startNo,
                         'start_no' => $startNo,
@@ -114,7 +126,7 @@ class DocumentNumberService
                 $update->execute([
                     'next_no' => $nextNo,
                     'updated_at' => date('Y-m-d H:i:s'),
-                    'doc_type' => $docType,
+                    'doc_type' => $registryDocType,
                 ]);
 
                 $pdo->commit();
@@ -122,7 +134,8 @@ class DocumentNumberService
                 $fullNo = $this->formatFullNo($series, $currentNo);
 
                 return [
-                    'doc_type' => $docType,
+                    'doc_type' => $requestedDocType,
+                    'registry_doc_type' => $registryDocType,
                     'series' => $series,
                     'no' => $currentNo,
                     'full_no' => $fullNo,

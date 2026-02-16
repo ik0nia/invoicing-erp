@@ -39,16 +39,12 @@ class ContractOnboardingService
                 if (!$templateId) {
                     continue;
                 }
-                $existing = $this->findExisting($templateId, $partnerCui, $supplierCui, $clientCui, $linkType);
-                if ($existing) {
-                    continue;
-                }
-
                 $title = (string) ($template['name'] ?? '');
                 $docKind = (string) ($template['doc_kind'] ?? '');
-                $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
-                if ($docType === '') {
-                    $docType = 'contract';
+                $docType = $this->resolveTemplateDocType($template, $docKind);
+                $existing = $this->findExisting($templateId, $partnerCui, $supplierCui, $clientCui, $linkType, $docType);
+                if ($existing) {
+                    continue;
                 }
                 $meta = json_encode([
                     'doc_kind' => $docKind,
@@ -151,8 +147,19 @@ class ContractOnboardingService
         }
     }
 
-    private function findExisting(int $templateId, string $partnerCui, ?string $supplierCui, ?string $clientCui, string $linkType): ?array
+    private function findExisting(
+        int $templateId,
+        string $partnerCui,
+        ?string $supplierCui,
+        ?string $clientCui,
+        string $linkType,
+        string $docType
+    ): ?array
     {
+        if ($docType === 'contract') {
+            return $this->findExistingPrimaryContract($partnerCui, $supplierCui, $clientCui);
+        }
+
         if ($linkType === 'supplier') {
             return Database::fetchOne(
                 'SELECT id FROM contracts WHERE template_id = :template AND (partner_cui = :partner OR supplier_cui = :supplier) LIMIT 1',
@@ -177,5 +184,89 @@ class ContractOnboardingService
         $sql .= ' LIMIT 1';
 
         return Database::fetchOne($sql, $params);
+    }
+
+    private function resolveTemplateDocType(array $template, string $docKind): string
+    {
+        $docKind = strtolower(trim($docKind));
+        if ($docKind === 'contract') {
+            return 'contract';
+        }
+
+        $rawDocType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
+        if ($rawDocType === '') {
+            return 'document';
+        }
+        $sanitized = preg_replace('/[^a-zA-Z0-9_.-]/', '', $rawDocType);
+        $sanitized = strtolower(trim((string) $sanitized));
+
+        return $sanitized !== '' ? $sanitized : 'document';
+    }
+
+    private function findExistingPrimaryContract(string $partnerCui, ?string $supplierCui, ?string $clientCui): ?array
+    {
+        $scope = $this->resolvePrimaryCompanyScope($partnerCui, $supplierCui, $clientCui);
+        if ($scope['mode'] === 'none') {
+            return null;
+        }
+
+        $joinTemplate = Database::tableExists('contract_templates');
+        $sql = 'SELECT c.id FROM contracts c';
+        if ($joinTemplate) {
+            $sql .= ' LEFT JOIN contract_templates t ON t.id = c.template_id';
+        }
+        $sql .= ' WHERE (' . $this->primaryContractConditionSql($joinTemplate) . ')';
+
+        $params = [
+            'contract_doc_type' => 'contract',
+        ];
+        if ($joinTemplate) {
+            $params['contract_doc_kind'] = 'contract';
+        }
+
+        if ($scope['mode'] === 'partner') {
+            $sql .= ' AND (c.partner_cui = :company OR c.client_cui = :company OR c.supplier_cui = :company)';
+            $params['company'] = $scope['company_cui'];
+        } elseif ($scope['mode'] === 'relation') {
+            $sql .= ' AND c.supplier_cui = :supplier AND c.client_cui = :client';
+            $params['supplier'] = $scope['supplier_cui'];
+            $params['client'] = $scope['client_cui'];
+        }
+
+        $sql .= ' ORDER BY c.created_at DESC, c.id DESC LIMIT 1';
+
+        return Database::fetchOne($sql, $params);
+    }
+
+    private function resolvePrimaryCompanyScope(string $partnerCui, ?string $supplierCui, ?string $clientCui): array
+    {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        $supplierCui = $supplierCui ? preg_replace('/\D+/', '', $supplierCui) : '';
+        $clientCui = $clientCui ? preg_replace('/\D+/', '', $clientCui) : '';
+
+        if ($partnerCui !== '') {
+            return [
+                'mode' => 'partner',
+                'company_cui' => $partnerCui,
+            ];
+        }
+        if ($clientCui !== '' && $supplierCui !== '') {
+            return [
+                'mode' => 'relation',
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $clientCui,
+            ];
+        }
+
+        return ['mode' => 'none'];
+    }
+
+    private function primaryContractConditionSql(bool $joinTemplate): string
+    {
+        if ($joinTemplate) {
+            return 'c.doc_type = :contract_doc_type OR t.doc_kind = :contract_doc_kind';
+        }
+
+        return 'c.doc_type = :contract_doc_type';
     }
 }
