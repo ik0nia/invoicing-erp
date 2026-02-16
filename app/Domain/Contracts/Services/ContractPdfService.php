@@ -391,17 +391,6 @@ class ContractPdfService
             }
             $lines[] = implode(' | ', $contact);
         }
-        if ($company['banca'] !== '' || $company['iban'] !== '') {
-            $bank = [];
-            if ($company['banca'] !== '') {
-                $bank[] = 'Banca: ' . $company['banca'];
-            }
-            if ($company['iban'] !== '') {
-                $bank[] = 'IBAN: ' . $company['iban'];
-            }
-            $lines[] = implode(' | ', $bank);
-        }
-
         $companyHtml = '<div class="print-company"><div class="name">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</div>';
         foreach ($lines as $line) {
             $companyHtml .= '<div>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</div>';
