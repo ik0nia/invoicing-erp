@@ -51,23 +51,6 @@
     </div>
 </div>
 
-<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-    <a
-        href="<?= App\Support\Url::to('admin/enrollment-links') ?>"
-        class="rounded border px-3 py-1.5 font-semibold <?= !$isPendingPage ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50' ?>"
-    >
-        Toate link-urile
-    </a>
-    <?php if ($canApproveOnboarding): ?>
-        <a
-            href="<?= App\Support\Url::to('admin/inrolari') ?>"
-            class="rounded border px-3 py-1.5 font-semibold <?= $isPendingPage ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50' ?>"
-        >
-            Inrolari in asteptare
-        </a>
-    <?php endif; ?>
-</div>
-
 <?php if (!$isPendingPage): ?>
     <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
         <div class="font-semibold">Ce este un link public?</div>
