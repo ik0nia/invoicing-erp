@@ -6,6 +6,7 @@ use App\Domain\Companies\Models\Company;
 use App\Domain\Companies\Services\CompanyLookupService;
 use App\Domain\Contracts\Services\ContractOnboardingService;
 use App\Domain\Contracts\Services\ContractPdfService;
+use App\Domain\Contracts\Services\ContractTemplateService;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Public\Services\PublicLinkResolver;
@@ -552,102 +553,47 @@ class PublicPartnerController
         }
 
         $partnerCui = $this->resolvePartnerCui($context);
-        $scope = $this->resolveScope($context, $partnerCui);
         $resources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
-        $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
 
         $archiveEntries = [];
-        $archivePaths = [];
         $pdfMergeFiles = [];
-        $pdfMergeMap = [];
-
-        foreach ($resources as $resource) {
-            $relativePath = trim((string) ($resource['file_path'] ?? ''));
-            $relativePathClean = ltrim($relativePath, '/');
-            if ($relativePathClean === '' || !str_starts_with($relativePathClean, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
-                continue;
-            }
-            $absolutePath = $this->resolveUploadAbsolutePath($relativePath);
-            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
-                continue;
-            }
-            if (!isset($archivePaths[$absolutePath])) {
-                $archivePaths[$absolutePath] = true;
-                $archiveEntries[] = [
-                    'absolute_path' => $absolutePath,
-                    'filename' => $this->buildResourceDownloadFilename($resource),
-                ];
-            }
-
-            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
-            if ($ext === 'pdf' && !isset($pdfMergeMap[$absolutePath])) {
-                $pdfMergeMap[$absolutePath] = true;
-                $pdfMergeFiles[] = $absolutePath;
+        $firstResourceEntry = $this->resolveFirstDossierResource($resources);
+        if ($firstResourceEntry !== null) {
+            $archiveEntries[] = [
+                'absolute_path' => $firstResourceEntry['absolute_path'],
+                'filename' => $firstResourceEntry['filename'],
+            ];
+            if (!empty($firstResourceEntry['is_pdf'])) {
+                $pdfMergeFiles[] = (string) $firstResourceEntry['absolute_path'];
             }
         }
 
-        foreach ($contracts as $contract) {
-            $contractId = (int) ($contract['id'] ?? 0);
-            if ($contractId <= 0) {
+        $draftFiles = $this->buildDraftTemplateFilesForDossier((string) ($context['link']['type'] ?? 'client'));
+        $tempDraftPaths = [];
+        foreach ($draftFiles as $draftFile) {
+            $absoluteDraftPath = (string) ($draftFile['absolute_path'] ?? '');
+            if ($absoluteDraftPath === '' || !is_file($absoluteDraftPath) || !is_readable($absoluteDraftPath)) {
                 continue;
             }
-
-            $generatedPath = trim((string) ($contract['generated_pdf_path'] ?? ''));
-            if ($generatedPath === '') {
-                $generatedPath = (new ContractPdfService())->generatePdfForContract($contractId, 'public');
-            }
-            if ($generatedPath === '') {
-                $generatedPath = trim((string) ($contract['generated_file_path'] ?? ''));
-            }
-            if ($generatedPath !== '') {
-                $generatedAbsolute = $this->resolveUploadAbsolutePath($generatedPath);
-                if ($generatedAbsolute !== '' && is_file($generatedAbsolute) && is_readable($generatedAbsolute)) {
-                    if (!isset($archivePaths[$generatedAbsolute])) {
-                        $archivePaths[$generatedAbsolute] = true;
-                        $archiveEntries[] = [
-                            'absolute_path' => $generatedAbsolute,
-                            'filename' => $this->buildContractDownloadFilename($contract, false),
-                        ];
-                    }
-                    if (!isset($pdfMergeMap[$generatedAbsolute])) {
-                        $pdfMergeMap[$generatedAbsolute] = true;
-                        $pdfMergeFiles[] = $generatedAbsolute;
-                    }
-                }
-            }
-
-            $signedPath = trim((string) ($contract['signed_upload_path'] ?? ''));
-            if ($signedPath === '') {
-                $signedPath = trim((string) ($contract['signed_file_path'] ?? ''));
-            }
-            if ($signedPath !== '') {
-                $signedAbsolute = $this->resolveUploadAbsolutePath($signedPath);
-                if ($signedAbsolute !== '' && is_file($signedAbsolute) && is_readable($signedAbsolute)) {
-                    if (!isset($archivePaths[$signedAbsolute])) {
-                        $archivePaths[$signedAbsolute] = true;
-                        $archiveEntries[] = [
-                            'absolute_path' => $signedAbsolute,
-                            'filename' => $this->buildContractDownloadFilename($contract, true),
-                        ];
-                    }
-                    $ext = strtolower(pathinfo($signedAbsolute, PATHINFO_EXTENSION));
-                    if ($ext === 'pdf' && !isset($pdfMergeMap[$signedAbsolute])) {
-                        $pdfMergeMap[$signedAbsolute] = true;
-                        $pdfMergeFiles[] = $signedAbsolute;
-                    }
-                }
-            }
+            $archiveEntries[] = [
+                'absolute_path' => $absoluteDraftPath,
+                'filename' => (string) ($draftFile['filename'] ?? basename($absoluteDraftPath)),
+            ];
+            $pdfMergeFiles[] = $absoluteDraftPath;
+            $tempDraftPaths[] = $absoluteDraftPath;
         }
+        $this->registerTempCleanup($tempDraftPaths);
 
-        if (empty($archiveEntries) && empty($pdfMergeFiles)) {
+        if (empty($archiveEntries)) {
             Session::flash('error', 'Nu exista fisiere disponibile pentru dosar.');
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
         }
 
         $timestamp = date('Ymd-His');
         $baseFilename = 'dosar-onboarding-' . $timestamp;
+        $canMergeWithResource = $firstResourceEntry === null || !empty($firstResourceEntry['is_pdf']);
 
-        if (count($pdfMergeFiles) >= 2) {
+        if ($canMergeWithResource && count($pdfMergeFiles) >= 2) {
             $mergedPdf = $this->mergePdfFiles($pdfMergeFiles);
             if ($mergedPdf !== '') {
                 $currentStep = (int) ($context['link']['current_step'] ?? 1);
@@ -671,7 +617,7 @@ class PublicPartnerController
             $this->streamAbsoluteFile($zipPath, $baseFilename . '.zip', 'application/zip', true);
         }
 
-        if (count($pdfMergeFiles) === 1) {
+        if ($canMergeWithResource && count($pdfMergeFiles) === 1) {
             $singlePdf = reset($pdfMergeFiles);
             if (is_string($singlePdf) && $singlePdf !== '' && is_file($singlePdf) && is_readable($singlePdf)) {
                 $currentStep = (int) ($context['link']['current_step'] ?? 1);
@@ -684,7 +630,7 @@ class PublicPartnerController
             }
         }
 
-        Session::flash('error', 'Dosarul nu poate fi generat momentan. Lipseste extensia ZipArchive sau utilitarul de merge PDF.');
+        Session::flash('error', 'Dosarul nu poate fi generat momentan. Verifica extensia ZipArchive si utilitarul de merge PDF.');
         Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
     }
 
@@ -1844,6 +1790,169 @@ class PublicPartnerController
         }
 
         return 'storage/uploads/' . trim($subdir, '/') . '/' . $name;
+    }
+
+    private function resolveFirstDossierResource(array $resources): ?array
+    {
+        foreach ($resources as $resource) {
+            $relativePath = trim((string) ($resource['file_path'] ?? ''));
+            $relativePathClean = ltrim($relativePath, '/');
+            if ($relativePathClean === '' || !str_starts_with($relativePathClean, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+                continue;
+            }
+
+            $absolutePath = $this->resolveUploadAbsolutePath($relativePath);
+            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+                continue;
+            }
+
+            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+            return [
+                'absolute_path' => $absolutePath,
+                'filename' => $this->buildResourceDownloadFilename($resource),
+                'is_pdf' => $ext === 'pdf',
+            ];
+        }
+
+        return null;
+    }
+
+    private function buildDraftTemplateFilesForDossier(string $linkType): array
+    {
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        if (empty($templates)) {
+            return [];
+        }
+
+        $pdfService = new ContractPdfService();
+        $usedPriorities = [];
+        $result = [];
+        foreach ($templates as $template) {
+            $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($templateId <= 0) {
+                continue;
+            }
+
+            $priority = isset($template['priority']) ? (int) $template['priority'] : 100;
+            $priorityKey = (string) $priority;
+            if (isset($usedPriorities[$priorityKey])) {
+                continue;
+            }
+            $usedPriorities[$priorityKey] = true;
+
+            $docType = $this->resolveTemplateDocTypeForDraft($template);
+            $title = trim((string) ($template['name'] ?? 'Document draft'));
+            if ($title === '') {
+                $title = 'Document draft';
+            }
+            $draftContract = [
+                'id' => 0,
+                'template_id' => $templateId,
+                'partner_cui' => null,
+                'supplier_cui' => null,
+                'client_cui' => null,
+                'title' => $title,
+                'doc_type' => $docType,
+                'contract_date' => date('Y-m-d'),
+                'created_at' => date('Y-m-d H:i:s'),
+                'doc_no' => 0,
+                'doc_series' => '',
+                'doc_full_no' => '',
+            ];
+
+            $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+            $pdfBinary = $pdfService->generatePdfBinaryFromHtml($html, 'onboarding-draft-' . $templateId . '-' . $priority);
+            if ($pdfBinary === '') {
+                continue;
+            }
+
+            $tmp = tempnam(sys_get_temp_dir(), 'onboarding_draft_');
+            if ($tmp === false) {
+                continue;
+            }
+            $tmpPdfPath = $tmp . '.pdf';
+            if (!@rename($tmp, $tmpPdfPath)) {
+                $tmpPdfPath = $tmp;
+            }
+            if (@file_put_contents($tmpPdfPath, $pdfBinary) === false || !is_file($tmpPdfPath) || filesize($tmpPdfPath) <= 0) {
+                @unlink($tmpPdfPath);
+                continue;
+            }
+
+            $result[] = [
+                'priority' => $priority,
+                'absolute_path' => $tmpPdfPath,
+                'filename' => $this->buildTemplateDraftFilename($template, $priority, $docType),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function resolveTemplateDocTypeForDraft(array $template): string
+    {
+        $docKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
+        if ($docKind === 'contract') {
+            return 'contract';
+        }
+
+        $rawDocType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
+        if ($rawDocType === '') {
+            return 'document';
+        }
+        $sanitized = preg_replace('/[^a-zA-Z0-9_.-]/', '', $rawDocType);
+        $sanitized = strtolower(trim((string) $sanitized));
+
+        return $sanitized !== '' ? $sanitized : 'document';
+    }
+
+    private function buildTemplateDraftFilename(array $template, int $priority, string $docType): string
+    {
+        $name = trim((string) ($template['name'] ?? 'document-draft'));
+        if ($name === '') {
+            $name = 'document-draft';
+        }
+        $base = 'prioritate-' . $priority . '-' . $name . '-draft';
+        $base = preg_replace('/\s+/', '-', $base);
+        $base = preg_replace('/[^a-zA-Z0-9._-]/', '-', (string) $base);
+        $base = trim((string) $base, '-');
+        if ($base === '') {
+            $base = 'prioritate-' . $priority . '-' . $docType . '-draft';
+        }
+
+        return $this->sanitizeDownloadFilename($base . '.pdf', 'prioritate-' . $priority . '-draft.pdf');
+    }
+
+    private function registerTempCleanup(array $paths): void
+    {
+        if (empty($paths)) {
+            return;
+        }
+
+        $tmpRoot = rtrim((string) sys_get_temp_dir(), '/');
+        $validPaths = [];
+        foreach ($paths as $path) {
+            $path = trim((string) $path);
+            if ($path === '') {
+                continue;
+            }
+            if ($tmpRoot !== '' && !str_starts_with($path, $tmpRoot)) {
+                continue;
+            }
+            $validPaths[$path] = $path;
+        }
+        if (empty($validPaths)) {
+            return;
+        }
+
+        register_shutdown_function(static function () use ($validPaths): void {
+            foreach ($validPaths as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+        });
     }
 
     private function buildResourceDownloadFilename(array $resource): string

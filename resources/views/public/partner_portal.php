@@ -225,7 +225,7 @@
                                 Descarca dosar onboarding
                             </a>
                             <p class="mt-1 text-xs text-slate-500">
-                                Dosarul incearca sa uneasca PDF-urile disponibile; daca merge-ul nu este disponibil pe server, vei primi ZIP.
+                                Dosarul contine documentul incarcat la Pasul 1 + draft-urile de contract (ordonate dupa prioritate). Daca merge PDF nu este disponibil pe server, vei primi ZIP.
                             </p>
                         </div>
                     <?php endif; ?>
