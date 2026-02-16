@@ -169,23 +169,34 @@
                         >
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700" for="email">Email</label>
+                        <label class="block text-sm font-medium text-slate-700" for="judet">Judet</label>
                         <input
-                            id="email"
-                            name="email"
-                            type="email"
-                            value="<?= htmlspecialchars((string) ($prefill['email'] ?? '')) ?>"
+                            id="judet"
+                            name="judet"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['judet'] ?? '')) ?>"
                             class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                             <?= $isReadOnly ? 'readonly' : '' ?>
                         >
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700" for="telefon">Telefon</label>
+                        <label class="block text-sm font-medium text-slate-700" for="localitate">Oras</label>
                         <input
-                            id="telefon"
-                            name="telefon"
+                            id="localitate"
+                            name="localitate"
                             type="text"
-                            value="<?= htmlspecialchars((string) ($prefill['telefon'] ?? '')) ?>"
+                            value="<?= htmlspecialchars((string) ($prefill['localitate'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700" for="adresa">Adresa</label>
+                        <input
+                            id="adresa"
+                            name="adresa"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['adresa'] ?? '')) ?>"
                             class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                             <?= $isReadOnly ? 'readonly' : '' ?>
                         >
@@ -215,6 +226,28 @@
                         >
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-slate-700" for="email">Email</label>
+                        <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            value="<?= htmlspecialchars((string) ($prefill['email'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700" for="telefon">Telefon</label>
+                        <input
+                            id="telefon"
+                            name="telefon"
+                            type="text"
+                            value="<?= htmlspecialchars((string) ($prefill['telefon'] ?? '')) ?>"
+                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            <?= $isReadOnly ? 'readonly' : '' ?>
+                        >
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-slate-700" for="bank_name">Banca</label>
                         <input
                             id="bank_name"
@@ -235,39 +268,6 @@
                             value="<?= htmlspecialchars((string) ($prefill['iban'] ?? '')) ?>"
                             class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                             required
-                            <?= $isReadOnly ? 'readonly' : '' ?>
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="adresa">Adresa</label>
-                        <input
-                            id="adresa"
-                            name="adresa"
-                            type="text"
-                            value="<?= htmlspecialchars((string) ($prefill['adresa'] ?? '')) ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                            <?= $isReadOnly ? 'readonly' : '' ?>
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="localitate">Localitate</label>
-                        <input
-                            id="localitate"
-                            name="localitate"
-                            type="text"
-                            value="<?= htmlspecialchars((string) ($prefill['localitate'] ?? '')) ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                            <?= $isReadOnly ? 'readonly' : '' ?>
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700" for="judet">Judet</label>
-                        <input
-                            id="judet"
-                            name="judet"
-                            type="text"
-                            value="<?= htmlspecialchars((string) ($prefill['judet'] ?? '')) ?>"
-                            class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                             <?= $isReadOnly ? 'readonly' : '' ?>
                         >
                     </div>
