@@ -4,6 +4,7 @@
     $title = 'Contracte';
     $templates = $templates ?? [];
     $contracts = $contracts ?? [];
+    $companyNamesByCui = is_array($companyNamesByCui ?? null) ? $companyNamesByCui : [];
     $pdfAvailable = !empty($pdfAvailable);
     $canApproveContracts = Auth::isInternalStaff();
     $statusLabels = [
@@ -140,12 +141,11 @@
     <table class="w-full text-left text-sm">
         <thead class="bg-slate-50 text-slate-600">
             <tr>
-                <th class="px-3 py-2">Titlu</th>
-                <th class="px-3 py-2">Doc type</th>
                 <th class="px-3 py-2">Nr. registru</th>
+                <th class="px-3 py-2">Relatie</th>
+                <th class="px-3 py-2">Titlu</th>
                 <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
-                <th class="px-3 py-2">Relatie</th>
                 <th class="px-3 py-2">Descarcare</th>
                 <th class="px-3 py-2"></th>
             </tr>
@@ -153,7 +153,7 @@
         <tbody>
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -161,10 +161,18 @@
                 <?php foreach ($contracts as $contract): ?>
                     <?php
                         $downloadUrl = App\Support\Url::to('admin/contracts/download?id=' . (int) $contract['id']);
-                        $relation = '';
-                        if (!empty($contract['supplier_cui']) || !empty($contract['client_cui'])) {
-                            $relation = trim((string) ($contract['supplier_cui'] ?? '')) . ' / ' . trim((string) ($contract['client_cui'] ?? ''));
-                        }
+                        $relationSupplierCui = preg_replace('/\D+/', '', (string) ($contract['supplier_cui'] ?? ''));
+                        $relationClientCui = preg_replace('/\D+/', '', (string) ($contract['client_cui'] ?? ''));
+                        $relationPartnerCui = preg_replace('/\D+/', '', (string) ($contract['partner_cui'] ?? ''));
+                        $relationSupplierName = $relationSupplierCui !== ''
+                            ? (string) ($companyNamesByCui[$relationSupplierCui] ?? $relationSupplierCui)
+                            : '';
+                        $relationClientName = $relationClientCui !== ''
+                            ? (string) ($companyNamesByCui[$relationClientCui] ?? $relationClientCui)
+                            : '';
+                        $relationPartnerName = $relationPartnerCui !== ''
+                            ? (string) ($companyNamesByCui[$relationPartnerCui] ?? $relationPartnerCui)
+                            : '';
                         $statusKey = (string) ($contract['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                         $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
@@ -187,8 +195,6 @@
                         }
                     ?>
                     <tr class="border-t border-slate-100">
-                        <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($docNoDisplay !== ''): ?>
                                 <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
@@ -196,13 +202,28 @@
                                 <span class="text-amber-700">Fara numar</span>
                             <?php endif; ?>
                         </td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName === ''): ?>
+                                —
+                            <?php else: ?>
+                                <?php if ($relationSupplierName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Furnizor:</span> <?= htmlspecialchars($relationSupplierName) ?></div>
+                                <?php endif; ?>
+                                <?php if ($relationClientName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Client:</span> <?= htmlspecialchars($relationClientName) ?></div>
+                                <?php endif; ?>
+                                <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Companie:</span> <?= htmlspecialchars($relationPartnerName) ?></div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                 <?= htmlspecialchars($statusLabel) ?>
                             </span>
                         </td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($relation !== '' ? $relation : '—') ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                         </td>
