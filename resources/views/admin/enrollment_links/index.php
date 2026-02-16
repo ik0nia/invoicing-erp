@@ -596,10 +596,6 @@
                 return;
             }
             const run = () => {
-                if (typeof filtersForm.requestSubmit === 'function') {
-                    filtersForm.requestSubmit();
-                    return;
-                }
                 filtersForm.submit();
             };
             if (immediate) {
@@ -1089,6 +1085,18 @@
                     }
                     submitFilters(true);
                 });
+                companyDisplayInput.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter') {
+                        return;
+                    }
+                    event.preventDefault();
+                    const maybeCui = extractCompanyCuiCandidate(companyDisplayInput.value);
+                    if (maybeCui !== '') {
+                        companyValueInput.value = maybeCui;
+                        companyDisplayInput.value = maybeCui;
+                    }
+                    submitFilters(true);
+                });
                 companyDisplayInput.addEventListener('blur', () => {
                     window.setTimeout(() => {
                         const previousValue = companyValueInput.value.trim();
@@ -1111,16 +1119,22 @@
             }
 
             if (companyList) {
-                companyList.addEventListener('click', (event) => {
+                const handleCompanySelect = (event) => {
+                    if (event.type === 'mousedown' && typeof window.PointerEvent !== 'undefined') {
+                        return;
+                    }
                     const target = event.target.closest('[data-company-item]');
                     if (!target) {
                         return;
                     }
+                    event.preventDefault();
                     applyCompanySelection({
                         cui: target.getAttribute('data-cui') || '',
                         name: target.getAttribute('data-name') || '',
                     });
-                });
+                };
+                companyList.addEventListener('pointerdown', handleCompanySelect);
+                companyList.addEventListener('mousedown', handleCompanySelect);
             }
         }
 
