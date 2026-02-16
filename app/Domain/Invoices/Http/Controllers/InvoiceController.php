@@ -2631,7 +2631,7 @@ class InvoiceController
         $totalsByPackage = $this->packageTotalsForIds($packageIds);
         $content = [];
         foreach ($adjustmentRows as $row) {
-            foreach (['storno_package_id' => true, 'replacement_package_id' => false] as $column => $isStornoLine) {
+            foreach (['storno_package_id', 'replacement_package_id'] as $column) {
                 $packageId = (int) ($row[$column] ?? 0);
                 if ($packageId <= 0 || !isset($packagesById[$packageId])) {
                     continue;
@@ -2643,9 +2643,6 @@ class InvoiceController
                 }
                 $packageClientTotal = $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
                 $label = $this->packageLabel($package);
-                if ($isStornoLine) {
-                    $label .= ' (storno)';
-                }
                 $content[] = [
                     'Denumire' => $label,
                     'UM' => 'BUC',
