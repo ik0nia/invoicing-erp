@@ -189,6 +189,10 @@ class EnrollmentLinksController
         $user = $this->requireEnrollmentRole();
 
         $type = trim((string) ($_POST['type'] ?? ''));
+        $createMode = trim((string) ($_POST['create_mode'] ?? 'create'));
+        if (!in_array($createMode, ['create', 'association_request'], true)) {
+            $createMode = 'create';
+        }
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $commissionRaw = trim((string) ($_POST['commission_percent'] ?? ''));
         $commission = null;
@@ -242,6 +246,49 @@ class EnrollmentLinksController
             'telefon' => trim((string) ($_POST['prefill_telefon'] ?? '')),
             'email' => trim((string) ($_POST['prefill_email'] ?? '')),
         ];
+        if (($prefill['cui'] ?? '') === '') {
+            Session::flash('error', 'Completeaza Precompletare CUI.');
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        $companyChecks = $this->analyzeCompanyForEnrollment((string) ($prefill['cui'] ?? ''), $type, $supplierCui);
+        if (!empty($companyChecks['exists_as_supplier'])) {
+            Session::flash('error', 'Acest furnizor exista deja in baza de date.');
+            Response::redirect('/admin/enrollment-links');
+        }
+
+        if ($type === 'client' && !empty($companyChecks['association_request_required'])) {
+            $requestCommission = $this->defaultCommissionForSupplier($supplierCui);
+            if ($requestCommission === null) {
+                $requestCommission = $commission;
+            }
+
+            $request = $this->createOrRefreshAssociationRequest(
+                $supplierCui,
+                (string) ($prefill['cui'] ?? ''),
+                $requestCommission,
+                $user ? (int) $user->id : null
+            );
+            if (($request['status'] ?? '') === 'invalid') {
+                Session::flash('error', 'Solicitarea de asociere nu a putut fi inregistrata.');
+                Response::redirect('/admin/enrollment-links');
+            }
+            Audit::record('association_request.create', 'association_request', (int) ($request['id'] ?? 0), [
+                'rows_count' => 1,
+                'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
+                'client_cui' => (string) ($prefill['cui'] ?? ''),
+                'mode' => $createMode,
+                'request_status' => (string) ($request['status'] ?? 'pending'),
+            ]);
+
+            if (($request['status'] ?? '') === 'existing_pending') {
+                Session::flash('status', 'Solicitarea de asociere pentru acest client este deja in asteptare.');
+            } else {
+                Session::flash('status', 'Solicitarea de asociere client a fost trimisa spre aprobare.');
+            }
+            Response::redirect('/admin/enrollment-links');
+        }
+
         $prefill = $this->enrichPrefillFromOpenApi($prefill);
         $prefill = array_filter($prefill, static fn ($value) => $value !== '' && $value !== null);
         $prefillJson = !empty($prefill) ? json_encode($prefill, JSON_UNESCAPED_UNICODE) : null;
@@ -651,13 +698,43 @@ class EnrollmentLinksController
         $this->requireEnrollmentRole();
 
         $cui = preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? ''));
+        if ($cui === '') {
+            $this->json(['success' => false, 'message' => 'CUI invalid.'], 400);
+        }
+
+        $linkType = trim((string) ($_POST['link_type'] ?? 'supplier'));
+        if (!in_array($linkType, ['supplier', 'client'], true)) {
+            $linkType = 'supplier';
+        }
+        $selectedSupplierCui = preg_replace('/\D+/', '', (string) ($_POST['selected_supplier_cui'] ?? ''));
+
+        $checks = $this->analyzeCompanyForEnrollment($cui, $linkType, $selectedSupplierCui);
+        $dbData = $this->prefillFromDatabase($cui);
+        if ($dbData !== null && !empty($dbData)) {
+            $this->json([
+                'success' => true,
+                'source' => 'database',
+                'data' => $dbData,
+                'checks' => $checks,
+            ]);
+        }
+
         $service = new CompanyLookupService();
         $response = $service->lookupByCui($cui);
         if ($response['error'] !== null) {
-            $this->json(['success' => false, 'message' => $response['error']]);
+            $this->json([
+                'success' => false,
+                'message' => $response['error'],
+                'checks' => $checks,
+            ]);
         }
 
-        $this->json(['success' => true, 'data' => $response['data']]);
+        $this->json([
+            'success' => true,
+            'source' => 'openapi',
+            'data' => $response['data'],
+            'checks' => $checks,
+        ]);
     }
 
     public function uploadResource(): void
@@ -979,26 +1056,10 @@ class EnrollmentLinksController
             return '';
         }
 
-        if (Database::tableExists('partners')) {
-            $row = Database::fetchOne(
-                'SELECT denumire FROM partners WHERE cui = :cui LIMIT 1',
-                ['cui' => $companyCui]
-            );
-            if ($row && trim((string) ($row['denumire'] ?? '')) !== '') {
-                $name = trim((string) $row['denumire']);
-                return $name . ' - ' . $companyCui;
-            }
-        }
-
-        if (Database::tableExists('companies')) {
-            $row = Database::fetchOne(
-                'SELECT denumire FROM companies WHERE cui = :cui LIMIT 1',
-                ['cui' => $companyCui]
-            );
-            if ($row && trim((string) ($row['denumire'] ?? '')) !== '') {
-                $name = trim((string) $row['denumire']);
-                return $name . ' - ' . $companyCui;
-            }
+        $names = $this->fetchCompanyNamesByCuis([$companyCui]);
+        $name = trim((string) ($names[$companyCui] ?? ''));
+        if ($name !== '') {
+            return $name . ' - ' . $companyCui;
         }
 
         return $companyCui;
@@ -1017,6 +1078,23 @@ class EnrollmentLinksController
         }
 
         $cuis = array_keys($cuiSet);
+        if (empty($cuis)) {
+            return [];
+        }
+
+        return $this->fetchCompanyNamesByCuis($cuis);
+    }
+
+    private function fetchCompanyNamesByCuis(array $cuis): array
+    {
+        $normalized = [];
+        foreach ($cuis as $cui) {
+            $value = preg_replace('/\D+/', '', (string) $cui);
+            if ($value !== '') {
+                $normalized[$value] = true;
+            }
+        }
+        $cuis = array_keys($normalized);
         if (empty($cuis)) {
             return [];
         }
@@ -1064,6 +1142,286 @@ class EnrollmentLinksController
         }
 
         return $result;
+    }
+
+    private function prefillFromDatabase(string $cui): ?array
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '') {
+            return null;
+        }
+
+        $data = [];
+        if (Database::tableExists('companies')) {
+            $row = Database::fetchOne(
+                'SELECT cui, denumire, nr_reg_comertului, adresa, localitate, judet, telefon, email
+                 FROM companies
+                 WHERE cui = :cui
+                 LIMIT 1',
+                ['cui' => $cui]
+            );
+            if ($row) {
+                $data['cui'] = preg_replace('/\D+/', '', (string) ($row['cui'] ?? $cui));
+                $data['denumire'] = trim((string) ($row['denumire'] ?? ''));
+                $data['nr_reg_comertului'] = trim((string) ($row['nr_reg_comertului'] ?? ''));
+                $data['adresa'] = trim((string) ($row['adresa'] ?? ''));
+                $data['localitate'] = trim((string) ($row['localitate'] ?? ''));
+                $data['judet'] = trim((string) ($row['judet'] ?? ''));
+                $data['telefon'] = trim((string) ($row['telefon'] ?? ''));
+                $data['email'] = trim((string) ($row['email'] ?? ''));
+            }
+        }
+
+        if (Database::tableExists('partners')) {
+            $row = Database::fetchOne(
+                'SELECT cui, denumire
+                 FROM partners
+                 WHERE cui = :cui
+                 LIMIT 1',
+                ['cui' => $cui]
+            );
+            if ($row) {
+                if (empty($data['cui'])) {
+                    $data['cui'] = preg_replace('/\D+/', '', (string) ($row['cui'] ?? $cui));
+                }
+                if (empty($data['denumire'])) {
+                    $data['denumire'] = trim((string) ($row['denumire'] ?? ''));
+                }
+            }
+        }
+
+        if (empty($data)) {
+            return null;
+        }
+        if (empty($data['cui'])) {
+            $data['cui'] = $cui;
+        }
+
+        return array_filter($data, static fn ($value) => $value !== '' && $value !== null);
+    }
+
+    private function analyzeCompanyForEnrollment(string $companyCui, string $linkType, string $selectedSupplierCui): array
+    {
+        $companyCui = preg_replace('/\D+/', '', $companyCui);
+        $selectedSupplierCui = preg_replace('/\D+/', '', $selectedSupplierCui);
+        $linkType = in_array($linkType, ['supplier', 'client'], true) ? $linkType : 'supplier';
+
+        $result = [
+            'exists_in_database' => false,
+            'exists_as_supplier' => false,
+            'exists_as_client' => false,
+            'selected_supplier_has_association' => false,
+            'association_request_required' => false,
+            'other_suppliers' => [],
+            'associated_supplier_cuis' => [],
+        ];
+        if ($companyCui === '') {
+            return $result;
+        }
+
+        if (Database::tableExists('partners')) {
+            $isSupplierSelect = Database::columnExists('partners', 'is_supplier') ? 'is_supplier' : '0 AS is_supplier';
+            $isClientSelect = Database::columnExists('partners', 'is_client') ? 'is_client' : '0 AS is_client';
+            $partnerRow = Database::fetchOne(
+                'SELECT cui, denumire, ' . $isSupplierSelect . ', ' . $isClientSelect . '
+                 FROM partners
+                 WHERE cui = :cui
+                 LIMIT 1',
+                ['cui' => $companyCui]
+            );
+            if ($partnerRow) {
+                $result['exists_in_database'] = true;
+                if (!empty($partnerRow['is_supplier'])) {
+                    $result['exists_as_supplier'] = true;
+                }
+                if (!empty($partnerRow['is_client'])) {
+                    $result['exists_as_client'] = true;
+                }
+            }
+        }
+
+        if (!$result['exists_in_database'] && Database::tableExists('companies')) {
+            $companyRow = Database::fetchOne(
+                'SELECT cui FROM companies WHERE cui = :cui LIMIT 1',
+                ['cui' => $companyCui]
+            );
+            if ($companyRow) {
+                $result['exists_in_database'] = true;
+            }
+        }
+
+        if (Database::tableExists('commissions')) {
+            $supplierCount = (int) (Database::fetchValue(
+                'SELECT COUNT(*) FROM commissions WHERE supplier_cui = :cui',
+                ['cui' => $companyCui]
+            ) ?? 0);
+            if ($supplierCount > 0) {
+                $result['exists_in_database'] = true;
+                $result['exists_as_supplier'] = true;
+            }
+
+            $clientRows = Database::fetchAll(
+                'SELECT DISTINCT supplier_cui
+                 FROM commissions
+                 WHERE client_cui = :cui',
+                ['cui' => $companyCui]
+            );
+            $otherSupplierCuis = [];
+            $associatedSupplierCuis = [];
+            foreach ($clientRows as $row) {
+                $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+                if ($supplierCui === '') {
+                    continue;
+                }
+                $result['exists_in_database'] = true;
+                $result['exists_as_client'] = true;
+                $associatedSupplierCuis[$supplierCui] = true;
+                if ($selectedSupplierCui !== '' && $supplierCui === $selectedSupplierCui) {
+                    $result['selected_supplier_has_association'] = true;
+                    continue;
+                }
+                $otherSupplierCuis[$supplierCui] = true;
+            }
+            if (!empty($associatedSupplierCuis)) {
+                $result['associated_supplier_cuis'] = array_keys($associatedSupplierCuis);
+            }
+
+            if (!empty($otherSupplierCuis)) {
+                $names = $this->fetchCompanyNamesByCuis(array_keys($otherSupplierCuis));
+                foreach (array_keys($otherSupplierCuis) as $supplierCui) {
+                    $result['other_suppliers'][] = [
+                        'cui' => $supplierCui,
+                        'name' => (string) ($names[$supplierCui] ?? $supplierCui),
+                    ];
+                }
+            }
+        }
+
+        if (
+            $linkType === 'client'
+            && $selectedSupplierCui !== ''
+            && empty($result['selected_supplier_has_association'])
+            && !empty($result['other_suppliers'])
+        ) {
+            $result['association_request_required'] = true;
+        }
+
+        return $result;
+    }
+
+    private function createOrRefreshAssociationRequest(
+        string $supplierCui,
+        string $clientCui,
+        ?float $commissionPercent,
+        ?int $requestedByUserId
+    ): array {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $clientCui = preg_replace('/\D+/', '', $clientCui);
+        if (
+            $supplierCui === ''
+            || $clientCui === ''
+            || $supplierCui === $clientCui
+            || !Database::tableExists('association_requests')
+        ) {
+            return ['id' => 0, 'status' => 'invalid'];
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $existing = Database::fetchOne(
+            'SELECT * FROM association_requests WHERE supplier_cui = :supplier_cui AND client_cui = :client_cui LIMIT 1',
+            [
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $clientCui,
+            ]
+        );
+        if ($existing && (string) ($existing['status'] ?? '') === 'pending') {
+            return [
+                'id' => (int) ($existing['id'] ?? 0),
+                'status' => 'existing_pending',
+            ];
+        }
+
+        $commissionValue = $commissionPercent;
+        if ($commissionValue === null) {
+            $commissionValue = $this->defaultCommissionForSupplier($supplierCui);
+        }
+
+        if ($existing) {
+            Database::execute(
+                'UPDATE association_requests
+                 SET commission_percent = :commission_percent,
+                     status = :status,
+                     requested_by_user_id = :requested_by_user_id,
+                     requested_at = :requested_at,
+                     decided_by_user_id = :decided_by_user_id,
+                     decided_at = :decided_at,
+                     decision_note = :decision_note,
+                     updated_at = :updated_at
+                 WHERE id = :id',
+                [
+                    'commission_percent' => $commissionValue,
+                    'status' => 'pending',
+                    'requested_by_user_id' => $requestedByUserId,
+                    'requested_at' => $now,
+                    'decided_by_user_id' => null,
+                    'decided_at' => null,
+                    'decision_note' => null,
+                    'updated_at' => $now,
+                    'id' => (int) ($existing['id'] ?? 0),
+                ]
+            );
+
+            return [
+                'id' => (int) ($existing['id'] ?? 0),
+                'status' => 'pending',
+            ];
+        }
+
+        Database::execute(
+            'INSERT INTO association_requests (
+                supplier_cui,
+                client_cui,
+                commission_percent,
+                status,
+                requested_by_user_id,
+                requested_at,
+                decided_by_user_id,
+                decided_at,
+                decision_note,
+                created_at,
+                updated_at
+            ) VALUES (
+                :supplier_cui,
+                :client_cui,
+                :commission_percent,
+                :status,
+                :requested_by_user_id,
+                :requested_at,
+                :decided_by_user_id,
+                :decided_at,
+                :decision_note,
+                :created_at,
+                :updated_at
+            )',
+            [
+                'supplier_cui' => $supplierCui,
+                'client_cui' => $clientCui,
+                'commission_percent' => $commissionValue,
+                'status' => 'pending',
+                'requested_by_user_id' => $requestedByUserId,
+                'requested_at' => $now,
+                'decided_by_user_id' => null,
+                'decided_at' => null,
+                'decision_note' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        return [
+            'id' => (int) Database::lastInsertId(),
+            'status' => 'pending',
+        ];
     }
 
     private function findSupplierByCui(\App\Domain\Users\Models\User $user, string $cui): ?array

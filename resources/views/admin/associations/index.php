@@ -1,6 +1,7 @@
 <?php
     $title = 'Asocieri clienti - furnizori';
     $canDeleteAssociations = $canDeleteAssociations ?? false;
+    $pendingAssociationRequests = $pendingAssociationRequests ?? [];
 ?>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -15,6 +16,73 @@
         Nu exista companii importate. Importa datele vechi inainte de a crea asocieri.
     </div>
 <?php endif; ?>
+
+<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <div class="text-sm font-semibold text-amber-900">Solicitari asociere client</div>
+            <p class="mt-1 text-xs text-amber-800">
+                Cereri generate din pagina de adaugare partener atunci cand clientul exista deja la alt furnizor.
+            </p>
+        </div>
+    </div>
+
+    <?php if (empty($pendingAssociationRequests)): ?>
+        <div class="mt-4 rounded border border-amber-200 bg-white px-4 py-3 text-sm text-amber-800">
+            Nu exista solicitari in asteptare.
+        </div>
+    <?php else: ?>
+        <div class="mt-4 overflow-x-auto rounded border border-amber-200 bg-white">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-amber-100 text-amber-900">
+                    <tr>
+                        <th class="px-4 py-3">Solicitat la</th>
+                        <th class="px-4 py-3">Furnizor</th>
+                        <th class="px-4 py-3">Client</th>
+                        <th class="px-4 py-3">Comision implicit</th>
+                        <th class="px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pendingAssociationRequests as $request): ?>
+                        <tr class="border-t border-amber-100">
+                            <td class="px-4 py-3 text-slate-700"><?= htmlspecialchars((string) ($request['requested_at'] ?? $request['created_at'] ?? '')) ?></td>
+                            <td class="px-4 py-3 text-slate-800">
+                                <?= htmlspecialchars((string) ($request['supplier_name'] ?? $request['supplier_cui'] ?? '')) ?>
+                                <div class="text-xs text-slate-500"><?= htmlspecialchars((string) ($request['supplier_cui'] ?? '')) ?></div>
+                            </td>
+                            <td class="px-4 py-3 text-slate-800">
+                                <?= htmlspecialchars((string) ($request['client_name'] ?? $request['client_cui'] ?? '')) ?>
+                                <div class="text-xs text-slate-500"><?= htmlspecialchars((string) ($request['client_cui'] ?? '')) ?></div>
+                            </td>
+                            <td class="px-4 py-3 text-slate-700">
+                                <?= number_format((float) ($request['commission_percent'] ?? 0), 2, '.', ' ') ?>%
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/solicitari/aproba') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) ($request['id'] ?? 0) ?>">
+                                        <button class="rounded border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+                                            Aproba
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/solicitari/refuza') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) ($request['id'] ?? 0) ?>">
+                                        <button class="rounded border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+                                            Refuza
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</div>
 
 <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/comision-default') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <?= App\Support\Csrf::input() ?>

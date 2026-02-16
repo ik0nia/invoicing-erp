@@ -139,4 +139,6 @@ $router->post('/admin/companii/openapi', [CompanyController::class, 'lookupOpenA
 $router->get('/admin/asocieri', [AssociationsController::class, 'index']);
 $router->post('/admin/asocieri/salveaza', [AssociationsController::class, 'save']);
 $router->post('/admin/asocieri/comision-default', [AssociationsController::class, 'saveDefaultCommission']);
+$router->post('/admin/asocieri/solicitari/aproba', [AssociationsController::class, 'approveRequest']);
+$router->post('/admin/asocieri/solicitari/refuza', [AssociationsController::class, 'rejectRequest']);
 $router->post('/admin/asocieri/sterge', [AssociationsController::class, 'delete']);

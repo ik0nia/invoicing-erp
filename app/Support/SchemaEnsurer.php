@@ -52,6 +52,10 @@ class SchemaEnsurer
             self::ensurePartnerRelationsTable();
         });
 
+        self::runStep('association_requests_table', static function (): void {
+            self::ensureAssociationRequestsTable();
+        });
+
         self::runStep('partner_contacts_table', static function (): void {
             self::ensurePartnerContactsTable();
         });
@@ -503,6 +507,154 @@ class SchemaEnsurer
             );
             unset(self::$tableCache['partner_relations']);
             self::$tableCache['partner_relations'] = self::tableExists('partner_relations');
+        }
+    }
+
+    public static function ensureAssociationRequestsTable(): void
+    {
+        if (!self::tableExists('association_requests')) {
+            self::safeExecute(
+                'CREATE TABLE IF NOT EXISTS association_requests (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    supplier_cui VARCHAR(32) NOT NULL,
+                    client_cui VARCHAR(32) NOT NULL,
+                    commission_percent DECIMAL(8,4) NULL,
+                    status ENUM("pending", "approved", "rejected") NOT NULL DEFAULT "pending",
+                    requested_by_user_id INT NULL,
+                    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    decided_by_user_id INT NULL,
+                    decided_at DATETIME NULL,
+                    decision_note VARCHAR(255) NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL,
+                    UNIQUE KEY uq_association_requests_pair (supplier_cui, client_cui),
+                    INDEX idx_association_requests_status (status, requested_at),
+                    INDEX idx_association_requests_supplier (supplier_cui),
+                    INDEX idx_association_requests_client (client_cui)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+                [],
+                'association_requests_create'
+            );
+            unset(self::$tableCache['association_requests']);
+            self::$tableCache['association_requests'] = self::tableExists('association_requests');
+        }
+
+        if (!self::tableExists('association_requests')) {
+            return;
+        }
+
+        if (!self::columnExists('association_requests', 'supplier_cui')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN supplier_cui VARCHAR(32) NOT NULL',
+                [],
+                'association_requests_add_supplier'
+            );
+            unset(self::$columnCache['association_requests.supplier_cui']);
+        }
+        if (!self::columnExists('association_requests', 'client_cui')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN client_cui VARCHAR(32) NOT NULL AFTER supplier_cui',
+                [],
+                'association_requests_add_client'
+            );
+            unset(self::$columnCache['association_requests.client_cui']);
+        }
+        if (!self::columnExists('association_requests', 'commission_percent')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN commission_percent DECIMAL(8,4) NULL AFTER client_cui',
+                [],
+                'association_requests_add_commission'
+            );
+            unset(self::$columnCache['association_requests.commission_percent']);
+        }
+        if (!self::columnExists('association_requests', 'status')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN status ENUM("pending", "approved", "rejected") NOT NULL DEFAULT "pending" AFTER commission_percent',
+                [],
+                'association_requests_add_status'
+            );
+            unset(self::$columnCache['association_requests.status']);
+        }
+        if (!self::columnExists('association_requests', 'requested_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN requested_by_user_id INT NULL AFTER status',
+                [],
+                'association_requests_add_requested_by'
+            );
+            unset(self::$columnCache['association_requests.requested_by_user_id']);
+        }
+        if (!self::columnExists('association_requests', 'requested_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER requested_by_user_id',
+                [],
+                'association_requests_add_requested_at'
+            );
+            unset(self::$columnCache['association_requests.requested_at']);
+        }
+        if (!self::columnExists('association_requests', 'decided_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decided_by_user_id INT NULL AFTER requested_at',
+                [],
+                'association_requests_add_decided_by'
+            );
+            unset(self::$columnCache['association_requests.decided_by_user_id']);
+        }
+        if (!self::columnExists('association_requests', 'decided_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decided_at DATETIME NULL AFTER decided_by_user_id',
+                [],
+                'association_requests_add_decided_at'
+            );
+            unset(self::$columnCache['association_requests.decided_at']);
+        }
+        if (!self::columnExists('association_requests', 'decision_note')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decision_note VARCHAR(255) NULL AFTER decided_at',
+                [],
+                'association_requests_add_decision_note'
+            );
+            unset(self::$columnCache['association_requests.decision_note']);
+        }
+        if (!self::columnExists('association_requests', 'created_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER decision_note',
+                [],
+                'association_requests_add_created_at'
+            );
+            unset(self::$columnCache['association_requests.created_at']);
+        }
+        if (!self::columnExists('association_requests', 'updated_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN updated_at DATETIME NULL AFTER created_at',
+                [],
+                'association_requests_add_updated_at'
+            );
+            unset(self::$columnCache['association_requests.updated_at']);
+        }
+
+        if (self::columnExists('association_requests', 'supplier_cui') && self::columnExists('association_requests', 'client_cui')) {
+            self::ensureIndex(
+                'association_requests',
+                'uq_association_requests_pair',
+                'ALTER TABLE association_requests ADD UNIQUE INDEX uq_association_requests_pair (supplier_cui, client_cui)'
+            );
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_supplier',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_supplier (supplier_cui)'
+            );
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_client',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_client (client_cui)'
+            );
+        }
+        if (self::columnExists('association_requests', 'status') && self::columnExists('association_requests', 'requested_at')) {
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_status',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_status (status, requested_at)'
+            );
         }
     }
 

@@ -244,6 +244,7 @@
             </div>
         </div>
         <p id="prefill-lookup-status" class="mt-2 text-xs text-slate-500"></p>
+        <input type="hidden" name="create_mode" id="create-mode" value="create">
 
         <div class="mt-4 flex flex-wrap items-center gap-2">
             <button
@@ -253,7 +254,7 @@
             >
                 Adauga partener
             </button>
-            <p class="text-xs text-slate-500">La creare, datele de precompletare se completeaza automat din OpenAPI pe baza CUI-ului.</p>
+            <p class="text-xs text-slate-500">La creare, datele de precompletare se completeaza automat din baza de date sau OpenAPI pe baza CUI-ului.</p>
         </div>
     </form>
 <?php endif; ?>
@@ -588,8 +589,61 @@
         const supplierPicker = document.querySelector('[data-supplier-picker]');
         const filtersForm = document.getElementById('enrollment-filters-form');
         const createLinkSubmitButton = document.getElementById('create-link-submit');
+        const createModeInput = document.getElementById('create-mode');
         const prefillCuiField = document.getElementById('prefill-cui');
         const commissionInput = document.getElementById('commission');
+        const supplierValueInput = document.querySelector('[data-supplier-value]');
+        const readSelectedLinkType = () => {
+            const checked = document.querySelector('input[name="type"]:checked');
+            return checked ? String(checked.value || 'supplier') : 'supplier';
+        };
+        const normalizeDigits = (value) => String(value || '').replace(/\D+/g, '');
+        const resolveSelectedSupplierCui = () => normalizeDigits(supplierValueInput ? supplierValueInput.value : '');
+        let createBlockedByExistingSupplier = false;
+        let lastCompanyChecks = null;
+
+        const setCreateActionMode = (mode) => {
+            if (createModeInput) {
+                createModeInput.value = mode === 'association_request' ? 'association_request' : 'create';
+            }
+            if (!createLinkSubmitButton) {
+                return;
+            }
+            const isAssociationRequest = mode === 'association_request';
+            createLinkSubmitButton.textContent = isAssociationRequest ? 'Solicita asociere client' : 'Adauga partener';
+            createLinkSubmitButton.classList.toggle('border-blue-600', !isAssociationRequest);
+            createLinkSubmitButton.classList.toggle('bg-blue-600', !isAssociationRequest);
+            createLinkSubmitButton.classList.toggle('hover:bg-blue-700', !isAssociationRequest);
+            createLinkSubmitButton.classList.toggle('border-amber-600', isAssociationRequest);
+            createLinkSubmitButton.classList.toggle('bg-amber-600', isAssociationRequest);
+            createLinkSubmitButton.classList.toggle('hover:bg-amber-700', isAssociationRequest);
+        };
+        setCreateActionMode('create');
+
+        const applyCreateModeFromChecks = () => {
+            if (!lastCompanyChecks || typeof lastCompanyChecks !== 'object') {
+                createBlockedByExistingSupplier = false;
+                setCreateActionMode('create');
+                refreshCreateSubmitState();
+                return;
+            }
+
+            createBlockedByExistingSupplier = !!lastCompanyChecks.exists_as_supplier;
+            const isClientMode = readSelectedLinkType() === 'client';
+            const selectedSupplierCui = resolveSelectedSupplierCui();
+            const associatedSupplierCuis = Array.isArray(lastCompanyChecks.associated_supplier_cuis)
+                ? lastCompanyChecks.associated_supplier_cuis.map((value) => normalizeDigits(value)).filter((value) => value !== '')
+                : [];
+            let requiresAssociation = isClientMode && !!lastCompanyChecks.association_request_required;
+            if (isClientMode && selectedSupplierCui !== '' && associatedSupplierCuis.length > 0) {
+                const hasSelectedAssociation = associatedSupplierCuis.includes(selectedSupplierCui);
+                const hasOtherAssociations = associatedSupplierCuis.some((value) => value !== selectedSupplierCui);
+                requiresAssociation = !hasSelectedAssociation && hasOtherAssociations;
+            }
+            lastCompanyChecks.association_request_required = requiresAssociation;
+            setCreateActionMode(requiresAssociation ? 'association_request' : 'create');
+            refreshCreateSubmitState();
+        };
         let filtersSubmitTimer = null;
         const submitFilters = (immediate = false) => {
             if (!filtersForm) {
@@ -690,6 +744,7 @@
                 const name = String(item.name || '').trim();
                 const label = name && cui ? `${name} - ${cui}` : (String(item.label || cui).trim());
                 hiddenInput.value = cui;
+                hiddenInput.dispatchEvent(new Event('change'));
                 displayInput.value = label;
                 if (applyCommission && commissionInput && Object.prototype.hasOwnProperty.call(item, 'default_commission')) {
                     const commission = formatCommission(item.default_commission);
@@ -703,7 +758,7 @@
                     setHint(defaultSupplierHint);
                 }
                 clearList();
-                updateCreateSubmitState();
+                applyCreateModeFromChecks();
             };
 
             const renderItems = (items) => {
@@ -821,7 +876,10 @@
                 }
                 const requiresSupplier = selectedLinkType() === 'client';
                 const supplierSelected = !requiresSupplier || (hiddenInput && hiddenInput.value.trim() !== '');
-                const canSubmit = hasCommissionValue() && hasPrefillCuiValue() && supplierSelected;
+                const canSubmit = hasCommissionValue()
+                    && hasPrefillCuiValue()
+                    && supplierSelected
+                    && !createBlockedByExistingSupplier;
                 createLinkSubmitButton.disabled = !canSubmit;
             };
             refreshCreateSubmitState = updateCreateSubmitState;
@@ -841,17 +899,21 @@
                 }
                 if (!requiresSupplier) {
                     if (hiddenInput) {
+                        const previousValue = hiddenInput.value;
                         hiddenInput.value = '';
+                        if (previousValue !== '') {
+                            hiddenInput.dispatchEvent(new Event('change'));
+                        }
                     }
                     clearList();
                     setHint('Pentru link de tip furnizor, acest camp nu este obligatoriu.');
-                    updateCreateSubmitState();
+                    applyCreateModeFromChecks();
                     return;
                 }
                 if (hiddenInput && hiddenInput.value.trim() === '') {
                     setHint(defaultSupplierHint);
                 }
-                updateCreateSubmitState();
+                applyCreateModeFromChecks();
             };
 
             if (displayInput && hiddenInput) {
@@ -881,9 +943,13 @@
                     if (selectedLinkType() !== 'client') {
                         return;
                     }
+                    const previousSupplier = hiddenInput.value;
                     hiddenInput.value = '';
+                    if (previousSupplier !== '') {
+                        hiddenInput.dispatchEvent(new Event('change'));
+                    }
                     setHint(defaultSupplierHint);
-                    updateCreateSubmitState();
+                    applyCreateModeFromChecks();
                     const query = displayInput.value.trim();
                     if (timer) {
                         clearTimeout(timer);
@@ -1153,8 +1219,9 @@
                 judet: getField('prefill-judet'),
                 telefon: getField('prefill-telefon'),
             };
-            let lastLookupCui = '';
+            let lastLookupKey = '';
             let activeLookup = 0;
+            let lastSupplierExistsAlertCui = '';
 
             const setPrefillStatus = (text, tone = 'neutral') => {
                 if (!prefillStatus) {
@@ -1186,24 +1253,62 @@
                 });
             };
 
-            const lookupCompanyByCui = (cui) => {
+            const clearLookupChecks = () => {
+                lastCompanyChecks = null;
+                createBlockedByExistingSupplier = false;
+                setCreateActionMode('create');
+                refreshCreateSubmitState();
+            };
+
+            const applyLookupChecks = (checks) => {
+                if (!checks || typeof checks !== 'object') {
+                    clearLookupChecks();
+                    return;
+                }
+                const associatedSupplierCuis = Array.isArray(checks.associated_supplier_cuis)
+                    ? checks.associated_supplier_cuis.map((value) => digitsOnly(value)).filter((value) => value !== '')
+                    : [];
+
+                lastCompanyChecks = {
+                    exists_as_supplier: checks.exists_as_supplier === true,
+                    association_request_required: checks.association_request_required === true,
+                    associated_supplier_cuis: associatedSupplierCuis,
+                };
+                applyCreateModeFromChecks();
+            };
+
+            const buildLookupKey = (normalizedCui) => {
+                return [
+                    normalizedCui,
+                    readSelectedLinkType(),
+                    resolveSelectedSupplierCui(),
+                ].join('|');
+            };
+
+            const lookupCompanyByCui = (cui, options = {}) => {
                 if (!lookupUrl || !csrfInput || !csrfInput.value) {
                     return;
                 }
                 const normalizedCui = digitsOnly(cui);
                 if (normalizedCui === '') {
+                    lastLookupKey = '';
                     setPrefillStatus('');
+                    clearLookupChecks();
                     return;
                 }
-                if (normalizedCui === lastLookupCui) {
+                const force = !!options.force;
+                const lookupKey = buildLookupKey(normalizedCui);
+                if (!force && lookupKey === lastLookupKey) {
                     return;
                 }
 
                 const requestId = ++activeLookup;
-                setPrefillStatus('Se cauta datele firmei in OpenAPI...');
+                setPrefillStatus('Se verifica datele firmei in baza de date...');
                 const payload = new URLSearchParams();
                 payload.set('_token', csrfInput.value);
                 payload.set('cui', normalizedCui);
+                payload.set('link_type', readSelectedLinkType());
+                payload.set('selected_supplier_cui', resolveSelectedSupplierCui());
 
                 fetch(lookupUrl, {
                     method: 'POST',
@@ -1221,6 +1326,16 @@
                             return;
                         }
                         if (!json || json.success !== true || typeof json.data !== 'object' || json.data === null) {
+                            applyLookupChecks(json && typeof json === 'object' ? (json.checks || null) : null);
+                            if (lastCompanyChecks && lastCompanyChecks.exists_as_supplier) {
+                                const supplierMessage = 'Acest furnizor exista deja in baza de date.';
+                                setPrefillStatus(supplierMessage, 'error');
+                                if (lastSupplierExistsAlertCui !== normalizedCui) {
+                                    window.alert(supplierMessage);
+                                    lastSupplierExistsAlertCui = normalizedCui;
+                                }
+                                return;
+                            }
                             const message = json && typeof json.message === 'string' && json.message !== ''
                                 ? json.message
                                 : 'Nu am putut prelua datele firmei pentru acest CUI.';
@@ -1228,8 +1343,33 @@
                             return;
                         }
                         applyPrefillData(json.data);
-                        lastLookupCui = normalizedCui;
-                        setPrefillStatus('Datele firmei au fost preluate automat.', 'success');
+                        applyLookupChecks(json.checks || null);
+                        lastLookupKey = lookupKey;
+
+                        if (lastCompanyChecks && lastCompanyChecks.exists_as_supplier) {
+                            const supplierMessage = 'Acest furnizor exista deja in baza de date.';
+                            setPrefillStatus(supplierMessage, 'error');
+                            if (lastSupplierExistsAlertCui !== normalizedCui) {
+                                window.alert(supplierMessage);
+                                lastSupplierExistsAlertCui = normalizedCui;
+                            }
+                            return;
+                        }
+
+                        if (lastCompanyChecks && lastCompanyChecks.association_request_required === true) {
+                            setPrefillStatus(
+                                'Clientul exista deja la alt furnizor. Poti trimite solicitare de asociere client.',
+                                'error'
+                            );
+                            return;
+                        }
+
+                        const source = json && typeof json.source === 'string' ? json.source : 'openapi';
+                        if (source === 'database') {
+                            setPrefillStatus('Datele firmei au fost preluate din baza de date.', 'success');
+                            return;
+                        }
+                        setPrefillStatus('Datele firmei au fost preluate automat din OpenAPI.', 'success');
                     })
                     .catch(() => {
                         if (requestId !== activeLookup) {
@@ -1245,8 +1385,11 @@
                     prefillCuiInput.value = sanitized;
                 }
                 if (sanitized === '') {
-                    lastLookupCui = '';
+                    lastLookupKey = '';
                     setPrefillStatus('');
+                    clearLookupChecks();
+                } else {
+                    clearLookupChecks();
                 }
                 refreshCreateSubmitState();
             });
@@ -1257,6 +1400,28 @@
                 lookupCompanyByCui(sanitized);
                 refreshCreateSubmitState();
             });
+
+            const typeInputs = Array.from(document.querySelectorAll('input[name="type"]'));
+            typeInputs.forEach((input) => {
+                input.addEventListener('change', () => {
+                    const currentCui = digitsOnly(prefillCuiInput.value);
+                    if (currentCui !== '') {
+                        lookupCompanyByCui(currentCui, { force: true });
+                        return;
+                    }
+                    applyCreateModeFromChecks();
+                });
+            });
+            if (supplierValueInput) {
+                supplierValueInput.addEventListener('change', () => {
+                    const currentCui = digitsOnly(prefillCuiInput.value);
+                    if (currentCui !== '') {
+                        lookupCompanyByCui(currentCui, { force: true });
+                        return;
+                    }
+                    applyCreateModeFromChecks();
+                });
+            }
         }
 
         refreshCreateSubmitState();
