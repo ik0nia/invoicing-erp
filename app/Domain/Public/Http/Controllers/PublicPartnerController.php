@@ -516,42 +516,85 @@ class PublicPartnerController
         }
         $this->ensureEditableOnboarding($context['link'] ?? []);
 
-        $contractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
-        if (!$contractId) {
-            Response::abort(404);
-        }
-
         $partnerCui = $this->resolvePartnerCui($context);
         $scope = $this->resolveScope($context, $partnerCui);
-        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $contractId]);
-        if (!$contract || !$this->contractAllowed($contract, $scope)) {
-            Response::abort(403, 'Acces interzis.');
+        $allowedContracts = $this->allowedContractsById($scope);
+        if (empty($allowedContracts)) {
+            Session::flash('error', 'Nu exista documente disponibile pentru incarcare.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
         }
 
-        $path = $this->storeUpload($_FILES['file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
-        if ($path === null) {
-            Response::abort(400, 'Fisier invalid.');
+        $savedContractIds = [];
+        $failedFiles = 0;
+        $uploadMode = 'single';
+
+        $allInOne = !empty($_POST['all_in_one_signed']);
+        if ($allInOne) {
+            $uploadMode = 'all_in_one';
+            $path = $this->storeUpload($_FILES['all_signed_file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
+            if ($path === null) {
+                Session::flash('error', 'Fisier invalid. Acceptat: PDF/JPG/JPEG/PNG, maxim 20MB.');
+                Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+            }
+
+            $targetContractIds = $this->requiredUploadTargetContractIds($allowedContracts);
+            foreach ($targetContractIds as $targetContractId) {
+                $this->markContractSignedUpload($targetContractId, $path);
+                $savedContractIds[$targetContractId] = $targetContractId;
+            }
+        } else {
+            $postedContractIds = $this->normalizePostedContractIds($_POST['signed_contract_ids'] ?? []);
+            $uploadedFiles = $this->extractUploadedFiles($_FILES['signed_files'] ?? null);
+            if (!empty($uploadedFiles)) {
+                $uploadMode = 'batch';
+                foreach ($uploadedFiles as $index => $uploadedFile) {
+                    $errorCode = (int) ($uploadedFile['error'] ?? UPLOAD_ERR_NO_FILE);
+                    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+                        continue;
+                    }
+
+                    $targetContractId = isset($postedContractIds[$index]) ? (int) $postedContractIds[$index] : 0;
+                    if ($targetContractId <= 0 || !isset($allowedContracts[$targetContractId])) {
+                        $failedFiles++;
+                        continue;
+                    }
+
+                    $path = $this->storeUpload($uploadedFile, 'contracts/signed', self::SIGNED_EXTENSIONS);
+                    if ($path === null) {
+                        $failedFiles++;
+                        continue;
+                    }
+
+                    $this->markContractSignedUpload($targetContractId, $path);
+                    $savedContractIds[$targetContractId] = $targetContractId;
+                }
+            }
         }
 
-        Database::execute(
-            'UPDATE contracts
-             SET signed_upload_path = :path,
-                 signed_file_path = :path,
-                 status = :status,
-                 updated_at = :now
-             WHERE id = :id',
-            [
-                'path' => $path,
-                'status' => 'signed_uploaded',
-                'now' => date('Y-m-d H:i:s'),
-                'id' => $contractId,
-            ]
-        );
+        if (empty($savedContractIds)) {
+            $legacyContractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
+            if ($legacyContractId > 0 && isset($allowedContracts[$legacyContractId])) {
+                $path = $this->storeUpload($_FILES['file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
+                if ($path !== null) {
+                    $this->markContractSignedUpload($legacyContractId, $path);
+                    $savedContractIds[$legacyContractId] = $legacyContractId;
+                }
+            }
+        }
+
+        if (empty($savedContractIds)) {
+            Session::flash('error', 'Nu am putut procesa fisierele. Verificati selectia documentelor si fisierele incarcate.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+        }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
-        Audit::record('public_contract.upload_signed', 'contract', $contractId, ['rows_count' => 1]);
-        Audit::record('contract.signed_uploaded', 'contract', $contractId, ['rows_count' => 1]);
+        $firstContractId = (int) reset($savedContractIds);
+        Audit::record('public_contract.upload_signed', 'contract', $firstContractId > 0 ? $firstContractId : null, [
+            'rows_count' => count($savedContractIds),
+            'mode' => $uploadMode,
+            'failed_files' => $failedFiles,
+        ]);
 
         $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
         $this->syncOnboardingStatus(
@@ -561,7 +604,17 @@ class PublicPartnerController
             $documentsProgress
         );
 
-        Session::flash('status', 'Contract semnat incarcat.');
+        if ($uploadMode === 'all_in_one') {
+            Session::flash('status', 'Fisierul semnat a fost atasat pentru toate documentele obligatorii.');
+        } else {
+            $message = count($savedContractIds) === 1
+                ? 'Document semnat incarcat.'
+                : ('Au fost incarcate ' . count($savedContractIds) . ' documente semnate.');
+            if ($failedFiles > 0) {
+                $message .= ' ' . $failedFiles . ' fisiere nu au fost procesate.';
+            }
+            Session::flash('status', $message);
+        }
         Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
     }
 
@@ -1403,6 +1456,93 @@ class PublicPartnerController
         }
 
         return $prefill;
+    }
+
+    private function allowedContractsById(array $scope): array
+    {
+        $rows = $this->fetchContracts($scope);
+        $map = [];
+        foreach ($rows as $row) {
+            $id = isset($row['id']) ? (int) $row['id'] : 0;
+            if ($id <= 0) {
+                continue;
+            }
+            $map[$id] = $row;
+        }
+
+        return $map;
+    }
+
+    private function requiredUploadTargetContractIds(array $allowedContracts): array
+    {
+        $required = [];
+        foreach ($allowedContracts as $id => $contract) {
+            if (!empty($contract['required_onboarding'])) {
+                $required[] = (int) $id;
+            }
+        }
+        if (!empty($required)) {
+            return $required;
+        }
+
+        return array_map(static fn ($id): int => (int) $id, array_keys($allowedContracts));
+    }
+
+    private function markContractSignedUpload(int $contractId, string $path): void
+    {
+        if ($contractId <= 0 || $path === '') {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE contracts
+             SET signed_upload_path = :path,
+                 signed_file_path = :path,
+                 status = :status,
+                 updated_at = :now
+             WHERE id = :id',
+            [
+                'path' => $path,
+                'status' => 'signed_uploaded',
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $contractId,
+            ]
+        );
+        Audit::record('contract.signed_uploaded', 'contract', $contractId, ['rows_count' => 1]);
+    }
+
+    private function normalizePostedContractIds(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $item) {
+            $result[] = (int) $item;
+        }
+
+        return $result;
+    }
+
+    private function extractUploadedFiles(?array $files): array
+    {
+        if (!$files || !isset($files['name']) || !is_array($files['name'])) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($files['name'] as $index => $name) {
+            $result[] = [
+                'name' => (string) ($files['name'][$index] ?? ''),
+                'type' => (string) ($files['type'][$index] ?? ''),
+                'tmp_name' => (string) ($files['tmp_name'][$index] ?? ''),
+                'error' => (int) ($files['error'][$index] ?? UPLOAD_ERR_NO_FILE),
+                'size' => (int) ($files['size'][$index] ?? 0),
+            ];
+        }
+
+        return $result;
     }
 
     private function storeUpload(?array $file, string $subdir, array $allowedExtensions): ?string

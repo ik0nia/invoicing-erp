@@ -513,36 +513,108 @@
                 </div>
 
                 <?php if (!$isReadOnly && !empty($permissions['can_upload_signed']) && !empty($contracts)): ?>
+                    <?php
+                        $uploadTargetContracts = [];
+                        foreach ($contracts as $contractOption) {
+                            if (!empty($contractOption['required_onboarding'])) {
+                                $uploadTargetContracts[] = $contractOption;
+                            }
+                        }
+                        if (empty($uploadTargetContracts)) {
+                            $uploadTargetContracts = $contracts;
+                        }
+                        $uploadContractOptions = [];
+                        foreach ($uploadTargetContracts as $contractOption) {
+                            $optionId = (int) ($contractOption['id'] ?? 0);
+                            if ($optionId <= 0) {
+                                continue;
+                            }
+                            $optionDocNo = trim((string) ($contractOption['doc_full_no'] ?? ''));
+                            if ($optionDocNo === '') {
+                                $optionNo = (int) ($contractOption['doc_no'] ?? 0);
+                                if ($optionNo > 0) {
+                                    $optionSeries = trim((string) ($contractOption['doc_series'] ?? ''));
+                                    $optionNoPadded = str_pad((string) $optionNo, 6, '0', STR_PAD_LEFT);
+                                    $optionDocNo = $optionSeries !== '' ? ($optionSeries . '-' . $optionNoPadded) : $optionNoPadded;
+                                }
+                            }
+                            $label = trim((string) ($contractOption['title'] ?? 'Document'));
+                            if ($label === '') {
+                                $label = 'Document';
+                            }
+                            if ($optionDocNo !== '') {
+                                $label .= ' [' . $optionDocNo . ']';
+                            }
+                            $uploadContractOptions[] = [
+                                'id' => $optionId,
+                                'label' => $label,
+                            ];
+                        }
+                        $uploadContractOptionsJson = json_encode(
+                            $uploadContractOptions,
+                            JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+                        );
+                    ?>
                     <div class="mt-4 rounded border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                         Acceptat upload semnat: PDF, JPG, JPEG, PNG. Dimensiune maxima 20MB.
                     </div>
-                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/upload-signed') ?>" enctype="multipart/form-data" class="mt-3 flex flex-wrap items-center gap-3">
+
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/upload-signed') ?>" enctype="multipart/form-data" class="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-5">
                         <?= App\Support\Csrf::input() ?>
-                        <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
-                            <option value="">Selecteaza document</option>
-                            <?php foreach ($contracts as $contract): ?>
-                                <?php
-                                    $optionDocNo = trim((string) ($contract['doc_full_no'] ?? ''));
-                                    if ($optionDocNo === '') {
-                                        $optionNo = (int) ($contract['doc_no'] ?? 0);
-                                        if ($optionNo > 0) {
-                                            $optionSeries = trim((string) ($contract['doc_series'] ?? ''));
-                                            $optionNoPadded = str_pad((string) $optionNo, 6, '0', STR_PAD_LEFT);
-                                            $optionDocNo = $optionSeries !== '' ? ($optionSeries . '-' . $optionNoPadded) : $optionNoPadded;
-                                        }
-                                    }
-                                ?>
-                                <option value="<?= (int) $contract['id'] ?>">
-                                    <?= htmlspecialchars((string) ($contract['title'] ?? 'Document')) ?>
-                                    <?= $optionDocNo !== '' ? ' [' . htmlspecialchars($optionDocNo) . ']' : '' ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required class="text-sm text-slate-600">
-                        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                            Incarca semnat
-                        </button>
+                        <div class="text-sm font-semibold text-blue-900">Incarcare pe documente (multi-fisier)</div>
+                        <p class="mt-1 text-sm text-blue-800">
+                            Selectati fisierele semnate. Pentru fiecare fisier puteti alege documentul corespunzator din dropdown.
+                        </p>
+                        <div class="mt-4 rounded-xl border-2 border-dashed border-blue-300 bg-white p-5">
+                            <label class="block text-center text-sm font-medium text-slate-700" for="signed-files-input">
+                                Alege fisierele semnate
+                            </label>
+                            <input
+                                id="signed-files-input"
+                                type="file"
+                                name="signed_files[]"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                multiple
+                                class="mt-3 block w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                            >
+                            <p class="mt-2 text-xs text-slate-500">
+                                Dupa selectie, pentru fiecare fisier va aparea campul de alegere document.
+                            </p>
+                        </div>
+                        <div id="signed-files-mapping" class="mt-4 hidden space-y-3"></div>
+                        <div class="mt-4">
+                            <button class="rounded bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                Salveaza fisierele selectate
+                            </button>
+                        </div>
                     </form>
+
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/upload-signed') ?>" enctype="multipart/form-data" class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-5">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="all_in_one_signed" value="1">
+                        <div class="text-sm font-semibold text-amber-900">Un singur fisier pentru toate documentele</div>
+                        <p class="mt-1 text-sm text-amber-800">
+                            Daca aveti toate documentele semnate intr-un singur fisier scanat, incarcati fisierul aici.
+                            Sistemul il va considera semnat pentru toate documentele obligatorii.
+                        </p>
+                        <div class="mt-4 rounded-xl border-2 border-dashed border-amber-300 bg-white p-5">
+                            <label class="block text-sm font-medium text-slate-700" for="all-signed-file">Fisier semnat (toate documentele)</label>
+                            <input
+                                id="all-signed-file"
+                                type="file"
+                                name="all_signed_file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                required
+                                class="mt-2 block w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                            >
+                        </div>
+                        <div class="mt-4">
+                            <button class="rounded bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700">
+                                Salveaza document unic pentru toate
+                            </button>
+                        </div>
+                    </form>
+                    <script id="signed-contract-options" type="application/json"><?= $uploadContractOptionsJson !== false ? $uploadContractOptionsJson : '[]' ?></script>
                 <?php endif; ?>
             <?php endif; ?>
         </div>
@@ -627,5 +699,94 @@
             url.searchParams.set('lookup_cui', cui);
             window.location.href = url.toString();
         });
+    })();
+
+    (function () {
+        const fileInput = document.getElementById('signed-files-input');
+        const mappingContainer = document.getElementById('signed-files-mapping');
+        const optionsNode = document.getElementById('signed-contract-options');
+        if (!fileInput || !mappingContainer || !optionsNode) {
+            return;
+        }
+
+        let options = [];
+        try {
+            const parsed = JSON.parse(optionsNode.textContent || '[]');
+            if (Array.isArray(parsed)) {
+                options = parsed;
+            }
+        } catch (error) {
+            options = [];
+        }
+
+        const formatFileSize = (bytes) => {
+            const value = Number(bytes || 0);
+            if (!Number.isFinite(value) || value <= 0) {
+                return '0 KB';
+            }
+            if (value < 1024 * 1024) {
+                return (value / 1024).toFixed(1) + ' KB';
+            }
+            return (value / (1024 * 1024)).toFixed(2) + ' MB';
+        };
+
+        const createOption = (contract, isSelected) => {
+            const option = document.createElement('option');
+            option.value = String(contract.id || '');
+            option.textContent = String(contract.label || 'Document');
+            if (isSelected) {
+                option.selected = true;
+            }
+            return option;
+        };
+
+        const renderMapping = () => {
+            const files = Array.from(fileInput.files || []);
+            mappingContainer.innerHTML = '';
+            if (files.length === 0) {
+                mappingContainer.classList.add('hidden');
+                return;
+            }
+
+            mappingContainer.classList.remove('hidden');
+            files.forEach((file, index) => {
+                const row = document.createElement('div');
+                row.className = 'grid gap-3 rounded border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_320px]';
+
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'text-sm text-slate-700';
+                fileInfo.innerHTML = '<div class="font-semibold">' + String(index + 1) + '. ' + String(file.name || 'fisier') + '</div>'
+                    + '<div class="text-xs text-slate-500 mt-1">' + formatFileSize(file.size) + '</div>';
+
+                const selectWrap = document.createElement('div');
+                const label = document.createElement('label');
+                label.className = 'mb-1 block text-xs font-medium text-slate-600';
+                label.textContent = 'Document';
+                const select = document.createElement('select');
+                select.name = 'signed_contract_ids[]';
+                select.required = true;
+                select.className = 'block w-full rounded border border-slate-300 px-3 py-2 text-sm';
+
+                options.forEach((optionItem, optionIndex) => {
+                    select.appendChild(createOption(optionItem, optionIndex === Math.min(index, options.length - 1)));
+                });
+                if (options.length === 0) {
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = 'Nu exista documente disponibile';
+                    emptyOption.selected = true;
+                    select.appendChild(emptyOption);
+                    select.disabled = true;
+                }
+
+                selectWrap.appendChild(label);
+                selectWrap.appendChild(select);
+                row.appendChild(fileInfo);
+                row.appendChild(selectWrap);
+                mappingContainer.appendChild(row);
+            });
+        };
+
+        fileInput.addEventListener('change', renderMapping);
     })();
 </script>
