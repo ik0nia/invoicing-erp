@@ -447,7 +447,7 @@
                                             <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
                                             <button
                                                 class="text-xs font-semibold text-amber-700 hover:text-amber-800"
-                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge semnaturile incarcate pentru documentele obligatorii.')"
+                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge documentele de onboarding existente.')"
                                             >
                                                 Reset onboarding
                                             </button>
@@ -487,7 +487,7 @@
                                             <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnToPath) ?>">
                                             <button
                                                 class="text-xs font-semibold text-amber-700 hover:text-amber-800"
-                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge semnaturile incarcate pentru documentele obligatorii.')"
+                                                onclick="return confirm('Resetezi onboarding-ul la Pasul 1? Se vor sterge documentele de onboarding existente.')"
                                             >
                                                 Reset onboarding
                                             </button>

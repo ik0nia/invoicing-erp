@@ -408,10 +408,10 @@ class EnrollmentLinksController
         $relationSupplier = preg_replace('/\D+/', '', (string) ($row['relation_supplier_cui'] ?? ''));
         $relationClient = preg_replace('/\D+/', '', (string) ($row['relation_client_cui'] ?? ''));
 
-        $contractsReset = 0;
+        $contractsDeleted = 0;
         if (Database::tableExists('contracts') && Database::columnExists('contracts', 'required_onboarding')) {
             if ($relationSupplier !== '' && $relationClient !== '') {
-                $contractsReset = (int) (Database::fetchValue(
+                $contractsDeleted = (int) (Database::fetchValue(
                     'SELECT COUNT(*)
                      FROM contracts
                      WHERE supplier_cui = :supplier
@@ -420,25 +420,17 @@ class EnrollmentLinksController
                     ['supplier' => $relationSupplier, 'client' => $relationClient]
                 ) ?? 0);
                 Database::execute(
-                    'UPDATE contracts
-                     SET status = :status,
-                         signed_upload_path = :signed_upload_path,
-                         signed_file_path = :signed_file_path,
-                         updated_at = :updated_at
+                    'DELETE FROM contracts
                      WHERE supplier_cui = :supplier
                        AND client_cui = :client
                        AND required_onboarding = 1',
                     [
-                        'status' => 'draft',
-                        'signed_upload_path' => null,
-                        'signed_file_path' => null,
-                        'updated_at' => date('Y-m-d H:i:s'),
                         'supplier' => $relationSupplier,
                         'client' => $relationClient,
                     ]
                 );
             } elseif ($type === 'supplier' && $partnerCui !== '') {
-                $contractsReset = (int) (Database::fetchValue(
+                $contractsDeleted = (int) (Database::fetchValue(
                     'SELECT COUNT(*)
                      FROM contracts
                      WHERE (partner_cui = :partner OR supplier_cui = :partner)
@@ -446,25 +438,17 @@ class EnrollmentLinksController
                     ['partner' => $partnerCui]
                 ) ?? 0);
                 Database::execute(
-                    'UPDATE contracts
-                     SET status = :status,
-                         signed_upload_path = :signed_upload_path,
-                         signed_file_path = :signed_file_path,
-                         updated_at = :updated_at
+                    'DELETE FROM contracts
                      WHERE (partner_cui = :partner OR supplier_cui = :partner)
                        AND required_onboarding = 1',
                     [
-                        'status' => 'draft',
-                        'signed_upload_path' => null,
-                        'signed_file_path' => null,
-                        'updated_at' => date('Y-m-d H:i:s'),
                         'partner' => $partnerCui,
                     ]
                 );
             } elseif ($type === 'client' && $partnerCui !== '') {
                 $effectiveSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
                 if ($effectiveSupplier !== '') {
-                    $contractsReset = (int) (Database::fetchValue(
+                    $contractsDeleted = (int) (Database::fetchValue(
                         'SELECT COUNT(*)
                          FROM contracts
                          WHERE supplier_cui = :supplier
@@ -473,25 +457,17 @@ class EnrollmentLinksController
                         ['supplier' => $effectiveSupplier, 'client' => $partnerCui]
                     ) ?? 0);
                     Database::execute(
-                        'UPDATE contracts
-                         SET status = :status,
-                             signed_upload_path = :signed_upload_path,
-                             signed_file_path = :signed_file_path,
-                             updated_at = :updated_at
+                        'DELETE FROM contracts
                          WHERE supplier_cui = :supplier
                            AND client_cui = :client
                            AND required_onboarding = 1',
                         [
-                            'status' => 'draft',
-                            'signed_upload_path' => null,
-                            'signed_file_path' => null,
-                            'updated_at' => date('Y-m-d H:i:s'),
                             'supplier' => $effectiveSupplier,
                             'client' => $partnerCui,
                         ]
                     );
                 } else {
-                    $contractsReset = (int) (Database::fetchValue(
+                    $contractsDeleted = (int) (Database::fetchValue(
                         'SELECT COUNT(*)
                          FROM contracts
                          WHERE (partner_cui = :partner OR client_cui = :partner)
@@ -499,18 +475,10 @@ class EnrollmentLinksController
                         ['partner' => $partnerCui]
                     ) ?? 0);
                     Database::execute(
-                        'UPDATE contracts
-                         SET status = :status,
-                             signed_upload_path = :signed_upload_path,
-                             signed_file_path = :signed_file_path,
-                             updated_at = :updated_at
+                        'DELETE FROM contracts
                          WHERE (partner_cui = :partner OR client_cui = :partner)
                            AND required_onboarding = 1',
                         [
-                            'status' => 'draft',
-                            'signed_upload_path' => null,
-                            'signed_file_path' => null,
-                            'updated_at' => date('Y-m-d H:i:s'),
                             'partner' => $partnerCui,
                         ]
                     );
@@ -551,11 +519,11 @@ class EnrollmentLinksController
         );
         Audit::record('onboarding.reset', 'enrollment_link', $id, [
             'rows_count' => 1,
-            'contracts_reset' => $contractsReset,
+            'contracts_deleted' => $contractsDeleted,
             'partner_cui_before' => $partnerCui !== '' ? $partnerCui : null,
         ]);
 
-        Session::flash('status', 'Onboarding resetat la Pasul 1.');
+        Session::flash('status', 'Onboarding resetat la Pasul 1. Documentele de onboarding au fost sterse.');
         Response::redirect($this->resolveAdminReturnPath('/admin/enrollment-links'));
     }
 
