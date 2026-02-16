@@ -86,19 +86,44 @@
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/create') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <form method="POST" action="<?= App\Support\Url::to('admin/enrollment-links/create') ?>" class="mt-4 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50 p-5 shadow-sm ring-1 ring-blue-100">
         <?= App\Support\Csrf::input() ?>
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="link-type">Tip link</label>
-                <select id="link-type" name="type" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
-                    <option value="supplier">Furnizor</option>
-                    <option value="client">Client</option>
-                </select>
+        <div class="mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
+            <div class="text-sm font-semibold text-blue-900">Creeaza rapid un link nou pentru onboarding</div>
+            <p class="mt-1 text-xs text-blue-800">Alege tipul inrolarii, completeaza precompletarile si trimite linkul partenerului.</p>
+        </div>
+
+        <div>
+            <label class="block text-base font-semibold text-slate-800">Tip inrolare</label>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                <label class="group cursor-pointer">
+                    <input type="radio" name="type" value="supplier" checked class="peer sr-only">
+                    <span class="flex items-start gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm transition group-hover:border-blue-300 peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:ring-2 peer-checked:ring-blue-200">
+                        <span class="mt-1 inline-flex h-4 w-4 shrink-0 rounded-full border-2 border-slate-400 bg-white"></span>
+                        <span>
+                            <span class="block text-base font-semibold text-slate-900">Furnizor</span>
+                            <span class="block text-sm text-slate-600">Link pentru inrolarea unei companii furnizor.</span>
+                        </span>
+                    </span>
+                </label>
+                <label class="group cursor-pointer">
+                    <input type="radio" name="type" value="client" class="peer sr-only">
+                    <span class="flex items-start gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-sm transition group-hover:border-emerald-300 peer-checked:border-emerald-600 peer-checked:bg-emerald-50 peer-checked:ring-2 peer-checked:ring-emerald-200">
+                        <span class="mt-1 inline-flex h-4 w-4 shrink-0 rounded-full border-2 border-slate-400 bg-white"></span>
+                        <span>
+                            <span class="block text-base font-semibold text-slate-900">Client</span>
+                            <span class="block text-sm text-slate-600">Link pentru inrolarea unui client asociat unui furnizor.</span>
+                        </span>
+                    </span>
+                </label>
             </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-3">
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor (pentru client)</label>
+                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor (doar pentru client)</label>
                 <div
+                    data-supplier-wrapper
                     class="relative"
                     data-supplier-picker
                     data-search-url="<?= App\Support\Url::to('admin/enrollment-links/supplier-search') ?>"
@@ -578,10 +603,13 @@
             const hiddenInput = supplierPicker.querySelector('[data-supplier-value]');
             const list = supplierPicker.querySelector('[data-supplier-list]');
             const hint = supplierPicker.querySelector('[data-supplier-hint]');
+            const supplierWrapper = document.querySelector('[data-supplier-wrapper]');
+            const typeInputs = Array.from(document.querySelectorAll('input[name="type"]'));
             const searchUrl = supplierPicker.getAttribute('data-search-url') || '';
             const infoUrl = supplierPicker.getAttribute('data-info-url') || '';
             let requestId = 0;
             let timer = null;
+            const defaultSupplierHint = 'Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.';
 
             const setHint = (text) => {
                 if (hint) {
@@ -639,7 +667,7 @@
                 if (cui !== '') {
                     setHint(`Selectat: ${label}. Se transmite CUI: ${cui}.`);
                 } else {
-                    setHint('Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.');
+                    setHint(defaultSupplierHint);
                 }
                 clearList();
             };
@@ -728,10 +756,45 @@
                     .catch(() => {});
             };
 
+            const selectedLinkType = () => {
+                const checked = typeInputs.find((input) => input.checked);
+                return checked ? String(checked.value || 'supplier') : 'supplier';
+            };
+
+            const syncSupplierState = () => {
+                const requiresSupplier = selectedLinkType() === 'client';
+                if (supplierWrapper) {
+                    supplierWrapper.classList.toggle('opacity-70', !requiresSupplier);
+                }
+                if (displayInput) {
+                    displayInput.disabled = !requiresSupplier;
+                    displayInput.classList.toggle('bg-slate-100', !requiresSupplier);
+                    displayInput.classList.toggle('cursor-not-allowed', !requiresSupplier);
+                    if (!requiresSupplier) {
+                        displayInput.value = '';
+                    }
+                }
+                if (!requiresSupplier) {
+                    if (hiddenInput) {
+                        hiddenInput.value = '';
+                    }
+                    clearList();
+                    setHint('Pentru link de tip furnizor, acest camp nu este obligatoriu.');
+                    return;
+                }
+                if (hiddenInput && hiddenInput.value.trim() === '') {
+                    setHint(defaultSupplierHint);
+                }
+            };
+
             if (displayInput && hiddenInput) {
                 const parentForm = displayInput.closest('form');
                 if (parentForm) {
                     parentForm.addEventListener('submit', () => {
+                        if (selectedLinkType() !== 'client') {
+                            hiddenInput.value = '';
+                            return;
+                        }
                         if (hiddenInput.value.trim() !== '') {
                             return;
                         }
@@ -742,11 +805,17 @@
                     });
                 }
                 displayInput.addEventListener('focus', () => {
+                    if (selectedLinkType() !== 'client') {
+                        return;
+                    }
                     fetchSuppliers(displayInput.value.trim());
                 });
                 displayInput.addEventListener('input', () => {
+                    if (selectedLinkType() !== 'client') {
+                        return;
+                    }
                     hiddenInput.value = '';
-                    setHint('Selectia afisata include denumirea firmei; la salvare se transmite doar CUI-ul.');
+                    setHint(defaultSupplierHint);
                     const query = displayInput.value.trim();
                     if (timer) {
                         clearTimeout(timer);
@@ -758,6 +827,9 @@
                 displayInput.addEventListener('blur', () => {
                     window.setTimeout(() => {
                         clearList();
+                        if (selectedLinkType() !== 'client') {
+                            return;
+                        }
                         if (hiddenInput.value.trim() !== '') {
                             return;
                         }
@@ -783,7 +855,13 @@
                     applySelection(item, true);
                 });
             }
-            if (hiddenInput && hiddenInput.value.trim() !== '') {
+            if (typeInputs.length > 0) {
+                typeInputs.forEach((input) => {
+                    input.addEventListener('change', syncSupplierState);
+                });
+            }
+            syncSupplierState();
+            if (selectedLinkType() === 'client' && hiddenInput && hiddenInput.value.trim() !== '') {
                 resolveSupplierByCui(hiddenInput.value.trim(), true);
             }
         }
