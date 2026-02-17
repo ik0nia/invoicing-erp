@@ -302,7 +302,6 @@
                                 <td class="px-3 py-2">
                                     <select
                                         name="lines[<?= (int) $index ?>][unit_code]"
-                                        tabindex="-1"
                                         class="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
                                     >
                                         <?php foreach ($unitOptions as $unit): ?>
@@ -405,7 +404,7 @@
                         <input name="lines[${index}][product_name]" type="text" class="w-full rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
                     <td class="px-3 py-2">
-                        <select name="lines[${index}][unit_code]" tabindex="-1" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
+                        <select name="lines[${index}][unit_code]" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
                             ${buildOptions(units, 'BUC')}
                         </select>
                     </td>
