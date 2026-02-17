@@ -26,6 +26,7 @@ $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
 $isOperator = $user?->isOperator() ?? false;
+$isAdminRole = $user?->hasRole('admin') ?? false;
 $isInternalStaff = $user?->hasRole(['super_admin', 'admin', 'contabil', 'operator']) ?? false;
 $canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
 $userFirstName = '';
@@ -87,7 +88,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
     ];
 }
 
-if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
+if ($isSuperAdmin || $isAdminRole) {
     $menuSections['Documente'][] = [
         'label' => 'Modele de contract',
         'path' => '/admin/contract-templates',
@@ -172,6 +173,16 @@ if ($isPlatformUser) {
         'active' => str_starts_with($currentPath, '/admin/audit'),
     ];
     $menuSections['Administrare'] = $adminItems;
+
+    if ($isSuperAdmin || $isAdminRole) {
+        $menuSections['Utile'] = [
+            [
+                'label' => 'Prelucrare PDF aviz',
+                'path' => '/admin/utile/prelucrare-pdf',
+                'active' => str_starts_with($currentPath, '/admin/utile/prelucrare-pdf'),
+            ],
+        ];
+    }
 }
 ?>
 <!DOCTYPE html>

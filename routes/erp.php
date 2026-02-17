@@ -14,11 +14,14 @@ use App\Domain\Contracts\Http\Controllers\ContractsController;
 use App\Domain\Contracts\Http\Controllers\ContractTemplatesController;
 use App\Domain\Contracts\Http\Controllers\DocumentRegistryController;
 use App\Domain\Contacts\Http\Controllers\ContactsController;
+use App\Domain\Tools\Http\Controllers\PdfToolsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 $router->post('/admin/setari/demo-generate', [SettingsController::class, 'generateDemo']);
 $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo']);
+$router->get('/admin/utile/prelucrare-pdf', [PdfToolsController::class, 'index']);
+$router->post('/admin/utile/prelucrare-pdf', [PdfToolsController::class, 'process']);
 $router->get('/admin/changelog', [SettingsController::class, 'changelog']);
 $router->get('/admin/audit', [AuditController::class, 'index']);
 $router->get('/admin/audit/view', [AuditController::class, 'show']);
