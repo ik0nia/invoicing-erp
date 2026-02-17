@@ -108,7 +108,7 @@
     <?php endif; ?>
 
     <?php if (!empty($permissions['can_view'])): ?>
-        <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm dark:border-slate-700 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+        <div class="rounded-2xl border border-blue-100 bg-blue-50 p-5 shadow-sm dark:border-slate-700 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <div class="text-sm font-semibold text-blue-700 dark:text-blue-300"><?= htmlspecialchars($title) ?></div>
@@ -234,7 +234,7 @@
                 <?php endif; ?>
 
                 <?php if (!empty($onboardingResources)): ?>
-                    <div class="mt-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                    <div class="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
                         <div class="text-sm font-semibold text-slate-800">Documente pentru descarcare (Pasul 1)</div>
                         <ul class="mt-3 space-y-2 text-sm text-slate-700">
                             <?php foreach ($onboardingResources as $resource): ?>
@@ -260,7 +260,7 @@
                     </div>
                 <?php endif; ?>
 
-                <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div class="text-sm font-semibold text-slate-800">Preview-uri contracte onboarding</div>
                     <?php if (empty($contracts)): ?>
                         <?php if (empty($draftContractTemplates)): ?>
@@ -353,7 +353,7 @@
 
             <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-5 space-y-4">
                 <?= App\Support\Csrf::input() ?>
-                <div class="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                <div class="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
                     <div>
                         <label class="block text-sm font-medium text-slate-700" for="cui">CUI</label>
                         <input
@@ -586,7 +586,7 @@
                         </div>
 
                         <?php if (!$isReadOnly): ?>
-                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-5">
+                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-5">
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
                                 <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>

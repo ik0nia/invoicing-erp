@@ -44,6 +44,9 @@
         .dark-mode .bg-slate-100 { background-color: #111827 !important; }
         .dark-mode .bg-slate-200 { background-color: #1f2937 !important; }
         .dark-mode .bg-blue-50 { background-color: #0b1f33 !important; }
+        .dark-mode .bg-slate-50\/50 { background-color: #0f172a !important; }
+        .dark-mode .bg-slate-50\/70 { background-color: #0f172a !important; }
+        .dark-mode .bg-blue-50\/50 { background-color: #0b1f33 !important; }
         .dark-mode .bg-amber-50 { background-color: #2a1f0b !important; }
         .dark-mode .bg-amber-100 { background-color: #3a2a0f !important; }
         .dark-mode .bg-yellow-50 { background-color: #2a240b !important; }

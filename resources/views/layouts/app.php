@@ -201,6 +201,9 @@ if ($isPlatformUser) {
         .dark-mode .bg-slate-200 { background-color: #1f2937 !important; }
         .dark-mode .bg-blue-50 { background-color: #0f172a !important; }
         .dark-mode .bg-blue-100 { background-color: #1e293b !important; }
+        .dark-mode .bg-slate-50\/50 { background-color: #0f172a !important; }
+        .dark-mode .bg-slate-50\/70 { background-color: #0f172a !important; }
+        .dark-mode .bg-blue-50\/50 { background-color: #0b1f33 !important; }
         .dark-mode .border-slate-200 { border-color: #1f2937 !important; }
         .dark-mode .border-slate-300 { border-color: #374151 !important; }
         .dark-mode .border-slate-100 { border-color: #1f2937 !important; }
