@@ -1498,14 +1498,16 @@ class InvoiceController
             Response::redirect('/admin/facturi/import');
         }
 
+        $supplierCuiRaw = (string) ($data['supplier_cui'] ?? '');
         $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
         $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
         $data['supplier_cui'] = preg_replace('/\D+/', '', (string) ($data['supplier_cui'] ?? ''));
         $data['customer_cui'] = preg_replace('/\D+/', '', (string) ($data['customer_cui'] ?? ''));
 
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
-        if (!$this->supplierExistsInPlatform((string) ($data['supplier_cui'] ?? ''))) {
-            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma.');
+        $supplierMatch = $this->supplierMatchDiagnostics($supplierCuiRaw, (string) ($data['supplier_cui'] ?? ''));
+        if (!$supplierMatch['matched']) {
+            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma. ' . (string) ($supplierMatch['message'] ?? ''));
             Response::redirect('/admin/facturi/import');
         }
 
@@ -5451,29 +5453,91 @@ class InvoiceController
 
     private function supplierExistsInPlatform(string $supplierCui): bool
     {
-        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
-        if ($supplierCui === '' || !Database::tableExists('partners')) {
-            return false;
+        $normalized = preg_replace('/\D+/', '', $supplierCui);
+        $diagnostic = $this->supplierMatchDiagnostics($supplierCui, $normalized);
+        return !empty($diagnostic['matched']);
+    }
+
+    private function supplierMatchDiagnostics(string $xmlCuiRaw, string $xmlCuiNormalized): array
+    {
+        if ($xmlCuiNormalized === '') {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="" (gol).',
+            ];
+        }
+
+        if (!Database::tableExists('partners')) {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Tabela partners nu exista.',
+            ];
+        }
+
+        if (!Database::columnExists('partners', 'is_supplier')) {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Coloana partners.is_supplier lipseste.',
+            ];
         }
 
         try {
             $rows = Database::fetchAll('SELECT cui, is_supplier FROM partners');
         } catch (\Throwable $exception) {
-            return false;
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Eroare DB la citirea partners: ' . $exception->getMessage(),
+            ];
         }
 
+        $totalRows = count($rows);
+        $supplierRows = 0;
+        $sameCuiRows = [];
+
         foreach ($rows as $candidate) {
-            if (empty($candidate['is_supplier'])) {
+            $isSupplier = !empty($candidate['is_supplier']);
+            if ($isSupplier) {
+                $supplierRows++;
+            }
+
+            $candidateRaw = (string) ($candidate['cui'] ?? '');
+            $candidateNormalized = preg_replace('/\D+/', '', $candidateRaw);
+
+            if ($candidateNormalized !== $xmlCuiNormalized) {
                 continue;
             }
 
-            $candidateCui = preg_replace('/\D+/', '', (string) ($candidate['cui'] ?? ''));
-            if ($candidateCui === $supplierCui) {
-                return true;
+            $sameCuiRows[] = [
+                'raw' => $candidateRaw,
+                'is_supplier' => $isSupplier ? '1' : '0',
+            ];
+
+            if ($isSupplier) {
+                return [
+                    'matched' => true,
+                    'message' => '',
+                ];
             }
         }
 
-        return false;
+        $sameCuiPreview = 'niciuna';
+        if (!empty($sameCuiRows)) {
+            $chunks = [];
+            foreach (array_slice($sameCuiRows, 0, 8) as $item) {
+                $chunks[] = ($item['raw'] !== '' ? $item['raw'] : '(gol)') . ' [is_supplier=' . $item['is_supplier'] . ']';
+            }
+            $sameCuiPreview = implode('; ', $chunks);
+            if (count($sameCuiRows) > 8) {
+                $sameCuiPreview .= '; ...';
+            }
+        }
+
+        return [
+            'matched' => false,
+            'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". '
+                . 'Partners total=' . $totalRows . ', cu is_supplier=1: ' . $supplierRows . '. '
+                . 'Potriviri dupa CUI normalizat: ' . $sameCuiPreview . '.',
+        ];
     }
 
     private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array
