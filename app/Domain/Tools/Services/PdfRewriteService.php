@@ -1035,6 +1035,17 @@ class PdfRewriteService
 
         $numericRows = $this->parseNumericRows($lines, $headerIndex);
         $productRows = $this->parseProductRows($lines, $headerIndex);
+        if (empty($productRows) || count($productRows) < count($numericRows)) {
+            $globalRows = $this->parseProductRowsFromAllLines($lines);
+            foreach ($globalRows as $positionNo => $row) {
+                if (!isset($productRows[$positionNo])) {
+                    $productRows[$positionNo] = $row;
+                }
+            }
+            if (!empty($productRows)) {
+                ksort($productRows);
+            }
+        }
         $items = [];
 
         if (!empty($numericRows)) {
@@ -1278,6 +1289,100 @@ class PdfRewriteService
                 $unitCandidate = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
                 if ($this->isUnitToken($unitCandidate)) {
                     $unit = $unitCandidate;
+                    $i = $unitIndex;
+                } else {
+                    $i = $nameIndex;
+                }
+            }
+
+            $rows[$positionNo] = [
+                'name' => $this->normalizeSpacing($nameLine),
+                'unit' => $unit,
+            ];
+        }
+
+        ksort($rows);
+        return $rows;
+    }
+
+    private function parseProductRowsFromAllLines(array $lines): array
+    {
+        $rows = [];
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $line = trim((string) $lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+            if ($this->isItemsStopLine($line)) {
+                continue;
+            }
+
+            if (preg_match('/^(\d+)\s+(.+)$/', $line, $lineMatch) === 1) {
+                $positionNo = (int) $lineMatch[1];
+                $rest = $this->normalizeSpacing(trim((string) $lineMatch[2]));
+                if ($positionNo > 0 && $rest !== '' && !$this->isReservedProductLabel($rest) && preg_match('/[A-Za-z]/', $rest) === 1) {
+                    $unit = '';
+                    $name = $rest;
+                    $parts = preg_split('/\s+/', $rest) ?: [];
+                    if (count($parts) >= 2) {
+                        $last = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', (string) end($parts)) ?? ''));
+                        if ($this->isUnitToken($last)) {
+                            array_pop($parts);
+                            $name = $this->normalizeSpacing(implode(' ', $parts));
+                            $unit = $last;
+                        }
+                    }
+
+                    if ($name !== '' && !$this->isReservedProductLabel($name)) {
+                        if ($unit === '') {
+                            $nextIndex = $this->nextNonEmptyLineIndex($lines, $i + 1, $count);
+                            if ($nextIndex !== null) {
+                                $nextRaw = trim((string) $lines[$nextIndex]);
+                                $nextToken = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $nextRaw) ?? ''));
+                                if ($this->isUnitToken($nextToken)) {
+                                    $unit = $nextToken;
+                                    $i = $nextIndex;
+                                }
+                            }
+                        }
+                        if ($unit === '') {
+                            $unit = 'BUC';
+                        }
+                        $rows[$positionNo] = [
+                            'name' => $name,
+                            'unit' => $unit,
+                        ];
+                        continue;
+                    }
+                }
+            }
+
+            if (ctype_digit($line) !== true) {
+                continue;
+            }
+
+            $positionNo = (int) $line;
+            if ($positionNo <= 0) {
+                continue;
+            }
+
+            $nameIndex = $this->nextNonEmptyLineIndex($lines, $i + 1, $count);
+            if ($nameIndex === null) {
+                continue;
+            }
+            $nameLine = trim((string) $lines[$nameIndex]);
+            if ($nameLine === '' || $this->isItemsStopLine($nameLine) || $this->isReservedProductLabel($nameLine) || preg_match('/[A-Za-z]/', $nameLine) !== 1) {
+                continue;
+            }
+
+            $unit = 'BUC';
+            $unitIndex = $this->nextNonEmptyLineIndex($lines, $nameIndex + 1, $count);
+            if ($unitIndex !== null) {
+                $unitRaw = trim((string) $lines[$unitIndex]);
+                $unitToken = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
+                if ($this->isUnitToken($unitToken)) {
+                    $unit = $unitToken;
                     $i = $unitIndex;
                 } else {
                     $i = $nameIndex;
