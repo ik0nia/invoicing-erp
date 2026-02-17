@@ -1469,21 +1469,15 @@ class PublicPartnerController
 
         $relationSupplier = (string) ($context['link']['relation_supplier_cui'] ?? '');
         $relationClient = (string) ($context['link']['relation_client_cui'] ?? '');
-        $linkSupplierCui = (string) ($context['link']['supplier_cui'] ?? '');
         if ($type === 'client' && $supplierCui !== '') {
             $relationSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
             $relationClient = $partnerCui;
-            $linkSupplierCui = $supplierCui;
-        } elseif ($type === 'supplier') {
-            // Pentru link-urile de tip furnizor, supplier_cui trebuie sa reflecte CUI-ul companiei inrolate.
-            $linkSupplierCui = $partnerCui;
         }
 
         $now = date('Y-m-d H:i:s');
         Database::execute(
             'UPDATE enrollment_links
              SET partner_cui = :partner_cui,
-                 supplier_cui = :supplier_cui,
                  relation_supplier_cui = :relation_supplier_cui,
                  relation_client_cui = :relation_client_cui,
                  current_step = :current_step,
@@ -1498,7 +1492,6 @@ class PublicPartnerController
              WHERE id = :id',
             [
                 'partner_cui' => $partnerCui !== '' ? $partnerCui : null,
-                'supplier_cui' => $linkSupplierCui !== '' ? $linkSupplierCui : null,
                 'relation_supplier_cui' => $relationSupplier !== '' ? $relationSupplier : null,
                 'relation_client_cui' => $relationClient !== '' ? $relationClient : null,
                 'current_step' => $stepValue,
