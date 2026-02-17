@@ -53,35 +53,31 @@ class PdfRewriteService
         $clientLines = $this->extractClientLines($lines);
         $client = $this->parseClient($clientLines);
 
-        $mainItem = $this->parseMainItem($text, $lines);
-        $totals = $this->parseTotals($text, $lines, $mainItem);
-
-        if ($mainItem['name'] === '') {
-            $mainItem['name'] = 'Produse conform avizului sursa';
-        }
-        if ($mainItem['unit'] === '') {
-            $mainItem['unit'] = 'BUC';
-        }
-        if ($mainItem['quantity'] <= 0) {
-            $mainItem['quantity'] = 1.0;
-        }
-        if ($mainItem['total_without_vat'] <= 0 && $totals['without_vat'] > 0) {
-            $mainItem['total_without_vat'] = $totals['without_vat'];
-        }
-        if ($mainItem['total_with_vat'] <= 0 && $totals['with_vat'] > 0) {
-            $mainItem['total_with_vat'] = $totals['with_vat'];
-        }
-        if ($mainItem['unit_price'] <= 0 && $mainItem['quantity'] > 0 && $mainItem['total_without_vat'] > 0) {
-            $mainItem['unit_price'] = round($mainItem['total_without_vat'] / $mainItem['quantity'], 2);
-        }
-        if ($mainItem['vat_value'] <= 0 && $totals['vat'] > 0) {
-            $mainItem['vat_value'] = $totals['vat'];
-        }
-        if ($mainItem['vat_percent'] <= 0) {
-            $mainItem['vat_percent'] = $totals['vat_percent'] > 0 ? $totals['vat_percent'] : 21.0;
+        $items = $this->parseItems($lines);
+        if (empty($items)) {
+            $fallbackItem = $this->parseMainItem($text, $lines);
+            if ($fallbackItem['name'] === '') {
+                $fallbackItem['name'] = 'Produse conform avizului sursa';
+            }
+            if ($fallbackItem['unit'] === '') {
+                $fallbackItem['unit'] = 'BUC';
+            }
+            if ($fallbackItem['quantity'] <= 0) {
+                $fallbackItem['quantity'] = 1.0;
+            }
+            $items = [$fallbackItem];
         }
 
-        $items = [$mainItem];
+        $totals = $this->parseTotals($lines, $items, $text);
+        if ($totals['vat_percent'] <= 0) {
+            foreach ($items as $item) {
+                $vatPercent = (float) ($item['vat_percent'] ?? 0);
+                if ($vatPercent > 0) {
+                    $totals['vat_percent'] = $vatPercent;
+                    break;
+                }
+            }
+        }
 
         return [
             'document_number' => $documentNo,
@@ -92,7 +88,7 @@ class PdfRewriteService
             'total_without_vat' => $totals['without_vat'],
             'total_vat' => $totals['vat'],
             'total_with_vat' => $totals['with_vat'],
-            'vat_percent' => $totals['vat_percent'] > 0 ? $totals['vat_percent'] : $mainItem['vat_percent'],
+            'vat_percent' => $totals['vat_percent'] > 0 ? $totals['vat_percent'] : 21.0,
             'source_text' => $text,
         ];
     }
@@ -909,6 +905,212 @@ class PdfRewriteService
         return '';
     }
 
+    private function parseItems(array $lines): array
+    {
+        $headerIndex = $this->findItemsHeaderIndex($lines);
+        if ($headerIndex < 0) {
+            return [];
+        }
+
+        $numericRows = $this->parseNumericRows($lines, $headerIndex);
+        $productRows = $this->parseProductRows($lines, $headerIndex);
+        $items = [];
+
+        if (!empty($numericRows)) {
+            $productRowsByOrder = array_values($productRows);
+            foreach ($numericRows as $index => $numericRow) {
+                $positionNo = $index + 1;
+                $product = $productRows[$positionNo] ?? ($productRowsByOrder[$index] ?? null);
+                $name = trim((string) ($product['name'] ?? ''));
+                $unit = strtoupper(trim((string) ($product['unit'] ?? '')));
+
+                if ($name === '') {
+                    $name = 'Pozitie ' . $positionNo;
+                }
+                if ($unit === '' || !$this->isUnitToken($unit)) {
+                    $unit = 'BUC';
+                }
+
+                $item = [
+                    'name' => $name,
+                    'unit' => $unit,
+                    'quantity' => (float) ($numericRow['quantity'] ?? 0),
+                    'unit_price' => (float) ($numericRow['unit_price'] ?? 0),
+                    'total_without_vat' => (float) ($numericRow['total_without_vat'] ?? 0),
+                    'vat_percent' => (float) ($numericRow['vat_percent'] ?? 0),
+                    'vat_value' => (float) ($numericRow['vat_value'] ?? 0),
+                    'total_with_vat' => (float) ($numericRow['total_with_vat'] ?? 0),
+                ];
+
+                if ($item['quantity'] <= 0) {
+                    $item['quantity'] = 1.0;
+                }
+                if ($item['unit_price'] <= 0 && $item['quantity'] > 0 && $item['total_without_vat'] > 0) {
+                    $item['unit_price'] = round($item['total_without_vat'] / $item['quantity'], 2);
+                }
+                if ($item['vat_value'] <= 0 && $item['total_with_vat'] > 0 && $item['total_without_vat'] > 0) {
+                    $item['vat_value'] = round($item['total_with_vat'] - $item['total_without_vat'], 2);
+                }
+                if ($item['vat_percent'] <= 0) {
+                    if ($item['total_without_vat'] > 0 && $item['vat_value'] > 0) {
+                        $item['vat_percent'] = round(($item['vat_value'] * 100) / $item['total_without_vat'], 2);
+                    } else {
+                        $item['vat_percent'] = 21.0;
+                    }
+                }
+
+                $items[] = $item;
+            }
+
+            return $items;
+        }
+
+        if (!empty($productRows)) {
+            foreach ($productRows as $positionNo => $product) {
+                $name = trim((string) ($product['name'] ?? ''));
+                $unit = strtoupper(trim((string) ($product['unit'] ?? '')));
+                if ($name === '') {
+                    $name = 'Pozitie ' . (int) $positionNo;
+                }
+                if ($unit === '' || !$this->isUnitToken($unit)) {
+                    $unit = 'BUC';
+                }
+                $items[] = [
+                    'name' => $name,
+                    'unit' => $unit,
+                    'quantity' => 1.0,
+                    'unit_price' => 0.0,
+                    'total_without_vat' => 0.0,
+                    'vat_percent' => 21.0,
+                    'vat_value' => 0.0,
+                    'total_with_vat' => 0.0,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    private function findItemsHeaderIndex(array $lines): int
+    {
+        foreach ($lines as $index => $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            if (stripos($line, 'Produs / serviciu') !== false) {
+                return (int) $index;
+            }
+        }
+
+        return -1;
+    }
+
+    private function parseNumericRows(array $lines, int $headerIndex): array
+    {
+        $rows = [];
+        if ($headerIndex <= 0) {
+            return $rows;
+        }
+
+        for ($i = 0; $i < $headerIndex; $i++) {
+            $line = trim((string) $lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/\(([0-9]+(?:[\.,][0-9]+)?)%\)/', $line, $vatMatch) !== 1) {
+                continue;
+            }
+
+            $withoutPercent = preg_replace('/\([0-9]+(?:[\.,][0-9]+)?%\)/', ' ', $line) ?? $line;
+            $tokens = $this->extractNumberTokens($withoutPercent);
+            if (count($tokens) < 5) {
+                continue;
+            }
+
+            $rows[] = [
+                'quantity' => (float) $tokens[0],
+                'unit_price' => (float) $tokens[1],
+                'total_without_vat' => (float) $tokens[2],
+                'vat_percent' => $this->toFloat((string) $vatMatch[1]),
+                'vat_value' => (float) $tokens[3],
+                'total_with_vat' => (float) $tokens[4],
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function parseProductRows(array $lines, int $headerIndex): array
+    {
+        $rows = [];
+        $count = count($lines);
+        if ($headerIndex < 0 || $headerIndex >= $count) {
+            return $rows;
+        }
+
+        for ($i = $headerIndex + 1; $i < $count; $i++) {
+            $line = trim((string) $lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+            if (preg_match('/^Total\b/i', $line) === 1 || strtoupper($line) === 'TOTAL') {
+                break;
+            }
+
+            $parts = preg_split('/\s+/', $line) ?: [];
+            if (count($parts) < 3) {
+                continue;
+            }
+
+            $first = trim((string) array_shift($parts));
+            if ($first === '' || ctype_digit($first) !== true) {
+                continue;
+            }
+            $positionNo = (int) $first;
+            if ($positionNo <= 0) {
+                continue;
+            }
+
+            $unitRaw = trim((string) array_pop($parts));
+            $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
+            if ($unit === '' || !$this->isUnitToken($unit)) {
+                continue;
+            }
+
+            $name = trim(implode(' ', $parts));
+            $name = $this->normalizeSpacing($name);
+            if ($name === '' || $this->isReservedProductLabel($name)) {
+                continue;
+            }
+
+            $rows[$positionNo] = [
+                'name' => $name,
+                'unit' => $unit,
+            ];
+        }
+
+        ksort($rows);
+        return $rows;
+    }
+
+    private function extractNumberTokens(string $text): array
+    {
+        $tokens = [];
+        $matches = [];
+        if (preg_match_all('/\d+(?:\s\d{3})*(?:[\.,]\d+)?/', $text, $matches) <= 0) {
+            return $tokens;
+        }
+
+        foreach ($matches[0] as $raw) {
+            $value = $this->toFloat((string) $raw);
+            $tokens[] = $value;
+        }
+
+        return $tokens;
+    }
+
     private function parseMainItem(string $text, array $lines): array
     {
         $item = [
@@ -1040,52 +1242,58 @@ class PdfRewriteService
         return in_array($token, $allowed, true);
     }
 
-    private function parseTotals(string $text, array $lines, array $item): array
+    private function parseTotals(array $lines, array $items, string $text): array
     {
         $totals = [
             'without_vat' => 0.0,
             'vat' => 0.0,
             'with_vat' => 0.0,
-            'vat_percent' => (float) ($item['vat_percent'] ?? 0),
+            'vat_percent' => 0.0,
         ];
 
-        if (
-            preg_match('/Total\s+([0-9]+(?:[\.,][0-9]+)?)\s+([0-9]+(?:[\.,][0-9]+)?)\s+([0-9]+(?:[\.,][0-9]+)?)/i', $text, $match) === 1
-        ) {
-            $totals['without_vat'] = $this->toFloat($match[1]);
-            $totals['vat'] = $this->toFloat($match[2]);
-            $totals['with_vat'] = $this->toFloat($match[3]);
+        foreach ($lines as $line) {
+            $trimmed = trim((string) $line);
+            if ($trimmed === '' || preg_match('/^Total\b/i', $trimmed) !== 1) {
+                continue;
+            }
+            $numberTokens = $this->extractNumberTokens($trimmed);
+            if (count($numberTokens) >= 3) {
+                $totals['without_vat'] = (float) $numberTokens[0];
+                $totals['vat'] = (float) $numberTokens[1];
+                $totals['with_vat'] = (float) $numberTokens[2];
+                break;
+            }
+        }
+
+        if (preg_match('/\(([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)/', $text, $vatMatch) === 1) {
+            $totals['vat_percent'] = $this->toFloat((string) $vatMatch[1]);
         }
 
         if ($totals['without_vat'] <= 0 || $totals['with_vat'] <= 0) {
-            $numbers = [];
-            foreach ($lines as $line) {
-                if (preg_match('/^[0-9]+(?:[\.,][0-9]+)?$/', $line) === 1) {
-                    $numbers[] = $this->toFloat($line);
-                }
+            $sumWithout = 0.0;
+            $sumVat = 0.0;
+            $sumWith = 0.0;
+            foreach ($items as $item) {
+                $sumWithout += (float) ($item['total_without_vat'] ?? 0);
+                $sumVat += (float) ($item['vat_value'] ?? 0);
+                $sumWith += (float) ($item['total_with_vat'] ?? 0);
             }
-            if (count($numbers) >= 3) {
-                $slice = array_slice($numbers, -3);
-                if ($totals['without_vat'] <= 0) {
-                    $totals['without_vat'] = (float) $slice[0];
-                }
-                if ($totals['vat'] <= 0) {
-                    $totals['vat'] = (float) $slice[1];
-                }
-                if ($totals['with_vat'] <= 0) {
-                    $totals['with_vat'] = (float) $slice[2];
-                }
+            if ($totals['without_vat'] <= 0) {
+                $totals['without_vat'] = $sumWithout;
+            }
+            if ($totals['vat'] <= 0) {
+                $totals['vat'] = $sumVat;
+            }
+            if ($totals['with_vat'] <= 0) {
+                $totals['with_vat'] = $sumWith;
             }
         }
 
-        if ($totals['without_vat'] <= 0) {
-            $totals['without_vat'] = (float) ($item['total_without_vat'] ?? 0);
-        }
-        if ($totals['with_vat'] <= 0) {
-            $totals['with_vat'] = (float) ($item['total_with_vat'] ?? 0);
-        }
         if ($totals['vat'] <= 0 && $totals['with_vat'] > 0 && $totals['without_vat'] > 0) {
             $totals['vat'] = round($totals['with_vat'] - $totals['without_vat'], 2);
+        }
+        if ($totals['vat_percent'] <= 0 && $totals['without_vat'] > 0 && $totals['vat'] > 0) {
+            $totals['vat_percent'] = round(($totals['vat'] * 100) / $totals['without_vat'], 2);
         }
 
         return $totals;
