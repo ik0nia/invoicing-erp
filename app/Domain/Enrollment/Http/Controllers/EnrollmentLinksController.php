@@ -36,7 +36,7 @@ class EnrollmentLinksController
     public function index(): void
     {
         $user = $this->requireEnrollmentRole();
-        $this->normalizeSupplierLinkCuis();
+        $this->normalizeEnrollmentLinkPartnerCuis();
         $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
         $isPendingPage = !empty($_GET['_pending_page']);
         if (!$isPendingPage) {
@@ -302,9 +302,7 @@ class EnrollmentLinksController
             'can_upload_custom' => false,
         ], JSON_UNESCAPED_UNICODE);
         $relationSupplier = $type === 'client' && $supplierCui !== '' ? $supplierCui : null;
-        $initialPartnerCui = $type === 'supplier'
-            ? preg_replace('/\D+/', '', (string) ($prefill['cui'] ?? ''))
-            : '';
+        $initialPartnerCui = preg_replace('/\D+/', '', (string) ($prefill['cui'] ?? ''));
 
         Database::execute(
             'INSERT INTO enrollment_links (
@@ -1960,31 +1958,27 @@ class EnrollmentLinksController
         return $base . $relative;
     }
 
-    private function normalizeSupplierLinkCuis(): void
+    private function normalizeEnrollmentLinkPartnerCuis(): void
     {
         if (!Database::tableExists('enrollment_links')) {
-            return;
-        }
-        if (!Database::columnExists('enrollment_links', 'type')) {
             return;
         }
         if (!Database::columnExists('enrollment_links', 'partner_cui')) {
             return;
         }
 
-        // Pentru link-urile de tip furnizor, CUI-ul companiei se retine in partner_cui.
+        // Pentru link-urile publice, CUI-ul partenerului se retine in partner_cui.
         // Daca lipseste din inregistrari vechi, il reconstruim din prefill_json.
         if (Database::columnExists('enrollment_links', 'prefill_json')) {
             $rows = Database::fetchAll(
                 'SELECT id, prefill_json
                  FROM enrollment_links
-                 WHERE type = :type
-                   AND (partner_cui IS NULL OR partner_cui = \'\')
+                 WHERE (partner_cui IS NULL OR partner_cui = \'\')
                    AND prefill_json IS NOT NULL
                    AND prefill_json <> \'\'
                  ORDER BY id ASC
                  LIMIT 300',
-                ['type' => 'supplier']
+                []
             );
             if (!empty($rows)) {
                 $now = date('Y-m-d H:i:s');
@@ -2021,6 +2015,9 @@ class EnrollmentLinksController
         }
 
         if (!Database::columnExists('enrollment_links', 'supplier_cui')) {
+            return;
+        }
+        if (!Database::columnExists('enrollment_links', 'type')) {
             return;
         }
 
