@@ -264,7 +264,7 @@ class PdfRewriteService
             . '.items-table td{white-space:normal;word-break:normal;overflow-wrap:break-word;}'
             . '.num{text-align:right;}'
             . '.items-table th.num,.items-table td.num{white-space:nowrap;word-break:normal;overflow-wrap:normal;}'
-            . '.items-table th:nth-child(2),.items-table td:nth-child(2){width:44%;}'
+            . '.items-table th:nth-child(2),.items-table td:nth-child(2){width:35%;}'
             . '.items-table th:nth-child(8),.items-table td:nth-child(8){width:14%;}'
             . '.items-table th:nth-child(1),.items-table td:nth-child(1),'
             . '.items-table th:nth-child(3),.items-table td:nth-child(3),'
