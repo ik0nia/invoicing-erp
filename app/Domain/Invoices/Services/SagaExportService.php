@@ -106,14 +106,14 @@ class SagaExportService
             $products[] = [
                 'cod_articol' => $code,
                 'cantitate' => $quantity,
-                'val_produse' => round($lineCostTotal, 2),
+                'val_produse' => $this->formatSagaAmount($lineCostTotal),
             ];
         }
 
         $isStorno = $sumValues < -0.009 || $sumGross < -0.009 || ($hasNegativeQty && !$hasPositiveQty);
         if ($isStorno) {
             foreach ($products as &$product) {
-                $product['val_produse'] = abs((float) ($product['val_produse'] ?? 0));
+                $product['val_produse'] = $this->formatSagaAmount(abs((float) ($product['val_produse'] ?? 0)));
             }
             unset($product);
         }
@@ -186,7 +186,7 @@ class SagaExportService
             $this->sagaStatusService->markProcessing($packageId);
         }
 
-        $pretVanz = number_format($isStorno ? abs($sellTotal) : $sellTotal, 4, '.', '');
+        $pretVanz = $this->formatSagaAmount($isStorno ? abs($sellTotal) : $sellTotal);
         $payload = [
             'pachet' => [
                 'id_doc' => $packageNo,
@@ -196,7 +196,7 @@ class SagaExportService
                 'denumire' => $this->normalizeName($label),
                 'pret_vanz' => $pretVanz,
                 'cota_tva' => round($vatPercent, 2),
-                'cost_total' => $isStorno ? abs(round($sumValues, 2)) : round($sumValues, 2),
+                'cost_total' => $this->formatSagaAmount($isStorno ? abs($sumValues) : $sumValues),
                 'gestiune' => '0001',
                 'cantitate_produsa' => $isStorno ? -1.0 : 1.0,
                 'status' => $status,
@@ -401,5 +401,15 @@ class SagaExportService
             return mb_strtoupper($value, 'UTF-8');
         }
         return strtoupper($value);
+    }
+
+    private function formatSagaAmount(float $value): string
+    {
+        $rounded = round($value, 4);
+        if (abs($rounded) < 0.00005) {
+            $rounded = 0.0;
+        }
+
+        return number_format($rounded, 4, '.', '');
     }
 }
