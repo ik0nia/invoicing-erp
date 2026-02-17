@@ -5452,26 +5452,23 @@ class InvoiceController
     private function supplierExistsInPlatform(string $supplierCui): bool
     {
         $supplierCui = preg_replace('/\D+/', '', $supplierCui);
-        if (
-            $supplierCui === ''
-            || !Database::tableExists('partners')
-            || !Database::columnExists('partners', 'is_supplier')
-        ) {
+        if ($supplierCui === '' || !Database::tableExists('partners')) {
             return false;
         }
 
-        $row = Database::fetchOne(
-            'SELECT cui FROM partners WHERE is_supplier = 1 AND cui = :cui LIMIT 1',
-            ['cui' => $supplierCui]
-        );
-        if ($row) {
-            return true;
+        try {
+            $rows = Database::fetchAll('SELECT cui, is_supplier FROM partners');
+        } catch (\Throwable $exception) {
+            return false;
         }
 
-        $rows = Database::fetchAll('SELECT cui FROM partners WHERE is_supplier = 1');
         foreach ($rows as $candidate) {
+            if (empty($candidate['is_supplier'])) {
+                continue;
+            }
+
             $candidateCui = preg_replace('/\D+/', '', (string) ($candidate['cui'] ?? ''));
-            if ($candidateCui !== '' && $candidateCui === $supplierCui) {
+            if ($candidateCui === $supplierCui) {
                 return true;
             }
         }
