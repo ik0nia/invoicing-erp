@@ -76,12 +76,35 @@
     $title = $companyDisplayName !== ''
         ? ('Inrolare partener: ' . $companyDisplayName)
         : 'Inrolare partener';
+    $hasMandatoryCompanyProfile = trim((string) ($prefill['legal_representative_name'] ?? '')) !== ''
+        && trim((string) ($prefill['legal_representative_role'] ?? '')) !== ''
+        && trim((string) ($prefill['bank_name'] ?? '')) !== ''
+        && trim((string) ($prefill['iban'] ?? '')) !== '';
+    $contactCount = count($contacts) + count($relationContacts);
+    $stepCompletion = [
+        1 => true,
+        2 => $partnerCui !== '' && $hasMandatoryCompanyProfile,
+        3 => $contactCount > 0,
+        4 => $allRequiredSigned && $partnerCui !== '',
+    ];
+    if ($isReadOnly) {
+        $stepCompletion[4] = true;
+    }
+    $completedStepsCount = 0;
+    foreach ($stepCompletion as $isCompletedStep) {
+        if (!empty($isCompletedStep)) {
+            $completedStepsCount++;
+        }
+    }
+    $wizardProgressPercent = (int) round(($completedStepsCount / max(1, $maxStep)) * 100);
 ?>
 
-<div class="max-w-6xl">
-    <div>
+<div class="mx-auto w-full max-w-6xl space-y-5">
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 class="text-2xl font-semibold text-slate-900"><?= htmlspecialchars($title) ?></h1>
-        <p class="mt-1 text-sm text-slate-600">Link unic pentru completare date, incarcare documente si trimitere spre activare manuala.</p>
+        <p class="mt-1 text-sm text-slate-600">
+            Link unic pentru completare date, incarcare documente si trimitere spre activare manuala.
+        </p>
     </div>
 
     <?php if ($error !== ''): ?>
@@ -91,25 +114,53 @@
     <?php endif; ?>
 
     <?php if (!empty($permissions['can_view'])): ?>
-        <div class="mt-4 flex flex-wrap items-center gap-3 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
-            <span class="font-semibold text-slate-700">Status onboarding:</span>
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700' ?>">
-                <?= htmlspecialchars($onboardingLabels[$onboardingStatus] ?? ucfirst($onboardingStatus)) ?>
-            </span>
-            <span class="text-slate-500">
-                Documente obligatorii semnate: <?= $requiredSigned ?>/<?= $requiredTotal ?>
-            </span>
+        <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Flux onboarding</div>
+                    <h2 class="mt-1 text-lg font-semibold text-slate-900">Completeaza pasii in ordine pentru activare</h2>
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                        <span class="font-semibold text-slate-700">Status:</span>
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700' ?>">
+                            <?= htmlspecialchars($onboardingLabels[$onboardingStatus] ?? ucfirst($onboardingStatus)) ?>
+                        </span>
+                    </div>
+                </div>
+                <div class="grid w-full gap-3 sm:grid-cols-3 lg:w-auto lg:min-w-[420px]">
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <div class="text-xs text-slate-500">Pas curent</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <div class="text-xs text-slate-500">Documente obligatorii</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= $requiredSigned ?>/<?= $requiredTotal ?></div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <div class="text-xs text-slate-500">Contacte adaugate</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= (int) $contactCount ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-600">
+                    <span>Progres completare</span>
+                    <span><?= (int) $wizardProgressPercent ?>%</span>
+                </div>
+                <div class="h-2 rounded-full bg-slate-200">
+                    <div class="h-2 rounded-full bg-blue-600" style="width: <?= (int) $wizardProgressPercent ?>%;"></div>
+                </div>
+            </div>
         </div>
 
         <?php if (!$pdfAvailable): ?>
-            <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Generarea PDF este momentan indisponibila pe server. Puteti continua completarea, dar download-ul PDF va deveni disponibil
                 dupa configurarea utilitarului wkhtmltopdf de catre echipa interna.
             </div>
         <?php endif; ?>
 
         <?php if ($isReadOnly): ?>
-            <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                 <?php if ($onboardingStatus === 'submitted'): ?>
                     Cererea a fost trimisa spre activare. Un angajat intern va analiza si aproba inrolarea.
                 <?php else: ?>
@@ -118,17 +169,39 @@
             </div>
         <?php endif; ?>
 
-        <div class="mt-4 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
-            <div class="text-sm font-semibold text-slate-700">Navigare pasi: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
-            <div class="mt-3 flex flex-wrap gap-2">
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm font-semibold text-slate-700">Navigare rapida pe pasi</div>
+                <div class="text-xs text-slate-500">Pas curent: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+            </div>
+            <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 <?php foreach ($stepLabels as $step => $label): ?>
+                    <?php
+                        $isActiveStep = $currentStep === $step;
+                        $isCompletedStep = !empty($stepCompletion[$step]);
+                        $stepButtonClasses = 'w-full rounded-xl border px-3 py-3 text-left text-sm transition';
+                        if ($isActiveStep) {
+                            $stepButtonClasses .= ' border-blue-600 bg-blue-50 text-blue-800 shadow-sm';
+                        } elseif ($isCompletedStep) {
+                            $stepButtonClasses .= ' border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100';
+                        } else {
+                            $stepButtonClasses .= ' border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
+                        }
+                        $stepStatus = $isCompletedStep
+                            ? 'Completat'
+                            : ($isActiveStep ? 'In lucru' : 'In asteptare');
+                    ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) $step ?>">
-                        <button
-                            class="rounded border px-3 py-1.5 text-xs font-semibold <?= $currentStep === $step ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50' ?>"
-                        >
-                            <?= htmlspecialchars($label) ?>
+                        <button class="<?= $stepButtonClasses ?>">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-700">
+                                    <?= (int) $step ?>
+                                </span>
+                                <span class="text-[11px] font-semibold uppercase tracking-wide"><?= htmlspecialchars($stepStatus) ?></span>
+                            </div>
+                            <div class="mt-2 text-xs font-semibold"><?= htmlspecialchars($label) ?></div>
                         </button>
                     </form>
                 <?php endforeach; ?>
@@ -136,24 +209,30 @@
         </div>
 
         <?php if ($currentStep === 1): ?>
-            <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
-                <div class="text-base font-semibold text-slate-800">Pasul 1/4: Instructiuni onboarding</div>
+            <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 1 din 4</div>
+                        <div class="text-lg font-semibold text-slate-900">Instructiuni onboarding</div>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Start rapid</span>
+                </div>
                 <?php if ($isSupplierFlow): ?>
-                    <p class="mt-1 text-sm text-slate-600">
+                    <p class="mt-4 text-sm leading-6 text-slate-700">
                         Acest link este pentru onboarding <strong>furnizor</strong>. In pasii urmatori vei completa datele firmei,
                         datele de contact, apoi vei descarca si incarca documentele semnate pentru activare.
                     </p>
-                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
                         <li>Pasul 2: completeaza datele companiei (reprezentant legal, banca, IBAN).</li>
                         <li>Pasul 3: adauga persoanele de contact relevante (ex. financiar-contabil).</li>
                         <li>Pasul 4: descarca documentele, semneaza, incarca si trimite spre activare.</li>
                     </ul>
                 <?php else: ?>
-                    <p class="mt-1 text-sm text-slate-600">
+                    <p class="mt-4 text-sm leading-6 text-slate-700">
                         Acest link este pentru onboarding <strong>client</strong>. Relatia cu furnizorul este preconfigurata in link.
                         Urmareste pasii de mai jos pentru completare si trimitere spre activare.
                     </p>
-                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-700">
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
                         <li>Pasul 2: verifica si completeaza datele companiei.</li>
                         <li>Pasul 3: adauga contacte operationale si financiar-contabile.</li>
                         <li>Pasul 4: gestioneaza documentele obligatorii si confirma trimiterea.</li>
@@ -161,7 +240,7 @@
                 <?php endif; ?>
 
                 <?php if (!empty($onboardingResources)): ?>
-                    <div class="mt-5 rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="mt-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
                         <div class="text-sm font-semibold text-slate-800">Documente pentru descarcare (Pasul 1)</div>
                         <ul class="mt-3 space-y-2 text-sm text-slate-700">
                             <?php foreach ($onboardingResources as $resource): ?>
@@ -187,7 +266,7 @@
                     </div>
                 <?php endif; ?>
 
-                <div class="mt-5 rounded border border-slate-200 bg-white p-4">
+                <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                     <div class="text-sm font-semibold text-slate-800">Preview-uri contracte onboarding</div>
                     <?php if (empty($contracts)): ?>
                         <?php if (empty($draftContractTemplates)): ?>
@@ -266,15 +345,21 @@
         <?php endif; ?>
 
         <?php if ($currentStep === 2): ?>
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
-            <div class="text-base font-semibold text-slate-800">Pasul 2/4: Date firma</div>
-            <p class="mt-1 text-sm text-slate-500">
+        <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 2 din 4</div>
+                    <div class="text-lg font-semibold text-slate-900">Date firma</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Profil companie</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
                 Completeaza datele de identificare ale companiei. Pentru a continua, profilul firmei trebuie sa fie complet.
             </p>
 
-            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-4">
+            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-5 space-y-4">
                 <?= App\Support\Csrf::input() ?>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
                     <div>
                         <label class="block text-sm font-medium text-slate-700" for="cui">CUI</label>
                         <input
@@ -415,7 +500,7 @@
                     </div>
                 </div>
                 <?php if (!$isReadOnly): ?>
-                    <div class="mt-4 flex flex-wrap gap-2">
+                    <div class="mt-1 flex flex-wrap gap-2">
                         <button class="rounded border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                             Salveaza date companie
                         </button>
@@ -433,9 +518,15 @@
         <?php endif; ?>
 
         <?php if ($currentStep === 3): ?>
-            <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
-                <div class="text-base font-semibold text-slate-800">Pasul 3/4: Date de contact</div>
-                <p class="mt-1 text-sm text-slate-500">
+            <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 3 din 4</div>
+                        <div class="text-lg font-semibold text-slate-900">Date de contact</div>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Persoane de legatura</span>
+                </div>
+                <p class="mt-4 text-sm text-slate-600">
                     Adauga persoanele de contact pentru relationarea operationala si financiar-contabila.
                 </p>
                 <div class="mt-6 border-t border-slate-100 pt-4">
@@ -447,7 +538,7 @@
                     <?php if ($partnerCui === ''): ?>
                         <div class="mt-2 text-sm text-slate-500">Salvati datele companiei in Pasul 2 pentru a adauga contacte.</div>
                     <?php else: ?>
-                        <div class="mt-3 overflow-x-auto">
+                        <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
                             <table class="w-full text-left text-sm">
                                 <thead class="bg-slate-50 text-slate-600">
                                     <tr>
@@ -504,7 +595,7 @@
                         </div>
 
                         <?php if (!$isReadOnly): ?>
-                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-5">
+                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-5">
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
                                 <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
@@ -528,9 +619,15 @@
         <?php endif; ?>
 
         <?php if ($currentStep === 4): ?>
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-4">
-            <div class="text-base font-semibold text-slate-800">Pasul 4/4: Documente si confirmare</div>
-            <p class="mt-1 text-sm text-slate-500">
+        <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-4">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 4 din 4</div>
+                    <div class="text-lg font-semibold text-slate-900">Documente si confirmare</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Finalizare onboarding</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
                 Descarca documentele generate, incarca semnaturile obligatorii si trimite inrolarea spre activare.
             </p>
 
@@ -575,7 +672,7 @@
                     </div>
                 <?php endif; ?>
 
-                <div class="mt-4 overflow-x-auto">
+                <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
@@ -772,9 +869,15 @@
             <?php endif; ?>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-4-confirmare">
-            <div class="text-base font-semibold text-slate-800">Pasul 4/4: Confirmare finala</div>
-            <p class="mt-1 text-sm text-slate-500">
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-4-confirmare">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Finalizare</div>
+                    <div class="text-lg font-semibold text-slate-900">Confirmare finala</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Verificare si trimitere</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
                 Verificati datele si trimiteti cererea spre activare. Activarea este manuala si poate fi facuta doar de angajati interni.
             </p>
 
@@ -833,13 +936,13 @@
         </div>
         <?php endif; ?>
 
-        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
             <div>
                 <?php if ($currentStep > 1): ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) ($currentStep - 1) ?>">
-                        <button class="rounded border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">
+                        <button class="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">
                             &larr; Pasul anterior (<?= (int) ($currentStep - 1) ?>/<?= (int) $maxStep ?>)
                         </button>
                     </form>
@@ -850,7 +953,7 @@
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) ($currentStep + 1) ?>">
-                        <button class="rounded bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
+                        <button class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
                             Pasul urmator (<?= (int) ($currentStep + 1) ?>/<?= (int) $maxStep ?>) &rarr;
                         </button>
                     </form>
