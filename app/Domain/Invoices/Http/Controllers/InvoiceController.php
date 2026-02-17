@@ -1499,6 +1499,13 @@ class InvoiceController
         }
 
         $supplierCuiRaw = (string) ($data['supplier_cui'] ?? '');
+        if (trim($supplierCuiRaw) === '') {
+            $supplierCuiFallback = $this->extractSupplierCuiFromXmlFile((string) ($file['tmp_name'] ?? ''));
+            if ($supplierCuiFallback !== '') {
+                $supplierCuiRaw = $supplierCuiFallback;
+                $data['supplier_cui'] = $supplierCuiFallback;
+            }
+        }
         $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
         $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
         $data['supplier_cui'] = preg_replace('/\D+/', '', (string) ($data['supplier_cui'] ?? ''));
@@ -5456,6 +5463,57 @@ class InvoiceController
         $normalized = preg_replace('/\D+/', '', $supplierCui);
         $diagnostic = $this->supplierMatchDiagnostics($supplierCui, $normalized);
         return !empty($diagnostic['matched']);
+    }
+
+    private function extractSupplierCuiFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractSupplierCuiFromXmlContent($contents);
+    }
+
+    private function extractSupplierCuiFromXmlContent(string $contents): string
+    {
+        $supplierBlock = $contents;
+        if (preg_match('/<\s*(?:[A-Za-z0-9_\-]+:)?AccountingSupplierParty\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?AccountingSupplierParty\s*>/si', $contents, $blockMatch)) {
+            $supplierBlock = (string) ($blockMatch[1] ?? $contents);
+        }
+
+        $patterns = [
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyTaxScheme\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyIdentification\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?ID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?ID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?EndpointID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?EndpointID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\s*>/si',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match_all($pattern, $supplierBlock, $matches)) {
+                continue;
+            }
+
+            foreach (($matches[1] ?? []) as $value) {
+                $rawValue = trim((string) html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                if ($rawValue === '') {
+                    continue;
+                }
+
+                $digits = preg_replace('/\D+/', '', $rawValue);
+                if ($digits === '') {
+                    continue;
+                }
+
+                return $rawValue;
+            }
+        }
+
+        return '';
     }
 
     private function supplierMatchDiagnostics(string $xmlCuiRaw, string $xmlCuiNormalized): array
