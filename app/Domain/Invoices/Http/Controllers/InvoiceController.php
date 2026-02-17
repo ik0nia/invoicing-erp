@@ -1500,8 +1500,14 @@ class InvoiceController
 
         $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
         $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
+        $data['supplier_cui'] = preg_replace('/\D+/', '', (string) ($data['supplier_cui'] ?? ''));
+        $data['customer_cui'] = preg_replace('/\D+/', '', (string) ($data['customer_cui'] ?? ''));
 
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
+        if (!$this->supplierExistsInPlatform((string) ($data['supplier_cui'] ?? ''))) {
+            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma.');
+            Response::redirect('/admin/facturi/import');
+        }
 
         if ($this->invoiceExists($data['supplier_cui'], $data['invoice_series'], $data['invoice_no'], $data['invoice_number'])) {
             Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
@@ -5441,6 +5447,28 @@ class InvoiceController
         }
 
         return $items;
+    }
+
+    private function supplierExistsInPlatform(string $supplierCui): bool
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '' || !Database::tableExists('partners')) {
+            return false;
+        }
+
+        $sql = 'SELECT cui FROM partners WHERE cui = :cui';
+        $hasIsSupplier = Database::columnExists('partners', 'is_supplier');
+        $hasCommissions = Database::tableExists('commissions');
+
+        if ($hasIsSupplier && $hasCommissions) {
+            $sql .= ' AND (is_supplier = 1 OR cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\'))';
+        } elseif ($hasIsSupplier) {
+            $sql .= ' AND is_supplier = 1';
+        } elseif ($hasCommissions) {
+            $sql .= ' AND cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\')';
+        }
+
+        return Database::fetchOne($sql . ' LIMIT 1', ['cui' => $supplierCui]) !== null;
     }
 
     private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array
