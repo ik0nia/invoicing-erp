@@ -1107,10 +1107,18 @@ class EnrollmentLinksController
 
         $cuis = array_keys($cuiSet);
         if (empty($cuis)) {
-            return [];
+            return $this->extractPrefillNamesByCui($rows);
         }
 
-        return $this->fetchCompanyNamesByCuis($cuis);
+        $namesByCui = $this->fetchCompanyNamesByCuis($cuis);
+        $prefillNamesByCui = $this->extractPrefillNamesByCui($rows);
+        foreach ($prefillNamesByCui as $cui => $name) {
+            if (!isset($namesByCui[$cui])) {
+                $namesByCui[$cui] = $name;
+            }
+        }
+
+        return $namesByCui;
     }
 
     private function fetchCompanyNamesByCuis(array $cuis): array
@@ -1166,6 +1174,31 @@ class EnrollmentLinksController
                 if ($cui !== '' && $name !== '' && !isset($result[$cui])) {
                     $result[$cui] = $name;
                 }
+            }
+        }
+
+        return $result;
+    }
+
+    private function extractPrefillNamesByCui(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $row) {
+            $prefillRaw = trim((string) ($row['prefill_json'] ?? ''));
+            if ($prefillRaw === '') {
+                continue;
+            }
+            $decoded = json_decode($prefillRaw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $cui = preg_replace('/\D+/', '', (string) ($decoded['cui'] ?? ''));
+            $name = trim((string) ($decoded['denumire'] ?? ''));
+            if ($cui === '' || $name === '') {
+                continue;
+            }
+            if (!isset($result[$cui])) {
+                $result[$cui] = $name;
             }
         }
 
