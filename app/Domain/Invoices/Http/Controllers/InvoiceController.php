@@ -2630,8 +2630,8 @@ class InvoiceController
         $packagesById = $this->fetchPackagesByIds($packageIds);
         $totalsByPackage = $this->packageTotalsForIds($packageIds);
         $content = [];
-        foreach ($adjustmentRows as $row) {
-            foreach (['storno_package_id', 'replacement_package_id'] as $column) {
+        foreach (['storno_package_id', 'replacement_package_id'] as $column) {
+            foreach ($adjustmentRows as $row) {
                 $packageId = (int) ($row[$column] ?? 0);
                 if ($packageId <= 0 || !isset($packagesById[$packageId])) {
                     continue;
@@ -4368,6 +4368,7 @@ class InvoiceController
             );
             $adjustmentId = (int) Database::lastInsertId();
 
+            $changeRows = [];
             foreach ($changes as $change) {
                 $labelText = trim((string) ($change['label_text'] ?? ''));
                 if ($labelText === '') {
@@ -4375,20 +4376,24 @@ class InvoiceController
                 }
                 $vatPercent = (float) ($change['vat_percent'] ?? 0.0);
                 $sourcePackageId = (int) ($change['source_package_id'] ?? 0);
+                $sourcePackageNo = (int) ($change['source_package_no'] ?? 0);
                 $lines = is_array($change['lines'] ?? null) ? $change['lines'] : [];
                 if ($sourcePackageId <= 0 || empty($lines)) {
                     continue;
                 }
+                if ($sourcePackageNo <= 0) {
+                    $sourcePackageNo = $sourcePackageId;
+                }
 
+                // Storno keeps original package label and number.
                 $stornoPackageId = $this->insertAdjustmentPackage(
                     (int) $invoice->id,
-                    $nextPackageNo,
+                    $sourcePackageNo,
                     $labelText,
                     $vatPercent,
                     $now,
                     $hasSagaStatus
                 );
-                $nextPackageNo++;
                 $createdPackages++;
                 $stornoPackages++;
 
@@ -4410,48 +4415,70 @@ class InvoiceController
                     $createdLines++;
                 }
 
-                $replacementPackageId = null;
-                if ((float) ($change['replacement_total_vat'] ?? 0.0) > 0.009) {
-                    $replacementPackageId = $this->insertAdjustmentPackage(
-                        (int) $invoice->id,
-                        $nextPackageNo,
-                        $labelText,
-                        $vatPercent,
-                        $now,
-                        $hasSagaStatus
-                    );
-                    $nextPackageNo++;
-                    $createdPackages++;
-                    $replacementPackages++;
+                $changeRows[] = [
+                    'change' => $change,
+                    'label_text' => $labelText,
+                    'vat_percent' => $vatPercent,
+                    'lines' => $lines,
+                    'source_package_id' => $sourcePackageId,
+                    'storno_package_id' => $stornoPackageId,
+                    'replacement_package_id' => null,
+                ];
+            }
 
-                    $createdReplacementLines = 0;
-                    foreach ($lines as $line) {
-                        $newQty = round((float) ($line['new_quantity'] ?? 0.0), 3);
-                        if ($newQty <= 0.0001) {
-                            continue;
-                        }
-                        $this->insertAdjustmentLine(
-                            (int) $invoice->id,
-                            (int) $replacementPackageId,
-                            $line,
-                            $newQty,
-                            $this->buildRefacereLineNo((string) ($line['line_no'] ?? '')),
-                            $now,
-                            $hasCodSaga,
-                            $hasStockSaga
-                        );
-                        $createdLines++;
-                        $createdReplacementLines++;
-                    }
-
-                    if ($createdReplacementLines <= 0) {
-                        Database::execute('DELETE FROM packages WHERE id = :id', ['id' => $replacementPackageId]);
-                        $replacementPackageId = null;
-                        $createdPackages--;
-                        $replacementPackages--;
-                    }
+            // Replacement packages are created only after all storno packages.
+            foreach ($changeRows as &$changeRow) {
+                $change = is_array($changeRow['change'] ?? null) ? $changeRow['change'] : [];
+                if ((float) ($change['replacement_total_vat'] ?? 0.0) <= 0.009) {
+                    continue;
                 }
 
+                $replacementPackageId = $this->insertAdjustmentPackage(
+                    (int) $invoice->id,
+                    $nextPackageNo,
+                    (string) ($changeRow['label_text'] ?? 'Pachet de produse'),
+                    (float) ($changeRow['vat_percent'] ?? 0.0),
+                    $now,
+                    $hasSagaStatus
+                );
+                $nextPackageNo++;
+                $createdPackages++;
+                $replacementPackages++;
+
+                $createdReplacementLines = 0;
+                $lines = is_array($changeRow['lines'] ?? null) ? $changeRow['lines'] : [];
+                foreach ($lines as $line) {
+                    $newQty = round((float) ($line['new_quantity'] ?? 0.0), 3);
+                    if ($newQty <= 0.0001) {
+                        continue;
+                    }
+                    $this->insertAdjustmentLine(
+                        (int) $invoice->id,
+                        (int) $replacementPackageId,
+                        $line,
+                        $newQty,
+                        $this->buildRefacereLineNo((string) ($line['line_no'] ?? '')),
+                        $now,
+                        $hasCodSaga,
+                        $hasStockSaga
+                    );
+                    $createdLines++;
+                    $createdReplacementLines++;
+                }
+
+                if ($createdReplacementLines <= 0) {
+                    Database::execute('DELETE FROM packages WHERE id = :id', ['id' => $replacementPackageId]);
+                    $createdPackages--;
+                    $replacementPackages--;
+                    continue;
+                }
+
+                $changeRow['replacement_package_id'] = (int) $replacementPackageId;
+            }
+            unset($changeRow);
+
+            foreach ($changeRows as $changeRow) {
+                $change = is_array($changeRow['change'] ?? null) ? $changeRow['change'] : [];
                 Database::execute(
                     'INSERT INTO invoice_adjustment_packages (
                         adjustment_id,
@@ -4474,9 +4501,9 @@ class InvoiceController
                     )',
                     [
                         'adjustment_id' => $adjustmentId,
-                        'source_package_id' => $sourcePackageId,
-                        'storno_package_id' => $stornoPackageId,
-                        'replacement_package_id' => $replacementPackageId,
+                        'source_package_id' => (int) ($changeRow['source_package_id'] ?? 0),
+                        'storno_package_id' => (int) ($changeRow['storno_package_id'] ?? 0),
+                        'replacement_package_id' => (int) ($changeRow['replacement_package_id'] ?? 0) ?: null,
                         'source_total_with_vat' => round((float) ($change['source_total_vat'] ?? 0.0), 2),
                         'replacement_total_with_vat' => round((float) ($change['replacement_total_vat'] ?? 0.0), 2),
                         'delta_total_with_vat' => round((float) ($change['delta_total_vat'] ?? 0.0), 2),
