@@ -1512,9 +1512,8 @@ class InvoiceController
         $data['customer_cui'] = preg_replace('/\D+/', '', (string) ($data['customer_cui'] ?? ''));
 
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
-        $supplierMatch = $this->supplierMatchDiagnostics($supplierCuiRaw, (string) ($data['supplier_cui'] ?? ''));
-        if (!$supplierMatch['matched']) {
-            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma. ' . (string) ($supplierMatch['message'] ?? ''));
+        if (!$this->supplierExistsInPlatform((string) ($data['supplier_cui'] ?? ''))) {
+            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma.');
             Response::redirect('/admin/facturi/import');
         }
 
