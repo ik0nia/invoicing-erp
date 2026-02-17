@@ -1065,6 +1065,29 @@ class InvoiceController
         $hasSagaStatus = true;
         $statusSelect = ', p.saga_status';
         $statusFilter = " AND p.saga_status IN ('processing', 'pending')";
+        $adjustmentFilter = '';
+        if (Database::tableExists('invoice_adjustment_packages')) {
+            $adjustmentFilter = "
+              AND NOT EXISTS (
+                SELECT 1
+                FROM invoice_adjustment_packages ap_source
+                WHERE ap_source.source_package_id = p.id
+              )
+              AND (
+                NOT EXISTS (
+                    SELECT 1
+                    FROM invoice_adjustment_packages ap_storno_any
+                    WHERE ap_storno_any.storno_package_id = p.id
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM invoice_adjustment_packages ap_storno
+                    JOIN packages p_source ON p_source.id = ap_storno.source_package_id
+                    WHERE ap_storno.storno_package_id = p.id
+                      AND p_source.saga_status IN ('imported', 'executed')
+                )
+              )";
+        }
 
         $packages = Database::fetchAll(
             "SELECT p.id, p.package_no, p.label, p.vat_percent, p.invoice_in_id{$statusSelect},
@@ -1080,7 +1103,7 @@ class InvoiceController
              ) l ON l.package_id = p.id
              WHERE i.packages_confirmed = 1
                AND l.line_count > 0
-               AND l.saga_count = l.line_count{$statusFilter}
+               AND l.saga_count = l.line_count{$statusFilter}{$adjustmentFilter}
              ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC"
         );
 
