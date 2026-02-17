@@ -38,7 +38,9 @@ $router->post('/p/{token}/save-contact', [PublicPartnerController::class, 'saveC
 $router->post('/p/{token}/delete-contact', [PublicPartnerController::class, 'deleteContact']);
 $router->post('/p/{token}/set-step', [PublicPartnerController::class, 'setStep']);
 $router->get('/p/{token}/preview', [PublicPartnerController::class, 'preview']);
+$router->get('/p/{token}/preview-draft', [PublicPartnerController::class, 'previewDraft']);
 $router->get('/p/{token}/download', [PublicPartnerController::class, 'download']);
+$router->get('/p/{token}/download-draft', [PublicPartnerController::class, 'downloadDraft']);
 $router->get('/p/{token}/resource', [PublicPartnerController::class, 'downloadOnboardingResource']);
 $router->get('/p/{token}/download-dosar', [PublicPartnerController::class, 'downloadDossier']);
 $router->post('/p/{token}/upload-signed', [PublicPartnerController::class, 'uploadSigned']);

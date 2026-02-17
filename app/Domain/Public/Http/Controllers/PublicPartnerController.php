@@ -77,6 +77,7 @@ class PublicPartnerController
             $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
         }
         $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
+        $draftContractTemplates = $this->buildDraftTemplatePreviewList((string) ($context['link']['type'] ?? 'client'));
         $documentsProgress = $this->buildDocumentsProgress($contracts);
         if (!in_array($onboardingStatus, ['submitted', 'approved'], true)) {
             $this->syncOnboardingStatus(
@@ -110,6 +111,7 @@ class PublicPartnerController
             'contacts' => $contacts,
             'relationContacts' => $relationContacts,
             'contracts' => $contracts,
+            'draftContractTemplates' => $draftContractTemplates,
             'documentsProgress' => $documentsProgress,
             'scope' => $scope,
             'onboardingResources' => $onboardingResources,
@@ -430,6 +432,121 @@ class PublicPartnerController
 
         header('Content-Type: text/html; charset=utf-8');
         echo $html;
+        exit;
+    }
+
+    public function previewDraft(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $templateId = isset($_GET['template_id']) ? (int) $_GET['template_id'] : 0;
+        if ($templateId <= 0) {
+            Response::abort(404);
+        }
+
+        $template = $this->findRequiredOnboardingTemplateById(
+            $templateId,
+            (string) ($context['link']['type'] ?? 'client')
+        );
+        if ($template === null) {
+            Response::abort(404);
+        }
+
+        $draftContract = $this->buildDraftContractFromTemplate($template);
+        $html = (new ContractPdfService())->renderHtmlForContract($draftContract, 'public');
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.preview_draft', 'contract_template', $templateId, ['rows_count' => 1]);
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
+    }
+
+    public function downloadDraft(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $templateId = isset($_GET['template_id']) ? (int) $_GET['template_id'] : 0;
+        if ($templateId <= 0) {
+            Response::abort(404);
+        }
+
+        $template = $this->findRequiredOnboardingTemplateById(
+            $templateId,
+            (string) ($context['link']['type'] ?? 'client')
+        );
+        if ($template === null) {
+            Response::abort(404);
+        }
+
+        $draftContract = $this->buildDraftContractFromTemplate($template);
+        $pdfService = new ContractPdfService();
+        $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+        $pdfBinary = $pdfService->generatePdfBinaryFromHtml(
+            $html,
+            'onboarding-draft-' . (int) ($template['id'] ?? 0)
+        );
+
+        $docType = $this->resolveTemplateDocTypeForDraft($template);
+        $priority = isset($template['priority']) ? (int) $template['priority'] : 100;
+        $pdfFilename = $this->buildTemplateDraftFilename($template, $priority, $docType);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+
+        if ($pdfBinary === '') {
+            $htmlFilename = preg_replace('/\.pdf$/i', '.html', $pdfFilename);
+            if (!is_string($htmlFilename) || trim($htmlFilename) === '') {
+                $htmlFilename = 'document-draft.html';
+            }
+            Audit::record('public_contract.download_draft', 'contract_template', $templateId, [
+                'rows_count' => 1,
+                'mode' => 'html',
+            ]);
+            header('Content-Type: text/html; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $this->sanitizeDownloadFilename($htmlFilename, 'document-draft.html') . '"');
+            header('X-Content-Type-Options: nosniff');
+            echo $html;
+            exit;
+        }
+
+        Audit::record('public_contract.download_draft', 'contract_template', $templateId, [
+            'rows_count' => 1,
+            'mode' => 'pdf',
+        ]);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $this->sanitizeDownloadFilename($pdfFilename, 'document-draft.pdf') . '"');
+        header('Content-Length: ' . strlen($pdfBinary));
+        header('X-Content-Type-Options: nosniff');
+        echo $pdfBinary;
         exit;
     }
 
@@ -1817,6 +1934,79 @@ class PublicPartnerController
         return null;
     }
 
+    private function buildDraftTemplatePreviewList(string $linkType): array
+    {
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        if (empty($templates)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($templates as $template) {
+            $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($templateId <= 0) {
+                continue;
+            }
+
+            $title = trim((string) ($template['name'] ?? 'Document draft'));
+            if ($title === '') {
+                $title = 'Document draft';
+            }
+
+            $result[] = [
+                'template_id' => $templateId,
+                'priority' => isset($template['priority']) ? (int) $template['priority'] : 100,
+                'title' => $title,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function findRequiredOnboardingTemplateById(int $templateId, string $linkType): ?array
+    {
+        if ($templateId <= 0) {
+            return null;
+        }
+
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        foreach ($templates as $template) {
+            $currentId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($currentId === $templateId) {
+                return $template;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildDraftContractFromTemplate(array $template): array
+    {
+        $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+        $docType = $this->resolveTemplateDocTypeForDraft($template);
+        $title = trim((string) ($template['name'] ?? 'Document draft'));
+        if ($title === '') {
+            $title = 'Document draft';
+        }
+
+        return [
+            'id' => 0,
+            'template_id' => $templateId,
+            'partner_cui' => null,
+            'supplier_cui' => null,
+            'client_cui' => null,
+            'title' => $title,
+            'doc_type' => $docType,
+            'contract_date' => date('Y-m-d'),
+            'created_at' => date('Y-m-d H:i:s'),
+            'doc_no' => 0,
+            'doc_series' => '',
+            'doc_full_no' => '',
+        ];
+    }
+
     private function buildDraftTemplateFilesForDossier(string $linkType): array
     {
         $templateService = new ContractTemplateService();
@@ -1842,24 +2032,7 @@ class PublicPartnerController
             $usedPriorities[$priorityKey] = true;
 
             $docType = $this->resolveTemplateDocTypeForDraft($template);
-            $title = trim((string) ($template['name'] ?? 'Document draft'));
-            if ($title === '') {
-                $title = 'Document draft';
-            }
-            $draftContract = [
-                'id' => 0,
-                'template_id' => $templateId,
-                'partner_cui' => null,
-                'supplier_cui' => null,
-                'client_cui' => null,
-                'title' => $title,
-                'doc_type' => $docType,
-                'contract_date' => date('Y-m-d'),
-                'created_at' => date('Y-m-d H:i:s'),
-                'doc_no' => 0,
-                'doc_series' => '',
-                'doc_full_no' => '',
-            ];
+            $draftContract = $this->buildDraftContractFromTemplate($template);
 
             $html = $pdfService->renderHtmlForContract($draftContract, 'public');
             $pdfBinary = $pdfService->generatePdfBinaryFromHtml($html, 'onboarding-draft-' . $templateId . '-' . $priority);

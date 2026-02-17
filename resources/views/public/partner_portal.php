@@ -6,6 +6,7 @@
     $contacts = $contacts ?? [];
     $relationContacts = $relationContacts ?? [];
     $contracts = $contracts ?? [];
+    $draftContractTemplates = is_array($draftContractTemplates ?? null) ? $draftContractTemplates : [];
     $onboardingResources = $onboardingResources ?? [];
     $documentsProgress = $documentsProgress ?? [
         'required_total' => 0,
@@ -189,9 +190,40 @@
                 <div class="mt-5 rounded border border-slate-200 bg-white p-4">
                     <div class="text-sm font-semibold text-slate-800">Preview-uri contracte onboarding</div>
                     <?php if (empty($contracts)): ?>
-                        <p class="mt-2 text-sm text-slate-500">
-                            Link-urile de preview apar dupa ce exista documente generate pentru acest onboarding (de obicei dupa completarea Pasului 2).
-                        </p>
+                        <?php if (empty($draftContractTemplates)): ?>
+                            <p class="mt-2 text-sm text-slate-500">
+                                Nu exista template-uri onboarding obligatorii configurate pentru acest tip de inrolare.
+                            </p>
+                        <?php else: ?>
+                            <p class="mt-2 text-sm text-slate-600">
+                                Pana la generarea documentelor pe relatie, poti previzualiza si descarca drafturile din template-uri.
+                            </p>
+                            <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                                <?php foreach ($draftContractTemplates as $draftTemplate): ?>
+                                    <?php
+                                        $templateId = (int) ($draftTemplate['template_id'] ?? 0);
+                                        if ($templateId <= 0) {
+                                            continue;
+                                        }
+                                        $draftTitle = trim((string) ($draftTemplate['title'] ?? 'Document draft'));
+                                        if ($draftTitle === '') {
+                                            $draftTitle = 'Document draft';
+                                        }
+                                        $draftPriority = (int) ($draftTemplate['priority'] ?? 100);
+                                        $draftPreviewUrl = App\Support\Url::to('p/' . $token . '/preview-draft?template_id=' . $templateId);
+                                        $draftDownloadUrl = App\Support\Url::to('p/' . $token . '/download-draft?template_id=' . $templateId);
+                                    ?>
+                                    <li class="flex flex-wrap items-center gap-3">
+                                        <span class="font-medium text-slate-700"><?= htmlspecialchars($draftTitle) ?></span>
+                                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                            Draft P<?= (int) $draftPriority ?>
+                                        </span>
+                                        <a href="<?= htmlspecialchars($draftPreviewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Preview draft</a>
+                                        <a href="<?= htmlspecialchars($draftDownloadUrl) ?>" class="text-blue-700 hover:text-blue-800">Descarca draft PDF</a>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
                     <?php else: ?>
                         <ul class="mt-3 space-y-2 text-sm text-slate-700">
                             <?php foreach ($contracts as $contractPreview): ?>
@@ -216,7 +248,7 @@
                         </ul>
                     <?php endif; ?>
 
-                    <?php if (!empty($onboardingResources) || !empty($contracts)): ?>
+                    <?php if (!empty($onboardingResources) || !empty($contracts) || !empty($draftContractTemplates)): ?>
                         <div class="mt-4">
                             <a
                                 href="<?= htmlspecialchars(App\Support\Url::to('p/' . $token . '/download-dosar')) ?>"
@@ -558,7 +590,9 @@
                         <tbody>
                             <?php if (empty($contracts)): ?>
                                 <tr>
-                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
+                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">
+                                        Nu exista documente generate pentru acest onboarding inca. Poti folosi drafturile din Pasul 1.
+                                    </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($contracts as $contract): ?>
