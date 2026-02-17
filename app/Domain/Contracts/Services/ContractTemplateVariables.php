@@ -8,7 +8,7 @@ use App\Support\Url;
 class ContractTemplateVariables
 {
     private const STAMP_UPLOAD_SUBDIR = 'contract_templates/stamps';
-    private const STAMP_INLINE_MAX_BYTES = 204800;
+    private const STAMP_INLINE_MAX_BYTES = 5242880;
     private const STAMP_ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
 
     public function listPlaceholders(): array
@@ -488,18 +488,18 @@ class ContractTemplateVariables
             return ['image' => '', 'url' => ''];
         }
 
-        $renderContext = strtolower($renderContext);
-        if ($renderContext === 'public') {
-            $dataUri = $this->resolveStampDataUri($path, self::STAMP_INLINE_MAX_BYTES);
-            if ($dataUri === '') {
-                return ['image' => '', 'url' => ''];
-            }
-
+        $dataUri = $this->resolveStampDataUri($path, self::STAMP_INLINE_MAX_BYTES);
+        if ($dataUri !== '') {
             $escaped = htmlspecialchars($dataUri, ENT_QUOTES, 'UTF-8');
             return [
                 'image' => '<img src="' . $escaped . '" style="max-width:200px;max-height:120px;" alt="Stampila" />',
                 'url' => $dataUri,
             ];
+        }
+
+        $renderContext = strtolower($renderContext);
+        if ($renderContext === 'public') {
+            return ['image' => '', 'url' => ''];
         }
 
         $url = $this->buildStampProtectedUrl($templateId, (string) ($stamp['stamp_image_meta'] ?? ''), $path);
