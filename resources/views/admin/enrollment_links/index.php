@@ -364,8 +364,14 @@
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($row['partner_cui'] ?? '—')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php
+                                $rowType = (string) ($row['type'] ?? '');
+                                $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
+                                $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
                                 $relationSupplierCui = preg_replace('/\D+/', '', (string) ($row['relation_supplier_cui'] ?? ''));
                                 $relationClientCui = preg_replace('/\D+/', '', (string) ($row['relation_client_cui'] ?? ''));
+                                if ($rowType === 'supplier' && $relationSupplierCui === '') {
+                                    $relationSupplierCui = $partnerCui !== '' ? $partnerCui : $supplierCui;
+                                }
                                 $relationSupplierName = $relationSupplierCui !== ''
                                     ? (string) ($companyNamesByCui[$relationSupplierCui] ?? $relationSupplierCui)
                                     : '';
