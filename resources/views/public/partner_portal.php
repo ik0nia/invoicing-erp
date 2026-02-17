@@ -495,9 +495,6 @@
                 </div>
                 <?php if (!$isReadOnly): ?>
                     <div class="mt-1 flex flex-wrap gap-2">
-                        <button class="rounded border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                            Salveaza date companie
-                        </button>
                         <button
                             name="next_step"
                             value="3"
