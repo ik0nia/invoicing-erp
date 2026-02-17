@@ -13,8 +13,14 @@ CREATE TABLE companies (
     tara VARCHAR(255) NOT NULL DEFAULT 'România',
     email VARCHAR(255) NOT NULL,
     telefon VARCHAR(64) NOT NULL,
+    legal_representative_name VARCHAR(255) NOT NULL DEFAULT '',
+    legal_representative_role VARCHAR(255) NOT NULL DEFAULT '',
+    representative_name VARCHAR(128) NULL,
+    representative_function VARCHAR(128) NULL,
     banca VARCHAR(255) NULL,
-    iban VARCHAR(64) NULL,
+    iban VARCHAR(64) NOT NULL DEFAULT '',
+    bank_account VARCHAR(64) NULL,
+    bank_name VARCHAR(255) NOT NULL DEFAULT '',
     tip_companie ENUM('client', 'furnizor', 'intermediar') NOT NULL,
     activ TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NULL,
@@ -68,6 +74,10 @@ CREATE TABLE partners (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     cui VARCHAR(32) NOT NULL UNIQUE,
     denumire VARCHAR(255) NOT NULL,
+    representative_name VARCHAR(128) NULL,
+    representative_function VARCHAR(128) NULL,
+    bank_account VARCHAR(64) NULL,
+    bank_name VARCHAR(128) NULL,
     default_commission DECIMAL(6,2) NOT NULL DEFAULT 0,
     is_supplier TINYINT(1) NOT NULL DEFAULT 0,
     is_client TINYINT(1) NOT NULL DEFAULT 0,
@@ -243,30 +253,18 @@ CREATE TABLE enrollment_links (
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
     expires_at DATETIME NULL,
     confirmed_at DATETIME NULL,
+    onboarding_status ENUM('draft', 'waiting_signature', 'submitted', 'approved', 'rejected') NOT NULL DEFAULT 'draft',
+    submitted_at DATETIME NULL,
+    approved_at DATETIME NULL,
+    approved_by_user_id INT NULL,
+    checkbox_confirmed TINYINT(1) NOT NULL DEFAULT 0,
     last_used_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NULL,
     INDEX idx_enrollment_status (status),
     INDEX idx_enrollment_supplier (supplier_cui),
-    INDEX idx_enrollment_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE portal_links (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    token_hash CHAR(64) NOT NULL UNIQUE,
-    owner_type ENUM('supplier', 'client') NOT NULL,
-    owner_cui VARCHAR(32) NOT NULL,
-    relation_supplier_cui VARCHAR(32) NULL,
-    relation_client_cui VARCHAR(32) NULL,
-    permissions_json TEXT NULL,
-    status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
-    expires_at DATETIME NULL,
-    created_by_user_id INT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_portal_status (status),
-    INDEX idx_portal_owner (owner_cui),
-    INDEX idx_portal_created (created_at),
-    INDEX idx_portal_relation (relation_supplier_cui, relation_client_cui)
+    INDEX idx_enrollment_created (created_at),
+    INDEX idx_enrollment_onboarding (onboarding_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE partner_relations (
@@ -298,19 +296,25 @@ CREATE TABLE contract_templates (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     template_type VARCHAR(32) NOT NULL,
+    doc_type VARCHAR(64) NULL,
     applies_to ENUM('client', 'supplier', 'both') NOT NULL DEFAULT 'both',
     auto_on_enrollment TINYINT(1) NOT NULL DEFAULT 0,
+    required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
     doc_kind ENUM('contract', 'acord', 'anexa') NOT NULL DEFAULT 'contract',
     priority INT NOT NULL DEFAULT 100,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
+    stamp_image_path VARCHAR(255) NULL,
+    stamp_image_meta TEXT NULL,
     html_content TEXT NULL,
     created_by_user_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NULL,
     INDEX idx_templates_type (template_type),
+    INDEX idx_templates_doc_type (doc_type),
     INDEX idx_templates_auto (auto_on_enrollment, applies_to),
     INDEX idx_templates_active (is_active),
-    INDEX idx_templates_priority (priority)
+    INDEX idx_templates_priority (priority),
+    INDEX idx_templates_stamp_path (stamp_image_path)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE contracts (
@@ -320,9 +324,18 @@ CREATE TABLE contracts (
     supplier_cui VARCHAR(32) NULL,
     client_cui VARCHAR(32) NULL,
     title VARCHAR(255) NOT NULL,
+    doc_type VARCHAR(64) NOT NULL DEFAULT 'contract',
+    contract_date DATE NULL,
+    doc_no INT NULL,
+    doc_series VARCHAR(16) NULL,
+    doc_full_no VARCHAR(64) NULL,
+    doc_assigned_at DATETIME NULL,
+    required_onboarding TINYINT(1) NOT NULL DEFAULT 0,
     status ENUM('draft', 'generated', 'sent', 'signed_uploaded', 'approved') NOT NULL DEFAULT 'draft',
     generated_file_path VARCHAR(255) NULL,
+    generated_pdf_path VARCHAR(255) NULL,
     signed_file_path VARCHAR(255) NULL,
+    signed_upload_path VARCHAR(255) NULL,
     metadata_json TEXT NULL,
     created_by_user_id INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -330,7 +343,19 @@ CREATE TABLE contracts (
     INDEX idx_contracts_status (status),
     INDEX idx_contracts_partner (partner_cui),
     INDEX idx_contracts_relation (supplier_cui, client_cui),
-    INDEX idx_contracts_created (created_at)
+    INDEX idx_contracts_created (created_at),
+    INDEX idx_contracts_doc_date (doc_type, contract_date),
+    INDEX idx_contracts_doc_no (doc_type, doc_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE document_registry (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    doc_type VARCHAR(64) NOT NULL,
+    series VARCHAR(16) NULL,
+    next_no INT NOT NULL DEFAULT 1,
+    start_no INT NOT NULL DEFAULT 1,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_document_registry_doc_type (doc_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE relation_documents (

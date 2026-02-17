@@ -19,6 +19,7 @@ use App\Domain\Partners\Services\CommissionService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserPermission;
 use App\Domain\Users\Models\UserSupplierAccess;
+use App\Support\Audit;
 use App\Support\Auth;
 use App\Support\CompanyName;
 use App\Support\Database;
@@ -172,6 +173,11 @@ class InvoiceController
             if ($commissionBase !== null) {
                 $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
             }
+            $canRefacereInvoice = $this->canRefacereInvoice($user);
+            $refacerePackages = $canRefacereInvoice
+                ? $this->buildInvoiceAdjustmentCandidates($invoice->id, $packages, $linesByPackage, $packageStats)
+                : [];
+            $invoiceAdjustments = $this->loadInvoiceAdjustments($invoice->id, 10);
 
             Response::view('admin/invoices/show', [
                 'invoice' => $invoice,
@@ -205,6 +211,9 @@ class InvoiceController
                 'paymentInRows' => $paymentInRows,
                 'paymentOutRows' => $paymentOutRows,
                 'canViewPaymentDetails' => $canViewPaymentDetails,
+                'canRefacereInvoice' => $canRefacereInvoice,
+                'refacerePackages' => $refacerePackages,
+                'invoiceAdjustments' => $invoiceAdjustments,
             ]);
         }
 
@@ -391,6 +400,58 @@ class InvoiceController
         $items = array_slice($items, 0, $limit);
 
         $this->jsonResponse(['items' => $items, 'allow_empty' => $hasEmpty]);
+    }
+
+    public function manualSupplierSearch(): void
+    {
+        $this->requireInvoiceRole();
+
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $user = Auth::user();
+        $allowedSuppliers = [];
+        if ($user && $user->isSupplierUser()) {
+            $allowedSuppliers = $this->allowedSuppliers($user);
+            if (empty($allowedSuppliers)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+        }
+
+        $items = $this->manualSupplierOptions($allowedSuppliers);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
+        }
+        $items = array_slice($items, 0, $limit);
+
+        $this->jsonResponse(['success' => true, 'items' => $items]);
+    }
+
+    public function manualClientSearch(): void
+    {
+        $this->requireInvoiceRole();
+
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(20, max(1, (int) ($_GET['limit'] ?? 15)));
+        $supplierCui = preg_replace('/\D+/', '', (string) ($_GET['supplier_cui'] ?? ''));
+        $user = Auth::user();
+        $allowedSuppliers = [];
+        if ($user && $user->isSupplierUser()) {
+            $allowedSuppliers = $this->allowedSuppliers($user);
+            if (empty($allowedSuppliers)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+            if ($supplierCui !== '' && !in_array($supplierCui, $allowedSuppliers, true)) {
+                $this->jsonResponse(['success' => true, 'items' => []]);
+            }
+        }
+
+        $items = $this->manualClientOptions($supplierCui, $allowedSuppliers);
+        if ($term !== '') {
+            $items = $this->filterLookupOptions($items, $term);
+        }
+        $items = array_slice($items, 0, $limit);
+
+        $this->jsonResponse(['success' => true, 'items' => $items]);
     }
 
     public function export(): void
@@ -842,6 +903,8 @@ class InvoiceController
             if ($labelText === '') {
                 $labelText = 'Pachet de produse';
             }
+            $packageTotalVat = (float) (($totals[(int) ($row['id'] ?? 0)]['total_vat'] ?? 0.0));
+            $row['is_storno'] = $packageTotalVat < 0;
             $label = $labelText . ' #' . (int) ($row['package_no'] ?? 0);
             $key = $this->normalizeSagaName($label);
             $saga = $sagaProducts[$key] ?? null;
@@ -2242,7 +2305,31 @@ class InvoiceController
             ]
         );
 
-        Session::flash('status', 'Factura FGO a fost stornata.');
+        $message = 'Factura FGO a fost stornata.';
+        try {
+            $stornoPackages = $this->createStornoPackagesForInvoice((int) $invoice->id);
+            Audit::record('invoice.storno_packages_created', 'invoice_in', $invoice->id, [
+                'rows_count' => (int) ($stornoPackages['packages_created'] ?? 0),
+                'lines_created' => (int) ($stornoPackages['lines_created'] ?? 0),
+            ]);
+
+            if (($stornoPackages['packages_created'] ?? 0) > 0) {
+                $message .= ' Pachete storno create automat: '
+                    . (int) $stornoPackages['packages_created']
+                    . ' (linii: '
+                    . (int) $stornoPackages['lines_created']
+                    . ').';
+            } else {
+                $message .= ' Nu au fost gasite pachete pentru generare storno.';
+            }
+        } catch (\Throwable $exception) {
+            Audit::record('invoice.storno_packages_failed', 'invoice_in', $invoice->id, [
+                'error' => $exception->getMessage(),
+                'rows_count' => 0,
+            ]);
+            $message .= ' Pachetele storno nu au putut fi generate automat.';
+        }
+        Session::flash('status', $message);
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
@@ -2328,6 +2415,323 @@ class InvoiceController
 
         Session::flash('status', 'Factura storno a fost printata.');
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
+    public function rebuildInvoice(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Session::flash('error', 'Nu pot pregati structura pentru refacerea facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        $user = Auth::user();
+        if (!$this->canRefacereInvoice($user)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
+            Session::flash('error', 'Confirma pachetele inainte de refacerea facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if (empty($invoice->fgo_number) || empty($invoice->fgo_series)) {
+            Session::flash('error', 'Refacerea este disponibila dupa emiterea facturii FGO initiale.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if (!empty($invoice->fgo_storno_number)) {
+            Session::flash('error', 'Factura este deja stornata integral si nu mai poate fi refacuta.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packages = Package::forInvoice($invoiceId);
+        $packageStats = $this->packageStats($lines, $packages);
+        $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+        $candidates = $this->buildInvoiceAdjustmentCandidates($invoiceId, $packages, $linesByPackage, $packageStats);
+        if (empty($candidates)) {
+            Session::flash('error', 'Nu exista pachete active eligibile pentru refacere.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $requested = $_POST['adjust_qty'] ?? [];
+        [$changes, $summary, $errors] = $this->buildInvoiceAdjustmentPlan($candidates, is_array($requested) ? $requested : []);
+        if (!empty($errors)) {
+            Session::flash('error', (string) $errors[0]);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if (empty($changes)) {
+            Session::flash('error', 'Nu exista modificari de aplicat. Ajusteaza cel putin o cantitate.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if ((float) ($summary['decrease_total_vat'] ?? 0.0) <= 0.0) {
+            Session::flash('error', 'Refacerea trebuie sa scada totalul facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        try {
+            $result = $this->applyInvoiceAdjustmentPlan($invoice, $changes, $summary, $user);
+            Audit::record('invoice.adjustment_applied', 'invoice_in', $invoice->id, [
+                'adjustment_id' => (int) ($result['adjustment_id'] ?? 0),
+                'packages_created' => (int) ($result['packages_created'] ?? 0),
+                'lines_created' => (int) ($result['lines_created'] ?? 0),
+                'decrease_total_vat' => (float) ($result['decrease_total_vat'] ?? 0.0),
+            ]);
+            $message = 'Refacerea a fost aplicata. Pachete storno: '
+                . (int) ($result['storno_packages'] ?? 0)
+                . ', pachete noi: '
+                . (int) ($result['replacement_packages'] ?? 0)
+                . '. Scadere neta: '
+                . number_format((float) ($result['decrease_total_vat'] ?? 0.0), 2, '.', ' ')
+                . ' RON.';
+            Session::flash('status', $message);
+        } catch (\Throwable $exception) {
+            Audit::record('invoice.adjustment_failed', 'invoice_in', $invoice->id, [
+                'error' => $exception->getMessage(),
+                'rows_count' => 0,
+            ]);
+            Session::flash('error', 'Refacerea nu a putut fi aplicata. Verifica datele introduse.');
+        }
+
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+    }
+
+    public function generateAdjustmentInvoice(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        $adjustmentId = isset($_POST['adjustment_id']) ? (int) $_POST['adjustment_id'] : 0;
+        if (!$invoiceId || !$adjustmentId) {
+            Response::redirect('/admin/facturi');
+        }
+        if (!$this->ensureInvoiceTables()) {
+            Session::flash('error', 'Nu pot pregati structura pentru factura de refacere.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        $user = Auth::user();
+        if (!$this->canRefacereInvoice($user)) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $adjustment = $this->findInvoiceAdjustmentById($adjustmentId);
+        if (!$adjustment || (int) ($adjustment['invoice_in_id'] ?? 0) !== $invoiceId) {
+            Session::flash('error', 'Refacerea selectata nu exista.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if (!empty($adjustment['fgo_number'])) {
+            Session::flash('status', 'Factura FGO pentru aceasta refacere este deja generata.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+        if (!empty($invoice->fgo_storno_number)) {
+            Session::flash('error', 'Factura este stornata integral. Nu se mai poate genera factura de refacere.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $selectedClientCui = preg_replace('/\D+/', '', (string) ($adjustment['selected_client_cui'] ?? $invoice->selected_client_cui ?? ''));
+        if ($selectedClientCui === '') {
+            Session::flash('error', 'Selecteaza clientul pentru emiterea facturii de refacere.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        }
+
+        $adjustmentRows = $this->loadInvoiceAdjustmentPackages($adjustmentId);
+        if (empty($adjustmentRows)) {
+            Session::flash('error', 'Refacerea nu are pachete asociate pentru facturare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $settings = new SettingsService();
+        $codUnic = preg_replace('/\D+/', '', (string) $settings->get('company.cui', ''));
+        $secret = trim((string) $settings->get('fgo.api_key', ''));
+        if ($secret === '') {
+            $secret = trim((string) $settings->get('fgo.secret_key', ''));
+        }
+        $seriesOptions = $settings->get('fgo.series_list', []);
+        if (!is_array($seriesOptions)) {
+            $seriesOptions = [];
+        }
+        $series = trim((string) ($_POST['fgo_series'] ?? ''));
+        if ($series === '') {
+            $series = trim((string) $settings->get('fgo.series', ''));
+        }
+        $baseUrl = trim((string) $settings->get('fgo.base_url', ''));
+        if (!empty($seriesOptions) && $series !== '' && !in_array($series, $seriesOptions, true)) {
+            Session::flash('error', 'Seria selectata nu exista in setarile FGO.');
+            Response::redirect('/admin/setari');
+        }
+        if ($codUnic === '' || $secret === '' || $series === '') {
+            Session::flash('error', 'Completeaza CUI companie, Cheia API si seria FGO.');
+            Response::redirect('/admin/setari');
+        }
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $clientCompany = Company::findByCui($selectedClientCui);
+        if (!$clientCompany) {
+            Session::flash('error', 'Completeaza datele clientului in pagina Companii.');
+            Response::redirect('/admin/companii');
+        }
+        $clientCountry = $this->normalizeCountry($clientCompany->tara ?? '');
+        $missing = [];
+        if (trim((string) ($clientCompany->denumire ?? '')) === '') {
+            $missing[] = 'denumire';
+        }
+        if (trim((string) ($clientCompany->adresa ?? '')) === '') {
+            $missing[] = 'adresa';
+        }
+        if (trim((string) ($clientCompany->localitate ?? '')) === '') {
+            $missing[] = 'localitate';
+        }
+        if ($clientCountry === 'RO' && trim((string) ($clientCompany->judet ?? '')) === '') {
+            $missing[] = 'judet';
+        }
+        if (!empty($missing)) {
+            Session::flash('error', 'Completeaza datele clientului: ' . implode(', ', $missing) . '.');
+            Response::redirect('/admin/companii/edit?cui=' . urlencode($selectedClientCui));
+        }
+
+        $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
+            ? (float) $adjustment['commission_percent']
+            : null;
+        if ($commissionPercent === null) {
+            $commission = Commission::forSupplierClient($invoice->supplier_cui, $selectedClientCui);
+            if (!$commission) {
+                Session::flash('error', 'Nu exista comision pentru acest client.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+            }
+            $commissionPercent = (float) $commission->commission;
+        }
+
+        $packageIds = [];
+        foreach ($adjustmentRows as $row) {
+            $stornoId = (int) ($row['storno_package_id'] ?? 0);
+            $replacementId = (int) ($row['replacement_package_id'] ?? 0);
+            if ($stornoId > 0) {
+                $packageIds[$stornoId] = true;
+            }
+            if ($replacementId > 0) {
+                $packageIds[$replacementId] = true;
+            }
+        }
+        $packageIds = array_map('intval', array_keys($packageIds));
+        if (empty($packageIds)) {
+            Session::flash('error', 'Nu exista pachete pentru emiterea refacerii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $packagesById = $this->fetchPackagesByIds($packageIds);
+        $totalsByPackage = $this->packageTotalsForIds($packageIds);
+        $content = [];
+        foreach (['storno_package_id', 'replacement_package_id'] as $column) {
+            foreach ($adjustmentRows as $row) {
+                $packageId = (int) ($row[$column] ?? 0);
+                if ($packageId <= 0 || !isset($packagesById[$packageId])) {
+                    continue;
+                }
+                $package = $packagesById[$packageId];
+                $packageTotalVat = (float) (($totalsByPackage[$packageId]['total_vat'] ?? 0.0));
+                if (abs($packageTotalVat) < 0.0001) {
+                    continue;
+                }
+                $packageClientTotal = $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
+                $label = $this->packageLabel($package);
+                $content[] = [
+                    'Denumire' => $label,
+                    'UM' => 'BUC',
+                    'NrProduse' => 1,
+                    'CotaTVA' => (float) $package->vat_percent,
+                    'PretTotal' => number_format($packageClientTotal, 2, '.', ''),
+                ];
+            }
+        }
+        if (empty($content)) {
+            Session::flash('error', 'Nu am putut construi continutul facturii de refacere.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $issueDate = date('Y-m-d');
+        $payload = [
+            'CodUnic' => $codUnic,
+            'Hash' => FgoClient::hashForEmitere($codUnic, $secret, (string) ($clientCompany->denumire ?? '')),
+            'Valuta' => $invoice->currency ?: 'RON',
+            'TipFactura' => 'Factura',
+            'Serie' => $series,
+            'DataEmitere' => $issueDate,
+            'VerificareDuplicat' => 'true',
+            'IdExtern' => 'INV-ADJ-' . $invoice->id . '-' . $adjustmentId,
+            'Client' => [
+                'Denumire' => $clientCompany->denumire,
+                'CodUnic' => $clientCompany->cui,
+                'NrRegCom' => $clientCompany->nr_reg_comertului,
+                'Email' => $clientCompany->email,
+                'Telefon' => $clientCompany->telefon,
+                'Tara' => $clientCountry,
+                'Judet' => $clientCompany->judet,
+                'Localitate' => $clientCompany->localitate,
+                'Adresa' => $clientCompany->adresa,
+                'Tip' => 'PJ',
+                'PlatitorTVA' => $clientCompany->platitor_tva ? 'true' : 'false',
+            ],
+            'Continut' => $content,
+            'PlatformaUrl' => FgoClient::platformUrl(),
+        ];
+        if (!empty($invoice->due_date)) {
+            $payload['DataScadenta'] = $invoice->due_date;
+        }
+
+        $client = new FgoClient($baseUrl);
+        $response = $client->post('factura/emitere', $payload);
+        if (empty($response['Success'])) {
+            $message = isset($response['Message']) ? (string) $response['Message'] : 'Eroare emitere factura FGO pentru refacere.';
+            Session::flash('error', $message);
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        $factura = $response['Factura'] ?? [];
+        $fgoNumber = (string) ($factura['Numar'] ?? '');
+        $fgoSeries = (string) ($factura['Serie'] ?? $series);
+        $fgoLink = (string) ($factura['Link'] ?? '');
+        if ($fgoNumber === '') {
+            Session::flash('error', 'Factura FGO de refacere nu a returnat numarul emis.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
+        }
+
+        Database::execute(
+            'UPDATE invoice_adjustments
+             SET fgo_series = :serie,
+                 fgo_number = :numar,
+                 fgo_link = :link,
+                 fgo_generated_at = :generated_at,
+                 status = :status,
+                 updated_at = :now
+             WHERE id = :id',
+            [
+                'serie' => $fgoSeries,
+                'numar' => $fgoNumber,
+                'link' => $fgoLink,
+                'generated_at' => date('Y-m-d H:i:s'),
+                'status' => 'fgo_generated',
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $adjustmentId,
+            ]
+        );
+
+        Audit::record('invoice.adjustment_fgo_generated', 'invoice_in', $invoice->id, [
+            'adjustment_id' => $adjustmentId,
+            'fgo_series' => $fgoSeries,
+            'fgo_number' => $fgoNumber,
+            'rows_count' => count($content),
+        ]);
+        Session::flash('status', 'Factura FGO pentru refacere a fost generata.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
     }
 
     public function moveLine(): void
@@ -3153,6 +3557,47 @@ class InvoiceController
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
             );
+
+            Database::execute(
+                'CREATE TABLE IF NOT EXISTS invoice_adjustments (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    invoice_in_id BIGINT UNSIGNED NOT NULL,
+                    source_fgo_series VARCHAR(32) NULL,
+                    source_fgo_number VARCHAR(32) NULL,
+                    selected_client_cui VARCHAR(32) NULL,
+                    commission_percent DECIMAL(6,2) NULL,
+                    source_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    target_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    decrease_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    storno_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    status VARCHAR(32) NOT NULL DEFAULT \'applied\',
+                    fgo_series VARCHAR(32) NULL,
+                    fgo_number VARCHAR(32) NULL,
+                    fgo_link VARCHAR(255) NULL,
+                    fgo_generated_at DATETIME NULL,
+                    created_by_user_id INT NULL,
+                    created_at DATETIME NULL,
+                    updated_at DATETIME NULL,
+                    INDEX idx_invoice_adjustments_invoice (invoice_in_id, id),
+                    INDEX idx_invoice_adjustments_status (status, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
+
+            Database::execute(
+                'CREATE TABLE IF NOT EXISTS invoice_adjustment_packages (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    adjustment_id BIGINT UNSIGNED NOT NULL,
+                    source_package_id BIGINT UNSIGNED NOT NULL,
+                    storno_package_id BIGINT UNSIGNED NULL,
+                    replacement_package_id BIGINT UNSIGNED NULL,
+                    source_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    replacement_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    delta_total_with_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    created_at DATETIME NULL,
+                    INDEX idx_invoice_adjustment_packages_adjustment (adjustment_id),
+                    INDEX idx_invoice_adjustment_packages_source (source_package_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+            );
         } catch (\Throwable $exception) {
             return false;
         }
@@ -3219,6 +3664,18 @@ class InvoiceController
         }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'supplier_request_at')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN supplier_request_at DATETIME NULL AFTER commission_percent');
+        }
+        if (Database::tableExists('invoice_adjustments') && !Database::columnExists('invoice_adjustments', 'fgo_series')) {
+            Database::execute('ALTER TABLE invoice_adjustments ADD COLUMN fgo_series VARCHAR(32) NULL AFTER status');
+        }
+        if (Database::tableExists('invoice_adjustments') && !Database::columnExists('invoice_adjustments', 'fgo_number')) {
+            Database::execute('ALTER TABLE invoice_adjustments ADD COLUMN fgo_number VARCHAR(32) NULL AFTER fgo_series');
+        }
+        if (Database::tableExists('invoice_adjustments') && !Database::columnExists('invoice_adjustments', 'fgo_link')) {
+            Database::execute('ALTER TABLE invoice_adjustments ADD COLUMN fgo_link VARCHAR(255) NULL AFTER fgo_number');
+        }
+        if (Database::tableExists('invoice_adjustments') && !Database::columnExists('invoice_adjustments', 'fgo_generated_at')) {
+            Database::execute('ALTER TABLE invoice_adjustments ADD COLUMN fgo_generated_at DATETIME NULL AFTER fgo_link');
         }
         if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cod_saga')) {
             Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cod_saga VARCHAR(64) NULL AFTER product_name');
@@ -3460,6 +3917,874 @@ class InvoiceController
             'UPDATE invoices_in SET packages_confirmed = 0, packages_confirmed_at = NULL, updated_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
         );
+    }
+
+    private function createStornoPackagesForInvoice(int $invoiceId): array
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('packages') || !Database::tableExists('invoice_in_lines')) {
+            return ['packages_created' => 0, 'lines_created' => 0];
+        }
+
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($packages)) {
+            return ['packages_created' => 0, 'lines_created' => 0];
+        }
+
+        $pdo = Database::pdo();
+        $hasSagaStatus = Database::columnExists('packages', 'saga_status');
+        $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
+        $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
+        $now = date('Y-m-d H:i:s');
+        $createdPackages = 0;
+        $createdLines = 0;
+
+        $pdo->beginTransaction();
+        try {
+            foreach ($packages as $package) {
+                $sourceLines = Database::fetchAll(
+                    'SELECT * FROM invoice_in_lines WHERE package_id = :package ORDER BY id ASC',
+                    ['package' => $package->id]
+                );
+                if (empty($sourceLines)) {
+                    continue;
+                }
+
+                $sourceTotalVat = 0.0;
+                foreach ($sourceLines as $sourceLine) {
+                    $sourceTotalVat += (float) ($sourceLine['line_total_vat'] ?? 0);
+                }
+                if ($sourceTotalVat <= 0.0) {
+                    continue;
+                }
+
+                $stornoLabel = $package->label;
+                $stornoPackageNo = (int) $package->package_no;
+                if ($stornoPackageNo <= 0) {
+                    $stornoPackageNo = $package->id;
+                }
+
+                if ($hasSagaStatus) {
+                    Database::execute(
+                        'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, saga_status, created_at)
+                         VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :saga_status, :created_at)',
+                        [
+                            'invoice_in_id' => $invoiceId,
+                            'package_no' => $stornoPackageNo,
+                            'label' => $stornoLabel,
+                            'vat_percent' => $package->vat_percent,
+                            'saga_status' => 'pending',
+                            'created_at' => $now,
+                        ]
+                    );
+                } else {
+                    Database::execute(
+                        'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, created_at)
+                         VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :created_at)',
+                        [
+                            'invoice_in_id' => $invoiceId,
+                            'package_no' => $stornoPackageNo,
+                            'label' => $stornoLabel,
+                            'vat_percent' => $package->vat_percent,
+                            'created_at' => $now,
+                        ]
+                    );
+                }
+                $newPackageId = (int) Database::lastInsertId();
+                $createdPackages++;
+
+                foreach ($sourceLines as $line) {
+                    $lineNo = $this->buildStornoLineNo((string) ($line['line_no'] ?? ''));
+                    $params = [
+                        'invoice_in_id' => $invoiceId,
+                        'line_no' => $lineNo,
+                        'product_name' => (string) ($line['product_name'] ?? ''),
+                        'quantity' => -1 * (float) ($line['quantity'] ?? 0),
+                        'unit_code' => (string) ($line['unit_code'] ?? ''),
+                        'unit_price' => (float) ($line['unit_price'] ?? 0),
+                        'line_total' => -1 * (float) ($line['line_total'] ?? 0),
+                        'tax_percent' => (float) ($line['tax_percent'] ?? 0),
+                        'line_total_vat' => -1 * (float) ($line['line_total_vat'] ?? 0),
+                        'package_id' => $newPackageId,
+                        'created_at' => $now,
+                    ];
+
+                    if ($hasCodSaga && $hasStockSaga) {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name, cod_saga, stock_saga,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name, :cod_saga, :stock_saga,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            array_merge($params, [
+                                'cod_saga' => $line['cod_saga'] ?? null,
+                                'stock_saga' => isset($line['stock_saga']) ? (float) $line['stock_saga'] : null,
+                            ])
+                        );
+                    } elseif ($hasCodSaga) {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name, cod_saga,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name, :cod_saga,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            array_merge($params, [
+                                'cod_saga' => $line['cod_saga'] ?? null,
+                            ])
+                        );
+                    } else {
+                        Database::execute(
+                            'INSERT INTO invoice_in_lines (
+                                invoice_in_id, line_no, product_name,
+                                quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                            ) VALUES (
+                                :invoice_in_id, :line_no, :product_name,
+                                :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                            )',
+                            $params
+                        );
+                    }
+                    $createdLines++;
+                }
+            }
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $exception;
+        }
+
+        return [
+            'packages_created' => $createdPackages,
+            'lines_created' => $createdLines,
+        ];
+    }
+
+    private function buildStornoLineNo(string $lineNo): string
+    {
+        $lineNo = trim($lineNo);
+        if ($lineNo === '') {
+            $lineNo = 'storno';
+        } else {
+            $lineNo .= 'ST';
+        }
+
+        return strlen($lineNo) > 32 ? substr($lineNo, 0, 32) : $lineNo;
+    }
+
+    private function canRefacereInvoice(?\App\Domain\Users\Models\User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ($user->isSupplierUser()) {
+            return true;
+        }
+
+        return $user->hasRole(['super_admin', 'admin', 'contabil', 'operator', 'staff']);
+    }
+
+    private function buildInvoiceAdjustmentCandidates(int $invoiceId, array $packages, array $linesByPackage, array $packageStats): array
+    {
+        $usedSourcePackageIds = $this->usedSourcePackageIdsForAdjustments($invoiceId);
+        $candidates = [];
+
+        foreach ($packages as $package) {
+            $packageId = (int) ($package->id ?? 0);
+            if ($packageId <= 0 || isset($usedSourcePackageIds[$packageId])) {
+                continue;
+            }
+
+            $stat = $packageStats[$packageId] ?? null;
+            $packageTotalVat = (float) (($stat['total_vat'] ?? 0.0));
+            if ($packageTotalVat <= 0.009) {
+                continue;
+            }
+
+            $lines = $linesByPackage[$packageId] ?? [];
+            $lineRows = [];
+            foreach ($lines as $line) {
+                $quantity = (float) ($line->quantity ?? 0.0);
+                if ($quantity <= 0.0001) {
+                    continue;
+                }
+                $lineRows[] = [
+                    'line_id' => (int) ($line->id ?? 0),
+                    'line_no' => (string) ($line->line_no ?? ''),
+                    'product_name' => (string) ($line->product_name ?? ''),
+                    'quantity' => $quantity,
+                    'unit_code' => (string) ($line->unit_code ?? ''),
+                    'unit_price' => (float) ($line->unit_price ?? 0.0),
+                    'tax_percent' => (float) ($line->tax_percent ?? 0.0),
+                    'line_total_vat' => (float) ($line->line_total_vat ?? 0.0),
+                    'cod_saga' => $line->cod_saga ?? null,
+                    'stock_saga' => $line->stock_saga ?? null,
+                ];
+            }
+            if (empty($lineRows)) {
+                continue;
+            }
+
+            $labelText = $this->packageLabelText($package);
+            $candidates[] = [
+                'package_id' => $packageId,
+                'package_no' => (int) ($package->package_no ?? 0),
+                'label_text' => $labelText,
+                'label' => $labelText . ' #' . (int) ($package->package_no ?? 0),
+                'vat_percent' => (float) ($package->vat_percent ?? 0.0),
+                'total_vat' => round($packageTotalVat, 2),
+                'line_count' => count($lineRows),
+                'lines' => $lineRows,
+            ];
+        }
+
+        usort($candidates, static function (array $left, array $right): int {
+            $leftNo = (int) ($left['package_no'] ?? 0);
+            $rightNo = (int) ($right['package_no'] ?? 0);
+            if ($leftNo !== $rightNo) {
+                return $leftNo <=> $rightNo;
+            }
+
+            return ((int) ($left['package_id'] ?? 0)) <=> ((int) ($right['package_id'] ?? 0));
+        });
+
+        return $candidates;
+    }
+
+    private function usedSourcePackageIdsForAdjustments(int $invoiceId): array
+    {
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_adjustments')
+            || !Database::tableExists('invoice_adjustment_packages')
+        ) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT DISTINCT ap.source_package_id
+             FROM invoice_adjustment_packages ap
+             JOIN invoice_adjustments a ON a.id = ap.adjustment_id
+             WHERE a.invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        );
+
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['source_package_id'] ?? 0);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+
+        return $ids;
+    }
+
+    private function buildInvoiceAdjustmentPlan(array $candidates, array $requestedQuantities): array
+    {
+        $changes = [];
+        $errors = [];
+        $stornoTotalVat = 0.0;
+        $replacementTotalVat = 0.0;
+
+        foreach ($candidates as $candidate) {
+            $packageId = (int) ($candidate['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+
+            $lines = is_array($candidate['lines'] ?? null) ? $candidate['lines'] : [];
+            if (empty($lines)) {
+                continue;
+            }
+
+            $packageChanged = false;
+            $packageNewTotalVat = 0.0;
+            $plannedLines = [];
+
+            foreach ($lines as $line) {
+                $lineId = (int) ($line['line_id'] ?? 0);
+                if ($lineId <= 0) {
+                    continue;
+                }
+                $oldQty = round((float) ($line['quantity'] ?? 0.0), 3);
+                if ($oldQty <= 0.0001) {
+                    continue;
+                }
+
+                $rawRequested = $requestedQuantities[$packageId][$lineId] ?? $oldQty;
+                $newQty = $this->parseNumber($rawRequested);
+                if ($newQty === null) {
+                    $errors[] = 'Cantitate invalida pentru produsul "' . (string) ($line['product_name'] ?? '') . '".';
+                    continue;
+                }
+
+                $newQty = round($newQty, 3);
+                if ($newQty < -0.0001) {
+                    $errors[] = 'Cantitatea noua nu poate fi negativa pentru produsul "' . (string) ($line['product_name'] ?? '') . '".';
+                    continue;
+                }
+                if ($newQty > $oldQty + 0.0001) {
+                    $errors[] = 'Cantitatea noua nu poate depasi cantitatea initiala pentru produsul "' . (string) ($line['product_name'] ?? '') . '".';
+                    continue;
+                }
+                if ($newQty < 0.0) {
+                    $newQty = 0.0;
+                }
+
+                $unitPrice = (float) ($line['unit_price'] ?? 0.0);
+                $taxPercent = (float) ($line['tax_percent'] ?? 0.0);
+                $newLineTotal = round($newQty * $unitPrice, 2);
+                $newLineTotalVat = round($newLineTotal * (1 + ($taxPercent / 100)), 2);
+
+                if (abs($newQty - $oldQty) > 0.0005) {
+                    $packageChanged = true;
+                }
+                $packageNewTotalVat += $newLineTotalVat;
+
+                $plannedLines[] = array_merge($line, [
+                    'old_quantity' => $oldQty,
+                    'new_quantity' => $newQty,
+                    'new_line_total' => $newLineTotal,
+                    'new_line_total_vat' => $newLineTotalVat,
+                ]);
+            }
+
+            if (!$packageChanged || !empty($errors)) {
+                continue;
+            }
+
+            $sourceTotalVat = round((float) ($candidate['total_vat'] ?? 0.0), 2);
+            if ($sourceTotalVat <= 0.009) {
+                continue;
+            }
+
+            $packageNewTotalVat = round($packageNewTotalVat, 2);
+            $changes[] = [
+                'source_package_id' => $packageId,
+                'source_package_no' => (int) ($candidate['package_no'] ?? 0),
+                'label_text' => (string) ($candidate['label_text'] ?? ''),
+                'vat_percent' => (float) ($candidate['vat_percent'] ?? 0.0),
+                'source_total_vat' => $sourceTotalVat,
+                'replacement_total_vat' => $packageNewTotalVat,
+                'delta_total_vat' => round($packageNewTotalVat - $sourceTotalVat, 2),
+                'lines' => $plannedLines,
+            ];
+            $stornoTotalVat += $sourceTotalVat;
+            $replacementTotalVat += $packageNewTotalVat;
+        }
+
+        $summary = [
+            'storno_total_vat' => round($stornoTotalVat, 2),
+            'replacement_total_vat' => round($replacementTotalVat, 2),
+            'decrease_total_vat' => round($stornoTotalVat - $replacementTotalVat, 2),
+        ];
+
+        return [$changes, $summary, $errors];
+    }
+
+    private function applyInvoiceAdjustmentPlan(InvoiceIn $invoice, array $changes, array $summary, ?\App\Domain\Users\Models\User $user): array
+    {
+        if (
+            !Database::tableExists('invoice_adjustments')
+            || !Database::tableExists('invoice_adjustment_packages')
+            || !Database::tableExists('packages')
+            || !Database::tableExists('invoice_in_lines')
+        ) {
+            throw new \RuntimeException('Tabelele de refacere nu sunt disponibile.');
+        }
+
+        $pdo = Database::pdo();
+        $hasSagaStatus = Database::columnExists('packages', 'saga_status');
+        $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
+        $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
+        $now = date('Y-m-d H:i:s');
+
+        $createdPackages = 0;
+        $createdLines = 0;
+        $stornoPackages = 0;
+        $replacementPackages = 0;
+        $nextPackageNo = $this->lastConfirmedPackageNo() + 1;
+
+        $sourceTotalVat = round((float) ($invoice->total_with_vat ?? 0.0), 2);
+        $decreaseTotalVat = round((float) ($summary['decrease_total_vat'] ?? 0.0), 2);
+        $targetTotalVat = round($sourceTotalVat - $decreaseTotalVat, 2);
+        if ($targetTotalVat < 0) {
+            $targetTotalVat = 0.0;
+        }
+
+        $adjustmentId = 0;
+        $pdo->beginTransaction();
+        try {
+            Database::execute(
+                'INSERT INTO invoice_adjustments (
+                    invoice_in_id,
+                    source_fgo_series,
+                    source_fgo_number,
+                    selected_client_cui,
+                    commission_percent,
+                    source_total_with_vat,
+                    target_total_with_vat,
+                    decrease_total_with_vat,
+                    storno_total_with_vat,
+                    status,
+                    created_by_user_id,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :invoice_in_id,
+                    :source_fgo_series,
+                    :source_fgo_number,
+                    :selected_client_cui,
+                    :commission_percent,
+                    :source_total_with_vat,
+                    :target_total_with_vat,
+                    :decrease_total_with_vat,
+                    :storno_total_with_vat,
+                    :status,
+                    :created_by_user_id,
+                    :created_at,
+                    :updated_at
+                )',
+                [
+                    'invoice_in_id' => (int) $invoice->id,
+                    'source_fgo_series' => (string) ($invoice->fgo_series ?? ''),
+                    'source_fgo_number' => (string) ($invoice->fgo_number ?? ''),
+                    'selected_client_cui' => (string) ($invoice->selected_client_cui ?? ''),
+                    'commission_percent' => $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null,
+                    'source_total_with_vat' => $sourceTotalVat,
+                    'target_total_with_vat' => $targetTotalVat,
+                    'decrease_total_with_vat' => $decreaseTotalVat,
+                    'storno_total_with_vat' => round((float) ($summary['storno_total_vat'] ?? 0.0), 2),
+                    'status' => 'applied',
+                    'created_by_user_id' => $user ? (int) $user->id : null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+            $adjustmentId = (int) Database::lastInsertId();
+
+            $changeRows = [];
+            foreach ($changes as $change) {
+                $labelText = trim((string) ($change['label_text'] ?? ''));
+                if ($labelText === '') {
+                    $labelText = 'Pachet de produse';
+                }
+                $vatPercent = (float) ($change['vat_percent'] ?? 0.0);
+                $sourcePackageId = (int) ($change['source_package_id'] ?? 0);
+                $sourcePackageNo = (int) ($change['source_package_no'] ?? 0);
+                $lines = is_array($change['lines'] ?? null) ? $change['lines'] : [];
+                if ($sourcePackageId <= 0 || empty($lines)) {
+                    continue;
+                }
+                if ($sourcePackageNo <= 0) {
+                    $sourcePackageNo = $sourcePackageId;
+                }
+
+                // Storno keeps original package label and number.
+                $stornoPackageId = $this->insertAdjustmentPackage(
+                    (int) $invoice->id,
+                    $sourcePackageNo,
+                    $labelText,
+                    $vatPercent,
+                    $now,
+                    $hasSagaStatus
+                );
+                $createdPackages++;
+                $stornoPackages++;
+
+                foreach ($lines as $line) {
+                    $oldQty = round((float) ($line['old_quantity'] ?? $line['quantity'] ?? 0.0), 3);
+                    if ($oldQty <= 0.0001) {
+                        continue;
+                    }
+                    $this->insertAdjustmentLine(
+                        (int) $invoice->id,
+                        $stornoPackageId,
+                        $line,
+                        -1 * $oldQty,
+                        $this->buildStornoLineNo((string) ($line['line_no'] ?? '')),
+                        $now,
+                        $hasCodSaga,
+                        $hasStockSaga
+                    );
+                    $createdLines++;
+                }
+
+                $changeRows[] = [
+                    'change' => $change,
+                    'label_text' => $labelText,
+                    'vat_percent' => $vatPercent,
+                    'lines' => $lines,
+                    'source_package_id' => $sourcePackageId,
+                    'storno_package_id' => $stornoPackageId,
+                    'replacement_package_id' => null,
+                ];
+            }
+
+            // Replacement packages are created only after all storno packages.
+            foreach ($changeRows as &$changeRow) {
+                $change = is_array($changeRow['change'] ?? null) ? $changeRow['change'] : [];
+                if ((float) ($change['replacement_total_vat'] ?? 0.0) <= 0.009) {
+                    continue;
+                }
+
+                $replacementPackageId = $this->insertAdjustmentPackage(
+                    (int) $invoice->id,
+                    $nextPackageNo,
+                    (string) ($changeRow['label_text'] ?? 'Pachet de produse'),
+                    (float) ($changeRow['vat_percent'] ?? 0.0),
+                    $now,
+                    $hasSagaStatus
+                );
+                $nextPackageNo++;
+                $createdPackages++;
+                $replacementPackages++;
+
+                $createdReplacementLines = 0;
+                $lines = is_array($changeRow['lines'] ?? null) ? $changeRow['lines'] : [];
+                foreach ($lines as $line) {
+                    $newQty = round((float) ($line['new_quantity'] ?? 0.0), 3);
+                    if ($newQty <= 0.0001) {
+                        continue;
+                    }
+                    $this->insertAdjustmentLine(
+                        (int) $invoice->id,
+                        (int) $replacementPackageId,
+                        $line,
+                        $newQty,
+                        $this->buildRefacereLineNo((string) ($line['line_no'] ?? '')),
+                        $now,
+                        $hasCodSaga,
+                        $hasStockSaga
+                    );
+                    $createdLines++;
+                    $createdReplacementLines++;
+                }
+
+                if ($createdReplacementLines <= 0) {
+                    Database::execute('DELETE FROM packages WHERE id = :id', ['id' => $replacementPackageId]);
+                    $createdPackages--;
+                    $replacementPackages--;
+                    continue;
+                }
+
+                $changeRow['replacement_package_id'] = (int) $replacementPackageId;
+            }
+            unset($changeRow);
+
+            foreach ($changeRows as $changeRow) {
+                $change = is_array($changeRow['change'] ?? null) ? $changeRow['change'] : [];
+                Database::execute(
+                    'INSERT INTO invoice_adjustment_packages (
+                        adjustment_id,
+                        source_package_id,
+                        storno_package_id,
+                        replacement_package_id,
+                        source_total_with_vat,
+                        replacement_total_with_vat,
+                        delta_total_with_vat,
+                        created_at
+                    ) VALUES (
+                        :adjustment_id,
+                        :source_package_id,
+                        :storno_package_id,
+                        :replacement_package_id,
+                        :source_total_with_vat,
+                        :replacement_total_with_vat,
+                        :delta_total_with_vat,
+                        :created_at
+                    )',
+                    [
+                        'adjustment_id' => $adjustmentId,
+                        'source_package_id' => (int) ($changeRow['source_package_id'] ?? 0),
+                        'storno_package_id' => (int) ($changeRow['storno_package_id'] ?? 0),
+                        'replacement_package_id' => (int) ($changeRow['replacement_package_id'] ?? 0) ?: null,
+                        'source_total_with_vat' => round((float) ($change['source_total_vat'] ?? 0.0), 2),
+                        'replacement_total_with_vat' => round((float) ($change['replacement_total_vat'] ?? 0.0), 2),
+                        'delta_total_with_vat' => round((float) ($change['delta_total_vat'] ?? 0.0), 2),
+                        'created_at' => $now,
+                    ]
+                );
+            }
+
+            if ($createdPackages <= 0) {
+                throw new \RuntimeException('Nu s-au putut crea pachete pentru refacere.');
+            }
+
+            if ($createdPackages > 0) {
+                $this->setLastConfirmedPackageNo($nextPackageNo - 1);
+            }
+            $totals = $this->recalculateInvoiceTotals((int) $invoice->id, $now);
+
+            $pdo->commit();
+
+            return [
+                'adjustment_id' => $adjustmentId,
+                'packages_created' => $createdPackages,
+                'lines_created' => $createdLines,
+                'storno_packages' => $stornoPackages,
+                'replacement_packages' => $replacementPackages,
+                'decrease_total_vat' => $decreaseTotalVat,
+                'invoice_total_with_vat' => (float) ($totals['total_with_vat'] ?? 0.0),
+            ];
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    private function insertAdjustmentPackage(
+        int $invoiceId,
+        int $packageNo,
+        string $labelText,
+        float $vatPercent,
+        string $now,
+        bool $hasSagaStatus
+    ): int {
+        if ($hasSagaStatus) {
+            Database::execute(
+                'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, saga_status, created_at)
+                 VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :saga_status, :created_at)',
+                [
+                    'invoice_in_id' => $invoiceId,
+                    'package_no' => $packageNo,
+                    'label' => $labelText,
+                    'vat_percent' => $vatPercent,
+                    'saga_status' => 'pending',
+                    'created_at' => $now,
+                ]
+            );
+        } else {
+            Database::execute(
+                'INSERT INTO packages (invoice_in_id, package_no, label, vat_percent, created_at)
+                 VALUES (:invoice_in_id, :package_no, :label, :vat_percent, :created_at)',
+                [
+                    'invoice_in_id' => $invoiceId,
+                    'package_no' => $packageNo,
+                    'label' => $labelText,
+                    'vat_percent' => $vatPercent,
+                    'created_at' => $now,
+                ]
+            );
+        }
+
+        return (int) Database::lastInsertId();
+    }
+
+    private function insertAdjustmentLine(
+        int $invoiceId,
+        int $packageId,
+        array $lineData,
+        float $quantity,
+        string $lineNo,
+        string $now,
+        bool $hasCodSaga,
+        bool $hasStockSaga
+    ): void {
+        $unitPrice = (float) ($lineData['unit_price'] ?? 0.0);
+        $taxPercent = (float) ($lineData['tax_percent'] ?? 0.0);
+        $lineTotal = round($quantity * $unitPrice, 2);
+        $lineTotalVat = round($lineTotal * (1 + ($taxPercent / 100)), 2);
+
+        $params = [
+            'invoice_in_id' => $invoiceId,
+            'line_no' => $lineNo,
+            'product_name' => (string) ($lineData['product_name'] ?? ''),
+            'quantity' => $quantity,
+            'unit_code' => (string) ($lineData['unit_code'] ?? ''),
+            'unit_price' => $unitPrice,
+            'line_total' => $lineTotal,
+            'tax_percent' => $taxPercent,
+            'line_total_vat' => $lineTotalVat,
+            'package_id' => $packageId,
+            'created_at' => $now,
+        ];
+
+        if ($hasCodSaga && $hasStockSaga) {
+            Database::execute(
+                'INSERT INTO invoice_in_lines (
+                    invoice_in_id, line_no, product_name, cod_saga, stock_saga,
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                ) VALUES (
+                    :invoice_in_id, :line_no, :product_name, :cod_saga, :stock_saga,
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                )',
+                array_merge($params, [
+                    'cod_saga' => $lineData['cod_saga'] ?? null,
+                    'stock_saga' => isset($lineData['stock_saga']) ? (float) $lineData['stock_saga'] : null,
+                ])
+            );
+        } elseif ($hasCodSaga) {
+            Database::execute(
+                'INSERT INTO invoice_in_lines (
+                    invoice_in_id, line_no, product_name, cod_saga,
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                ) VALUES (
+                    :invoice_in_id, :line_no, :product_name, :cod_saga,
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                )',
+                array_merge($params, [
+                    'cod_saga' => $lineData['cod_saga'] ?? null,
+                ])
+            );
+        } else {
+            Database::execute(
+                'INSERT INTO invoice_in_lines (
+                    invoice_in_id, line_no, product_name,
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                ) VALUES (
+                    :invoice_in_id, :line_no, :product_name,
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                )',
+                $params
+            );
+        }
+    }
+
+    private function buildRefacereLineNo(string $lineNo): string
+    {
+        $lineNo = trim($lineNo);
+        if ($lineNo === '') {
+            $lineNo = 'refacere';
+        } else {
+            $lineNo .= 'RF';
+        }
+
+        return strlen($lineNo) > 32 ? substr($lineNo, 0, 32) : $lineNo;
+    }
+
+    private function recalculateInvoiceTotals(int $invoiceId, string $now): array
+    {
+        $totals = Database::fetchOne(
+            'SELECT
+                COALESCE(SUM(line_total), 0) AS total_without_vat,
+                COALESCE(SUM(line_total_vat), 0) AS total_with_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? [];
+
+        $totalWithoutVat = round((float) ($totals['total_without_vat'] ?? 0.0), 2);
+        $totalWithVat = round((float) ($totals['total_with_vat'] ?? 0.0), 2);
+        $totalVat = round($totalWithVat - $totalWithoutVat, 2);
+
+        Database::execute(
+            'UPDATE invoices_in
+             SET total_without_vat = :without_vat,
+                 total_vat = :vat,
+                 total_with_vat = :with_vat,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'without_vat' => $totalWithoutVat,
+                'vat' => $totalVat,
+                'with_vat' => $totalWithVat,
+                'updated_at' => $now,
+                'id' => $invoiceId,
+            ]
+        );
+
+        return [
+            'total_without_vat' => $totalWithoutVat,
+            'total_vat' => $totalVat,
+            'total_with_vat' => $totalWithVat,
+        ];
+    }
+
+    private function loadInvoiceAdjustments(int $invoiceId, int $limit = 10): array
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return [];
+        }
+        $limit = max(1, min(50, $limit));
+
+        return Database::fetchAll(
+            'SELECT a.*,
+                    (
+                        SELECT COUNT(*)
+                        FROM invoice_adjustment_packages ap
+                        WHERE ap.adjustment_id = a.id
+                    ) AS package_changes
+             FROM invoice_adjustments a
+             WHERE a.invoice_in_id = :invoice
+             ORDER BY a.id DESC
+             LIMIT ' . $limit,
+            ['invoice' => $invoiceId]
+        );
+    }
+
+    private function findInvoiceAdjustmentById(int $adjustmentId): ?array
+    {
+        if ($adjustmentId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        return Database::fetchOne(
+            'SELECT * FROM invoice_adjustments WHERE id = :id LIMIT 1',
+            ['id' => $adjustmentId]
+        );
+    }
+
+    private function loadInvoiceAdjustmentPackages(int $adjustmentId): array
+    {
+        if (
+            $adjustmentId <= 0
+            || !Database::tableExists('invoice_adjustment_packages')
+        ) {
+            return [];
+        }
+
+        return Database::fetchAll(
+            'SELECT *
+             FROM invoice_adjustment_packages
+             WHERE adjustment_id = :adjustment
+             ORDER BY id ASC',
+            ['adjustment' => $adjustmentId]
+        );
+    }
+
+    private function fetchPackagesByIds(array $packageIds): array
+    {
+        $normalized = [];
+        foreach ($packageIds as $packageId) {
+            $id = (int) $packageId;
+            if ($id > 0) {
+                $normalized[$id] = true;
+            }
+        }
+        $packageIds = array_keys($normalized);
+        if (empty($packageIds) || !Database::tableExists('packages')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($packageIds as $index => $packageId) {
+            $key = 'p' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $packageId;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT *
+             FROM packages
+             WHERE id IN (' . implode(',', $placeholders) . ')',
+            $params
+        );
+        $result = [];
+        foreach ($rows as $row) {
+            $package = Package::fromArray($row);
+            $result[(int) $package->id] = $package;
+        }
+
+        return $result;
     }
 
     private function safeFileName(string $value): string
@@ -4059,6 +5384,148 @@ class InvoiceController
         }
 
         return false;
+    }
+
+    private function manualSupplierOptions(array $allowedSuppliers): array
+    {
+        $allowedSuppliers = array_values(array_filter(array_map(static fn ($cui) => preg_replace('/\D+/', '', (string) $cui), $allowedSuppliers)));
+        if (!Database::tableExists('partners')) {
+            return [];
+        }
+
+        $defaultCommissionColumn = Database::columnExists('partners', 'default_commission')
+            ? 'default_commission'
+            : '0 AS default_commission';
+        $sql = 'SELECT cui, denumire, ' . $defaultCommissionColumn . ' FROM partners';
+        $params = [];
+        $where = [];
+        if (!empty($allowedSuppliers)) {
+            $placeholders = [];
+            foreach ($allowedSuppliers as $index => $cui) {
+                $key = 's' . $index;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cui;
+            }
+            $where[] = 'cui IN (' . implode(',', $placeholders) . ')';
+        } else {
+            $hasIsSupplier = Database::columnExists('partners', 'is_supplier');
+            $hasCommissions = Database::tableExists('commissions');
+            if ($hasIsSupplier && $hasCommissions) {
+                $where[] = '(is_supplier = 1 OR cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\'))';
+            } elseif ($hasIsSupplier) {
+                $where[] = 'is_supplier = 1';
+            } elseif ($hasCommissions) {
+                $where[] = 'cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\')';
+            }
+        }
+
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY denumire ASC, cui ASC';
+
+        $rows = Database::fetchAll($sql, $params);
+        $items = [];
+        foreach ($rows as $row) {
+            $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($cui === '') {
+                continue;
+            }
+            $name = trim((string) ($row['denumire'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            $commission = (float) ($row['default_commission'] ?? 0.0);
+            $items[] = [
+                'cui' => $cui,
+                'name' => $name,
+                'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                'default_commission' => $commission,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $allowedSuppliers = array_values(array_filter(array_map(static fn ($cui) => preg_replace('/\D+/', '', (string) $cui), $allowedSuppliers)));
+        if (!empty($allowedSuppliers) && $supplierCui !== '' && !in_array($supplierCui, $allowedSuppliers, true)) {
+            return [];
+        }
+
+        if (Database::tableExists('commissions')) {
+            if ($supplierCui === '') {
+                return [];
+            }
+            $rows = Database::fetchAll(
+                'SELECT c.client_cui AS cui,
+                        c.commission AS commission,
+                        COALESCE(NULLIF(p.denumire, ""), c.client_cui) AS denumire
+                 FROM commissions c
+                 LEFT JOIN partners p ON p.cui = c.client_cui
+                 WHERE c.supplier_cui = :supplier
+                 ORDER BY denumire ASC, c.client_cui ASC',
+                ['supplier' => $supplierCui]
+            );
+            $items = [];
+            foreach ($rows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                if ($cui === '') {
+                    continue;
+                }
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($name === '') {
+                    $name = $cui;
+                }
+                $items[] = [
+                    'cui' => $cui,
+                    'name' => $name,
+                    'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                    'commission' => (float) ($row['commission'] ?? 0),
+                ];
+            }
+
+            return $items;
+        }
+
+        if (!Database::tableExists('partners')) {
+            return [];
+        }
+
+        $sql = 'SELECT cui, denumire FROM partners';
+        $params = [];
+        $where = [];
+        if ($supplierCui !== '') {
+            $where[] = 'cui <> :supplier';
+            $params['supplier'] = $supplierCui;
+        }
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
+        }
+        $sql .= ' ORDER BY denumire ASC, cui ASC';
+
+        $rows = Database::fetchAll($sql, $params);
+        $items = [];
+        foreach ($rows as $row) {
+            $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($cui === '') {
+                continue;
+            }
+            $name = trim((string) ($row['denumire'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            $items[] = [
+                'cui' => $cui,
+                'name' => $name,
+                'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                'commission' => null,
+            ];
+        }
+
+        return $items;
     }
 
     private function supplierOptionsFromInvoices(array $invoices): array

@@ -5,8 +5,8 @@ namespace App\Domain\Public\Http\Controllers;
 use App\Domain\Companies\Models\Company;
 use App\Domain\Companies\Services\CompanyLookupService;
 use App\Domain\Contracts\Services\ContractOnboardingService;
-use App\Domain\Contracts\Services\ContractTemplateVariables;
-use App\Domain\Contracts\Services\TemplateRenderer;
+use App\Domain\Contracts\Services\ContractPdfService;
+use App\Domain\Contracts\Services\ContractTemplateService;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
 use App\Domain\Public\Services\PublicLinkResolver;
@@ -21,6 +21,10 @@ class PublicPartnerController
 {
     private const MAX_UPLOAD_BYTES = 20971520;
     private const SIGNED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+    private const RESOURCE_UPLOAD_SUBDIR = 'enrollment/resources';
+    private const EDITABLE_ONBOARDING_STATUSES = ['draft', 'waiting_signature', 'rejected'];
+    private const CONTACT_DEPARTMENTS = ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
+    private const WIZARD_MAX_STEP = 4;
 
     public function index(): void
     {
@@ -45,43 +49,77 @@ class PublicPartnerController
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
 
-        if (empty($context['permissions']['can_view'])) {
-            Response::abort(403, 'Acces interzis.');
-        }
-
+        $onboardingStatus = $this->resolveOnboardingStatus($context['link'] ?? []);
         $partnerCui = $this->resolvePartnerCui($context);
         $prefill = $this->resolvePrefill($context, $partnerCui);
         $scope = $this->resolveScope($context, $partnerCui);
+        $onboardingResources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
+
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
+        }
+        if ($partnerCui === '' && $currentStep > 1) {
+            $currentStep = 1;
+        }
+        if ($partnerCui !== '' && $currentStep > 1 && !$this->hasMandatoryCompanyProfile($partnerCui)) {
+            $currentStep = 2;
+        }
+        if (in_array($onboardingStatus, ['submitted', 'approved'], true)) {
+            $currentStep = self::WIZARD_MAX_STEP;
+        }
+
+        if ($partnerCui !== '' && $currentStep >= 2) {
+            $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
+        }
+        $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
+        $draftContractTemplates = $this->buildDraftTemplatePreviewList((string) ($context['link']['type'] ?? 'client'));
+        $documentsProgress = $this->buildDocumentsProgress($contracts);
+        if (!in_array($onboardingStatus, ['submitted', 'approved'], true)) {
+            $this->syncOnboardingStatus(
+                (int) ($context['link']['id'] ?? 0),
+                $onboardingStatus,
+                $partnerCui,
+                $documentsProgress
+            );
+        }
+        $onboardingStatus = $this->refreshOnboardingStatus((int) ($context['link']['id'] ?? 0), $onboardingStatus);
+
+        $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
+        $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
+        $company = null;
+        if ($partnerCui !== '' && Database::tableExists('companies')) {
+            $company = Company::findByCui($partnerCui);
         }
 
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
         Audit::record('public_wizard.view', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'rows_count' => 1,
             'current_step' => $currentStep,
+            'onboarding_status' => $onboardingStatus,
         ]);
-
-        $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
-        $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
-        $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
 
         Response::view('public/partner_portal', [
             'context' => $context,
             'prefill' => $prefill,
             'partnerCui' => $partnerCui,
+            'company' => $company,
             'contacts' => $contacts,
             'relationContacts' => $relationContacts,
             'contracts' => $contracts,
+            'draftContractTemplates' => $draftContractTemplates,
+            'documentsProgress' => $documentsProgress,
             'scope' => $scope,
+            'onboardingResources' => $onboardingResources,
             'currentStep' => $currentStep,
+            'onboardingStatus' => $onboardingStatus,
+            'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
             'token' => $token,
+            'contactDepartments' => self::CONTACT_DEPARTMENTS,
         ], 'layouts/guest');
     }
 
@@ -96,14 +134,13 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
+        $this->ensureEditableOnboarding($context['link'] ?? []);
 
         $cui = preg_replace('/\D+/', '', (string) ($_POST['cui'] ?? ''));
         $denumire = CompanyName::normalize((string) ($_POST['denumire'] ?? ''));
@@ -112,13 +149,46 @@ class PublicPartnerController
             Response::redirect('/p/' . $token);
         }
 
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($_POST['legal_representative_name'] ?? ($_POST['representative_name'] ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($_POST['legal_representative_role'] ?? ($_POST['representative_function'] ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($_POST['bank_name'] ?? ($_POST['banca'] ?? '')));
+        $iban = $this->sanitizeIban((string) ($_POST['iban'] ?? ($_POST['bank_account'] ?? '')));
+
+        if ($legalRepresentativeName === '' || $legalRepresentativeRole === '' || $bankName === '' || $iban === '') {
+            Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-2');
+        }
+        if (!$this->isValidIban($iban)) {
+            Session::flash('error', 'IBAN invalid. Folositi un IBAN cu lungime intre 15 si 34 caractere.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($cui) . '#pas-2');
+        }
+
+        $payload = $_POST;
+        $payload['legal_representative_name'] = $legalRepresentativeName;
+        $payload['legal_representative_role'] = $legalRepresentativeRole;
+        $payload['bank_name'] = $bankName;
+        $payload['iban'] = $iban;
+        $payload['representative_name'] = $legalRepresentativeName;
+        $payload['representative_function'] = $legalRepresentativeRole;
+        $payload['banca'] = $bankName;
+        $payload['bank_account'] = $iban;
+
         Partner::upsert($cui, $denumire);
-        $this->upsertCompanyFromPayload($cui, $context, $_POST);
+        $this->upsertCompanyFromPayload($cui, $context, $payload);
+        $this->ensureLegalRepresentativeContact(
+            $cui,
+            $legalRepresentativeName,
+            $this->sanitizeContactValue((string) ($_POST['email'] ?? '')),
+            $this->sanitizeContactValue((string) ($_POST['telefon'] ?? ''))
+        );
 
         $linkType = (string) ($context['link']['type'] ?? '');
         $isSupplier = $linkType === 'supplier';
         $isClient = $linkType === 'client';
         Partner::updateFlags($cui, $isSupplier, $isClient);
+        if ($isSupplier) {
+            $this->ensureSupplierDefaultCommission($cui, $context['link']['commission_percent'] ?? null);
+        }
 
         $supplierCui = (string) ($context['link']['relation_supplier_cui'] ?? $context['link']['supplier_cui'] ?? '');
         if ($isClient && $supplierCui !== '') {
@@ -126,19 +196,23 @@ class PublicPartnerController
             $this->ensureCommission($supplierCui, $cui, $context['link']['commission_percent'] ?? null);
         }
 
-        $contractService = new ContractOnboardingService();
-        $contractService->ensureDraftContractForEnrollment(
-            $linkType,
-            $cui,
-            $supplierCui !== '' ? $supplierCui : null,
-            $isClient ? $cui : null
-        );
-
         $nextStep = isset($_POST['next_step']) ? (int) $_POST['next_step'] : 0;
-        if ($nextStep < 1 || $nextStep > 3) {
+        if ($nextStep < 1 || $nextStep > self::WIZARD_MAX_STEP) {
             $nextStep = 0;
         }
         $this->updateLinkAfterCompanySave($context, $cui, $supplierCui, $nextStep);
+
+        $scope = $this->resolveScope($context, $cui);
+        if ($nextStep >= 2) {
+            $this->ensureRequiredOnboardingContracts($context, $scope, $cui);
+        }
+        $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
+        $this->syncOnboardingStatus(
+            (int) ($context['link']['id'] ?? 0),
+            $this->resolveOnboardingStatus($context['link'] ?? []),
+            $cui,
+            $documentsProgress
+        );
 
         Audit::record('public_company.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'supplier_cui' => $isSupplier ? $cui : ($supplierCui !== '' ? $supplierCui : null),
@@ -160,14 +234,13 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
+        $this->ensureEditableOnboarding($context['link'] ?? []);
 
         $partnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
         if ($partnerCui === '') {
@@ -184,21 +257,12 @@ class PublicPartnerController
             Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
 
-        $email = trim((string) ($_POST['email'] ?? ''));
-        $phone = trim((string) ($_POST['phone'] ?? ''));
-        $role = trim((string) ($_POST['role'] ?? ''));
-        $isPrimary = !empty($_POST['is_primary']) ? 1 : 0;
-        $scope = $this->resolveScope($context, $partnerCui);
-        $contactScope = trim((string) ($_POST['contact_scope'] ?? 'partner'));
-
-        $supplierCui = null;
-        $clientCui = null;
-        $partnerValue = $partnerCui;
-
-        if ($contactScope === 'relation' && $scope['type'] === 'relation') {
-            $partnerValue = null;
-            $supplierCui = $scope['supplier_cui'];
-            $clientCui = $scope['client_cui'];
+        $email = $this->sanitizeContactValue((string) ($_POST['email'] ?? ''));
+        $phone = $this->sanitizeContactValue((string) ($_POST['phone'] ?? ''));
+        $role = $this->normalizeContactDepartment((string) ($_POST['role'] ?? ($_POST['department'] ?? '')));
+        if ($role === '') {
+            Session::flash('error', 'Selectati departamentul contactului.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
         }
 
         if (!Database::tableExists('partner_contacts')) {
@@ -212,14 +276,14 @@ class PublicPartnerController
                 'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, is_primary, created_at)
                  VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :is_primary, :created_at)',
                 [
-                    'partner' => $partnerValue !== '' ? $partnerValue : null,
-                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
-                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'partner' => $partnerCui !== '' ? $partnerCui : null,
+                    'supplier' => null,
+                    'client' => null,
                     'name' => $name,
                     'email' => $email !== '' ? $email : null,
                     'phone' => $phone !== '' ? $phone : null,
                     'role' => $role !== '' ? $role : null,
-                    'is_primary' => $isPrimary,
+                    'is_primary' => 0,
                     'created_at' => date('Y-m-d H:i:s'),
                 ]
             );
@@ -228,9 +292,9 @@ class PublicPartnerController
                 'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, created_at)
                  VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :created_at)',
                 [
-                    'partner' => $partnerValue !== '' ? $partnerValue : null,
-                    'supplier' => $supplierCui !== '' ? $supplierCui : null,
-                    'client' => $clientCui !== '' ? $clientCui : null,
+                    'partner' => $partnerCui !== '' ? $partnerCui : null,
+                    'supplier' => null,
+                    'client' => null,
                     'name' => $name,
                     'email' => $email !== '' ? $email : null,
                     'phone' => $phone !== '' ? $phone : null,
@@ -241,8 +305,7 @@ class PublicPartnerController
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        $nextStep = max($currentStep, 2);
-        $this->touchLink((int) ($context['link']['id'] ?? 0), $nextStep, true);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'rows_count' => 1,
         ]);
@@ -262,10 +325,10 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
+        $this->ensureEditableOnboarding($context['link'] ?? []);
 
         $id = isset($_POST['id']) ? (int) $_POST['id'] : 0;
         if (!$id) {
@@ -281,7 +344,7 @@ class PublicPartnerController
 
         Database::execute('DELETE FROM partner_contacts WHERE id = :id', ['id' => $id]);
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, true);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.delete', 'public_link', (int) ($context['link']['id'] ?? 0), [
             'rows_count' => 1,
         ]);
@@ -300,18 +363,34 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
 
         $step = isset($_POST['step']) ? (int) $_POST['step'] : 1;
-        if ($step < 1 || $step > 3) {
+        if ($step < 1 || $step > self::WIZARD_MAX_STEP) {
             $step = 1;
+        }
+
+        $status = $this->resolveOnboardingStatus($context['link'] ?? []);
+        $partnerCui = $this->resolvePartnerCui($context);
+        $scope = $this->resolveScope($context, $partnerCui);
+        if ($step > 1 && $partnerCui === '') {
+            Session::flash('error', 'Completeaza datele companiei pentru a continua.');
+            $step = 1;
+        }
+        if ($step > 2 && $partnerCui !== '' && !$this->hasMandatoryCompanyProfile($partnerCui)) {
+            Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
+            $step = 2;
+        }
+        if ($step === self::WIZARD_MAX_STEP && !in_array($status, ['submitted', 'approved'], true)) {
+            $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
+        }
+        if (in_array($status, ['submitted', 'approved'], true)) {
+            $step = self::WIZARD_MAX_STEP;
         }
 
         $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
@@ -330,11 +409,9 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
@@ -351,13 +428,128 @@ class PublicPartnerController
             Response::abort(403, 'Acces interzis.');
         }
 
-        $html = $this->buildContractPreview($contract);
+        $html = (new ContractPdfService())->renderHtmlForContract($contract, 'public');
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
         Audit::record('public_contract.preview', 'contract', $id, ['rows_count' => 1]);
 
         header('Content-Type: text/html; charset=utf-8');
         echo $html;
+        exit;
+    }
+
+    public function previewDraft(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $templateId = isset($_GET['template_id']) ? (int) $_GET['template_id'] : 0;
+        if ($templateId <= 0) {
+            Response::abort(404);
+        }
+
+        $template = $this->findRequiredOnboardingTemplateById(
+            $templateId,
+            (string) ($context['link']['type'] ?? 'client')
+        );
+        if ($template === null) {
+            Response::abort(404);
+        }
+
+        $draftContract = $this->buildDraftContractFromTemplate($template);
+        $html = (new ContractPdfService())->renderHtmlForContract($draftContract, 'public');
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_contract.preview_draft', 'contract_template', $templateId, ['rows_count' => 1]);
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
+    }
+
+    public function downloadDraft(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $templateId = isset($_GET['template_id']) ? (int) $_GET['template_id'] : 0;
+        if ($templateId <= 0) {
+            Response::abort(404);
+        }
+
+        $template = $this->findRequiredOnboardingTemplateById(
+            $templateId,
+            (string) ($context['link']['type'] ?? 'client')
+        );
+        if ($template === null) {
+            Response::abort(404);
+        }
+
+        $draftContract = $this->buildDraftContractFromTemplate($template);
+        $pdfService = new ContractPdfService();
+        $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+        $pdfBinary = $pdfService->generatePdfBinaryFromHtml(
+            $html,
+            'onboarding-draft-' . (int) ($template['id'] ?? 0)
+        );
+
+        $docType = $this->resolveTemplateDocTypeForDraft($template);
+        $priority = isset($template['priority']) ? (int) $template['priority'] : 100;
+        $pdfFilename = $this->buildTemplateDraftFilename($template, $priority, $docType);
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+
+        if ($pdfBinary === '') {
+            $htmlFilename = preg_replace('/\.pdf$/i', '.html', $pdfFilename);
+            if (!is_string($htmlFilename) || trim($htmlFilename) === '') {
+                $htmlFilename = 'document-draft.html';
+            }
+            Audit::record('public_contract.download_draft', 'contract_template', $templateId, [
+                'rows_count' => 1,
+                'mode' => 'html',
+            ]);
+            header('Content-Type: text/html; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $this->sanitizeDownloadFilename($htmlFilename, 'document-draft.html') . '"');
+            header('X-Content-Type-Options: nosniff');
+            echo $html;
+            exit;
+        }
+
+        Audit::record('public_contract.download_draft', 'contract_template', $templateId, [
+            'rows_count' => 1,
+            'mode' => 'pdf',
+        ]);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $this->sanitizeDownloadFilename($pdfFilename, 'document-draft.pdf') . '"');
+        header('Content-Length: ' . strlen($pdfBinary));
+        header('X-Content-Type-Options: nosniff');
+        echo $pdfBinary;
         exit;
     }
 
@@ -372,11 +564,9 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_view'])) {
             Response::abort(403, 'Acces interzis.');
         }
@@ -396,24 +586,172 @@ class PublicPartnerController
 
         $path = '';
         if ($kind === 'signed') {
-            $path = (string) ($contract['signed_file_path'] ?? '');
-        } else {
-            $path = (string) ($contract['generated_file_path'] ?? '');
+            $path = (string) ($contract['signed_upload_path'] ?? '');
             if ($path === '') {
-                $path = (string) ($this->ensureGeneratedFile($contract) ?? '');
+                $path = (string) ($contract['signed_file_path'] ?? '');
+            }
+        } else {
+            $path = (string) ($contract['generated_pdf_path'] ?? '');
+            if ($path === '') {
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($contract['id'] ?? 0), 'public');
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($contract['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($contract['generated_file_path'] ?? '')));
+                }
             }
         }
-
         if ($path === '') {
-            Response::abort(404);
+            Session::flash('error', 'Documentul generat este indisponibil momentan. Un angajat poate verifica configurarea serverului.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
         Audit::record('public_contract.download', 'contract', $id, [
             'rows_count' => 1,
+            'kind' => $kind,
         ]);
         $this->streamFile($path);
+    }
+
+    public function downloadOnboardingResource(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $resourceId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($resourceId <= 0) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        $resource = $this->findOnboardingResourceForLink($resourceId, (string) ($context['link']['type'] ?? 'client'));
+        if ($resource === null) {
+            Response::abort(404, 'Fisier inexistent.');
+        }
+
+        $currentStep = (int) ($context['link']['current_step'] ?? 1);
+        $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+        Audit::record('public_onboarding_resource.download', 'enrollment_resource', $resourceId, ['rows_count' => 1]);
+        $this->streamFile(
+            (string) ($resource['file_path'] ?? ''),
+            $this->buildResourceDownloadFilename($resource)
+        );
+    }
+
+    public function downloadDossier(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $resources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
+
+        $archiveEntries = [];
+        $pdfMergeFiles = [];
+        $firstResourceEntry = $this->resolveFirstDossierResource($resources);
+        if ($firstResourceEntry !== null) {
+            $archiveEntries[] = [
+                'absolute_path' => $firstResourceEntry['absolute_path'],
+                'filename' => $firstResourceEntry['filename'],
+            ];
+            if (!empty($firstResourceEntry['is_pdf'])) {
+                $pdfMergeFiles[] = (string) $firstResourceEntry['absolute_path'];
+            }
+        }
+
+        $draftFiles = $this->buildDraftTemplateFilesForDossier((string) ($context['link']['type'] ?? 'client'));
+        $tempDraftPaths = [];
+        foreach ($draftFiles as $draftFile) {
+            $absoluteDraftPath = (string) ($draftFile['absolute_path'] ?? '');
+            if ($absoluteDraftPath === '' || !is_file($absoluteDraftPath) || !is_readable($absoluteDraftPath)) {
+                continue;
+            }
+            $archiveEntries[] = [
+                'absolute_path' => $absoluteDraftPath,
+                'filename' => (string) ($draftFile['filename'] ?? basename($absoluteDraftPath)),
+            ];
+            $pdfMergeFiles[] = $absoluteDraftPath;
+            $tempDraftPaths[] = $absoluteDraftPath;
+        }
+        $this->registerTempCleanup($tempDraftPaths);
+
+        if (empty($archiveEntries)) {
+            Session::flash('error', 'Nu exista fisiere disponibile pentru dosar.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
+        }
+
+        $timestamp = date('Ymd-His');
+        $baseFilename = 'dosar-onboarding-' . $timestamp;
+        $canMergeWithResource = $firstResourceEntry === null || !empty($firstResourceEntry['is_pdf']);
+
+        if ($canMergeWithResource && count($pdfMergeFiles) >= 2) {
+            $mergedPdf = $this->mergePdfFiles($pdfMergeFiles);
+            if ($mergedPdf !== '') {
+                $currentStep = (int) ($context['link']['current_step'] ?? 1);
+                $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+                Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                    'rows_count' => count($pdfMergeFiles),
+                    'mode' => 'merged_pdf',
+                ]);
+                $this->streamAbsoluteFile($mergedPdf, $baseFilename . '.pdf', 'application/pdf', true);
+            }
+        }
+
+        $zipPath = $this->createZipArchive($archiveEntries);
+        if ($zipPath !== '') {
+            $currentStep = (int) ($context['link']['current_step'] ?? 1);
+            $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+            Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                'rows_count' => count($archiveEntries),
+                'mode' => 'zip',
+            ]);
+            $this->streamAbsoluteFile($zipPath, $baseFilename . '.zip', 'application/zip', true);
+        }
+
+        if ($canMergeWithResource && count($pdfMergeFiles) === 1) {
+            $singlePdf = reset($pdfMergeFiles);
+            if (is_string($singlePdf) && $singlePdf !== '' && is_file($singlePdf) && is_readable($singlePdf)) {
+                $currentStep = (int) ($context['link']['current_step'] ?? 1);
+                $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
+                Audit::record('public_dossier.download', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                    'rows_count' => 1,
+                    'mode' => 'single_pdf',
+                ]);
+                $this->streamAbsoluteFile($singlePdf, $baseFilename . '.pdf', 'application/pdf', false);
+            }
+        }
+
+        Session::flash('error', 'Dosarul nu poate fi generat momentan. Verifica extensia ZipArchive si utilitarul de merge PDF.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-1');
     }
 
     public function uploadSigned(): void
@@ -427,49 +765,193 @@ class PublicPartnerController
         if (!$context) {
             Response::abort(404);
         }
-
         if (!$this->throttle($context['hash'])) {
             Response::abort(429, 'Prea multe cereri. Incearca din nou.');
         }
-
         if (empty($context['permissions']['can_upload_signed'])) {
             Response::abort(403, 'Acces interzis.');
         }
-
-        $contractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
-        if (!$contractId) {
-            Response::abort(404);
-        }
+        $this->ensureEditableOnboarding($context['link'] ?? []);
 
         $partnerCui = $this->resolvePartnerCui($context);
         $scope = $this->resolveScope($context, $partnerCui);
-        $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $contractId]);
-        if (!$contract || !$this->contractAllowed($contract, $scope)) {
-            Response::abort(403, 'Acces interzis.');
+        $allowedContracts = $this->allowedContractsById($scope);
+        if (empty($allowedContracts)) {
+            Session::flash('error', 'Nu exista documente disponibile pentru incarcare.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
         }
 
-        $path = $this->storeUpload($_FILES['file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
-        if ($path === null) {
-            Response::abort(400, 'Fisier invalid.');
+        $savedContractIds = [];
+        $failedFiles = 0;
+        $uploadMode = 'single';
+
+        $uploadModeInput = trim((string) ($_POST['upload_mode'] ?? ''));
+        $allInOne = !empty($_POST['all_in_one_signed']) || $uploadModeInput === 'all_in_one';
+        if ($allInOne) {
+            $uploadMode = 'all_in_one';
+            $path = $this->storeUpload($_FILES['all_signed_file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
+            if ($path === null) {
+                Session::flash('error', 'Fisier invalid. Acceptat: PDF/JPG/JPEG/PNG, maxim 20MB.');
+                Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
+            }
+
+            $targetContractIds = $this->requiredUploadTargetContractIds($allowedContracts);
+            foreach ($targetContractIds as $targetContractId) {
+                $this->markContractSignedUpload($targetContractId, $path);
+                $savedContractIds[$targetContractId] = $targetContractId;
+            }
+        } else {
+            $postedContractIds = $this->normalizePostedContractIds($_POST['signed_contract_ids'] ?? []);
+            $uploadedFiles = $this->extractUploadedFiles($_FILES['signed_files'] ?? null);
+            if (!empty($uploadedFiles)) {
+                $uploadMode = 'batch';
+                foreach ($uploadedFiles as $index => $uploadedFile) {
+                    $errorCode = (int) ($uploadedFile['error'] ?? UPLOAD_ERR_NO_FILE);
+                    if ($errorCode === UPLOAD_ERR_NO_FILE) {
+                        continue;
+                    }
+
+                    $targetContractId = isset($postedContractIds[$index]) ? (int) $postedContractIds[$index] : 0;
+                    if ($targetContractId <= 0 || !isset($allowedContracts[$targetContractId])) {
+                        $failedFiles++;
+                        continue;
+                    }
+
+                    $path = $this->storeUpload($uploadedFile, 'contracts/signed', self::SIGNED_EXTENSIONS);
+                    if ($path === null) {
+                        $failedFiles++;
+                        continue;
+                    }
+
+                    $this->markContractSignedUpload($targetContractId, $path);
+                    $savedContractIds[$targetContractId] = $targetContractId;
+                }
+            }
         }
 
-        Database::execute(
-            'UPDATE contracts SET signed_file_path = :path, status = :status, updated_at = :now WHERE id = :id',
-            [
-                'path' => $path,
-                'status' => 'signed_uploaded',
-                'now' => date('Y-m-d H:i:s'),
-                'id' => $contractId,
-            ]
-        );
+        if (empty($savedContractIds)) {
+            $legacyContractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
+            if ($legacyContractId > 0 && isset($allowedContracts[$legacyContractId])) {
+                $path = $this->storeUpload($_FILES['file'] ?? null, 'contracts/signed', self::SIGNED_EXTENSIONS);
+                if ($path !== null) {
+                    $this->markContractSignedUpload($legacyContractId, $path);
+                    $savedContractIds[$legacyContractId] = $legacyContractId;
+                }
+            }
+        }
+
+        if (empty($savedContractIds)) {
+            Session::flash('error', 'Nu am putut procesa fisierele. Verificati selectia documentelor si fisierele incarcate.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
+        }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
-        Audit::record('public_contract.upload_signed', 'contract', $contractId, [
-            'rows_count' => 1,
+        $firstContractId = (int) reset($savedContractIds);
+        Audit::record('public_contract.upload_signed', 'contract', $firstContractId > 0 ? $firstContractId : null, [
+            'rows_count' => count($savedContractIds),
+            'mode' => $uploadMode,
+            'failed_files' => $failedFiles,
         ]);
-        Session::flash('status', 'Contract semnat incarcat.');
-        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+
+        $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
+        $this->syncOnboardingStatus(
+            (int) ($context['link']['id'] ?? 0),
+            $this->resolveOnboardingStatus($context['link'] ?? []),
+            $partnerCui,
+            $documentsProgress
+        );
+
+        if ($uploadMode === 'all_in_one') {
+            Session::flash('status', 'Fisierul semnat a fost atasat pentru toate documentele obligatorii.');
+        } else {
+            $message = count($savedContractIds) === 1
+                ? 'Document semnat incarcat.'
+                : ('Au fost incarcate ' . count($savedContractIds) . ' documente semnate.');
+            if ($failedFiles > 0) {
+                $message .= ' ' . $failedFiles . ' fisiere nu au fost procesate.';
+            }
+            Session::flash('status', $message);
+        }
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
+    }
+
+    public function submitForActivation(): void
+    {
+        $token = trim((string) ($_GET['token'] ?? ''));
+        if ($token === '') {
+            Response::abort(404);
+        }
+
+        $context = $this->resolveContext($token);
+        if (!$context) {
+            Response::abort(404);
+        }
+        if (!$this->throttle($context['hash'])) {
+            Response::abort(429, 'Prea multe cereri. Incearca din nou.');
+        }
+        if (empty($context['permissions']['can_view'])) {
+            Response::abort(403, 'Acces interzis.');
+        }
+        $this->ensureEditableOnboarding($context['link'] ?? []);
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        if ($partnerCui === '') {
+            Session::flash('error', 'Salvati datele companiei inainte de trimitere.');
+            Response::redirect('/p/' . $token);
+        }
+        if (Database::tableExists('companies') && !Company::findByCui($partnerCui)) {
+            Session::flash('error', 'Datele companiei nu sunt complete. Salvati Pasul 2 inainte de trimitere.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui));
+        }
+        if (!$this->hasMandatoryCompanyProfile($partnerCui)) {
+            Session::flash('error', 'Completati reprezentantul legal, functia, banca si IBAN-ul in Pasul 2.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+        }
+
+        $scope = $this->resolveScope($context, $partnerCui);
+        $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
+        $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
+        if (!$documentsProgress['all_signed']) {
+            Session::flash('error', 'Pentru a continua, incarcati documentele semnate obligatorii.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
+        }
+
+        if (empty($_POST['checkbox_confirmed'])) {
+            Session::flash('error', 'Bifati confirmarea datelor pentru a trimite inrolarea spre activare.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
+        }
+
+        $linkId = (int) ($context['link']['id'] ?? 0);
+        if ($linkId <= 0 || !Database::tableExists('enrollment_links')) {
+            Response::abort(404);
+        }
+
+        $now = date('Y-m-d H:i:s');
+        Database::execute(
+            'UPDATE enrollment_links
+             SET onboarding_status = :onboarding_status,
+                 submitted_at = :submitted_at,
+                 checkbox_confirmed = :checkbox_confirmed,
+                 current_step = :current_step,
+                 updated_at = :updated_at
+             WHERE id = :id',
+            [
+                'onboarding_status' => 'submitted',
+                'submitted_at' => $now,
+                'checkbox_confirmed' => 1,
+                'current_step' => self::WIZARD_MAX_STEP,
+                'updated_at' => $now,
+                'id' => $linkId,
+            ]
+        );
+        Audit::record('onboarding.submitted', 'enrollment_link', $linkId, [
+            'rows_count' => 1,
+            'partner_cui' => $partnerCui,
+        ]);
+
+        Session::flash('status', 'Trimis. Un angajat va activa inrolarea.');
+        Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-4');
     }
 
     private function resolveContext(string $token): ?array
@@ -555,11 +1037,35 @@ class PublicPartnerController
             $data['judet'] = $company->judet;
             $data['telefon'] = $company->telefon;
             $data['email'] = $company->email;
+            $data['legal_representative_name'] = (string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? ''));
+            $data['legal_representative_role'] = (string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? ''));
+            $data['bank_name'] = (string) ($company->bank_name ?? $company->banca ?? '');
+            $data['iban'] = (string) ($company->iban ?? $company->bank_account ?? '');
         }
-        if (!$company && $partner) {
-            $data['cui'] = $partner->cui;
-            $data['denumire'] = $partner->denumire;
+        if ($partner) {
+            if (empty($data['cui'])) {
+                $data['cui'] = $partner->cui;
+            }
+            if (empty($data['denumire'])) {
+                $data['denumire'] = $partner->denumire;
+            }
+            if (empty($data['legal_representative_name'])) {
+                $data['legal_representative_name'] = (string) ($partner->representative_name ?? '');
+            }
+            if (empty($data['legal_representative_role'])) {
+                $data['legal_representative_role'] = (string) ($partner->representative_function ?? '');
+            }
+            if (empty($data['bank_name'])) {
+                $data['bank_name'] = (string) ($partner->bank_name ?? '');
+            }
+            if (empty($data['iban'])) {
+                $data['iban'] = (string) ($partner->bank_account ?? '');
+            }
         }
+
+        $data['representative_name'] = (string) ($data['legal_representative_name'] ?? '');
+        $data['representative_function'] = (string) ($data['legal_representative_role'] ?? '');
+        $data['bank_account'] = (string) ($data['iban'] ?? '');
 
         return $data;
     }
@@ -644,25 +1150,109 @@ class PublicPartnerController
         if (!Database::tableExists('contracts')) {
             return [];
         }
+        $orderParts = [];
+        if (Database::columnExists('contracts', 'required_onboarding')) {
+            $orderParts[] = 'required_onboarding DESC';
+        }
+        if (Database::columnExists('contracts', 'contract_date')) {
+            $orderParts[] = 'contract_date DESC';
+        }
+        $orderParts[] = 'created_at DESC';
+        $orderParts[] = 'id DESC';
+        $orderBy = implode(', ', $orderParts);
 
         if ($scope['type'] === 'relation') {
             return Database::fetchAll(
-                'SELECT * FROM contracts WHERE supplier_cui = :supplier AND client_cui = :client ORDER BY created_at DESC, id DESC',
+                'SELECT * FROM contracts WHERE supplier_cui = :supplier AND client_cui = :client ORDER BY ' . $orderBy,
                 ['supplier' => $scope['supplier_cui'], 'client' => $scope['client_cui']]
             );
         }
 
         if ($scope['type'] === 'supplier') {
             return Database::fetchAll(
-                'SELECT * FROM contracts WHERE partner_cui = :partner OR supplier_cui = :supplier ORDER BY created_at DESC, id DESC',
+                'SELECT * FROM contracts WHERE partner_cui = :partner OR supplier_cui = :supplier ORDER BY ' . $orderBy,
                 ['partner' => $scope['supplier_cui'], 'supplier' => $scope['supplier_cui']]
             );
         }
 
         return Database::fetchAll(
-            'SELECT * FROM contracts WHERE partner_cui = :partner OR client_cui = :client ORDER BY created_at DESC, id DESC',
+            'SELECT * FROM contracts WHERE partner_cui = :partner OR client_cui = :client ORDER BY ' . $orderBy,
             ['partner' => $scope['client_cui'], 'client' => $scope['client_cui']]
         );
+    }
+
+    private function fetchOnboardingResourcesForType(string $linkType): array
+    {
+        if (!Database::tableExists('enrollment_resources')) {
+            return [];
+        }
+
+        $normalized = trim($linkType);
+        if (!in_array($normalized, ['supplier', 'client'], true)) {
+            $normalized = 'client';
+        }
+
+        $where = [];
+        $params = [];
+        if (Database::columnExists('enrollment_resources', 'is_active')) {
+            $where[] = 'is_active = :is_active';
+            $params['is_active'] = 1;
+        }
+        if (Database::columnExists('enrollment_resources', 'applies_to')) {
+            $where[] = '(applies_to = :applies_to OR applies_to = :applies_to_both)';
+            $params['applies_to'] = $normalized;
+            $params['applies_to_both'] = 'both';
+        }
+
+        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+        $orderParts = [];
+        if (Database::columnExists('enrollment_resources', 'sort_order')) {
+            $orderParts[] = 'sort_order ASC';
+        }
+        if (Database::columnExists('enrollment_resources', 'created_at')) {
+            $orderParts[] = 'created_at DESC';
+        }
+        $orderParts[] = 'id DESC';
+
+        return Database::fetchAll(
+            'SELECT * FROM enrollment_resources ' . $whereSql . ' ORDER BY ' . implode(', ', $orderParts),
+            $params
+        );
+    }
+
+    private function findOnboardingResourceForLink(int $resourceId, string $linkType): ?array
+    {
+        if ($resourceId <= 0 || !Database::tableExists('enrollment_resources')) {
+            return null;
+        }
+
+        $row = Database::fetchOne(
+            'SELECT * FROM enrollment_resources WHERE id = :id LIMIT 1',
+            ['id' => $resourceId]
+        );
+        if (!$row) {
+            return null;
+        }
+
+        if (Database::columnExists('enrollment_resources', 'is_active') && empty($row['is_active'])) {
+            return null;
+        }
+
+        $resourceType = trim((string) ($row['applies_to'] ?? 'both'));
+        $normalizedType = trim($linkType);
+        if (!in_array($normalizedType, ['supplier', 'client'], true)) {
+            $normalizedType = 'client';
+        }
+        if ($resourceType !== 'both' && $resourceType !== $normalizedType) {
+            return null;
+        }
+
+        $resourcePath = ltrim(trim((string) ($row['file_path'] ?? '')), '/');
+        if ($resourcePath === '' || !str_starts_with($resourcePath, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+            return null;
+        }
+
+        return $row;
     }
 
     private function contractAllowed(array $row, array $scope): bool
@@ -680,77 +1270,31 @@ class PublicPartnerController
             || (string) ($row['partner_cui'] ?? '') === $scope['client_cui'];
     }
 
-    private function buildContractPreview(array $contract): string
+    private function ensureRequiredOnboardingContracts(array $context, array $scope, string $partnerCui): void
     {
-        $title = (string) ($contract['title'] ?? 'Contract');
-        $templateId = isset($contract['template_id']) ? (int) $contract['template_id'] : 0;
-        $html = '';
-
-        if ($templateId > 0) {
-            $template = Database::fetchOne(
-                'SELECT html_content FROM contract_templates WHERE id = :id LIMIT 1',
-                ['id' => $templateId]
-            );
-            $html = $template['html_content'] ?? '';
+        if ($partnerCui === '') {
+            return;
         }
 
-        if ($html === '') {
-            $html = '<html><body><h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1></body></html>';
+        $linkType = (string) ($context['link']['type'] ?? 'client');
+        $supplierCui = null;
+        $clientCui = null;
+        if ($scope['type'] === 'relation') {
+            $supplierCui = (string) ($scope['supplier_cui'] ?? '');
+            $clientCui = (string) ($scope['client_cui'] ?? '');
+        } elseif ($scope['type'] === 'supplier') {
+            $supplierCui = (string) ($scope['supplier_cui'] ?? '');
+        } elseif ($scope['type'] === 'client') {
+            $clientCui = (string) ($scope['client_cui'] ?? '');
         }
 
-        $createdAt = $contract['created_at'] ?? null;
-        $createdDate = $createdAt ? date('Y-m-d', strtotime((string) $createdAt)) : date('Y-m-d');
-        $variablesService = new ContractTemplateVariables();
-        $renderer = new TemplateRenderer();
-        $vars = $variablesService->buildVariables(
-            $contract['partner_cui'] ?? null,
-            $contract['supplier_cui'] ?? null,
-            $contract['client_cui'] ?? null,
-            ['title' => $title, 'created_at' => $createdDate]
+        $service = new ContractOnboardingService();
+        $service->ensureDraftContractForEnrollment(
+            $linkType,
+            $partnerCui,
+            $supplierCui !== '' ? $supplierCui : null,
+            $clientCui !== '' ? $clientCui : null
         );
-
-        return $renderer->render($html, $vars);
-    }
-
-    private function ensureGeneratedFile(array $contract): ?string
-    {
-        $status = (string) ($contract['status'] ?? '');
-        if (!in_array($status, ['generated', 'sent', 'signed_uploaded', 'approved'], true)) {
-            return null;
-        }
-
-        $html = $this->buildContractPreview($contract);
-        $path = $this->storeGeneratedFile($html);
-        if ($path === null) {
-            return null;
-        }
-
-        Database::execute(
-            'UPDATE contracts SET generated_file_path = :path, updated_at = :now WHERE id = :id',
-            [
-                'path' => $path,
-                'now' => date('Y-m-d H:i:s'),
-                'id' => (int) ($contract['id'] ?? 0),
-            ]
-        );
-
-        return $path;
-    }
-
-    private function storeGeneratedFile(string $html): ?string
-    {
-        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $dir = $base . '/storage/uploads/contracts/generated';
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-        $name = bin2hex(random_bytes(16)) . '.html';
-        $path = $dir . '/' . $name;
-        if (file_put_contents($path, $html) === false) {
-            return null;
-        }
-
-        return 'storage/uploads/contracts/generated/' . $name;
     }
 
     private function upsertCompanyFromPayload(string $cui, array $context, array $payload): void
@@ -760,7 +1304,9 @@ class PublicPartnerController
         }
 
         $existing = Company::findByCui($cui);
-        $companyType = $existing ? $existing->tip_companie : (($context['enroll_type'] ?? '') === 'supplier' ? 'furnizor' : 'client');
+        $partner = Partner::findByCui($cui);
+        $linkType = (string) ($context['link']['type'] ?? 'client');
+        $companyType = $existing ? $existing->tip_companie : ($linkType === 'supplier' ? 'furnizor' : 'client');
 
         $data = [
             'denumire' => $existing ? $existing->denumire : '',
@@ -774,8 +1320,10 @@ class PublicPartnerController
             'tara' => $existing ? $existing->tara : 'Romania',
             'email' => $existing ? $existing->email : '',
             'telefon' => $existing ? $existing->telefon : '',
-            'banca' => $existing ? $existing->banca : null,
-            'iban' => $existing ? $existing->iban : null,
+            'legal_representative_name' => $existing ? ($existing->legal_representative_name !== '' ? $existing->legal_representative_name : ($existing->representative_name ?? '')) : ($partner?->representative_name ?? ''),
+            'legal_representative_role' => $existing ? ($existing->legal_representative_role !== '' ? $existing->legal_representative_role : ($existing->representative_function ?? '')) : ($partner?->representative_function ?? ''),
+            'bank_name' => $existing ? ($existing->bank_name ?? $existing->banca ?? '') : ($partner?->bank_name ?? ''),
+            'iban' => $existing ? (string) ($existing->iban ?? $existing->bank_account ?? '') : (string) ($partner?->bank_account ?? ''),
             'tip_companie' => $companyType,
             'activ' => $existing ? (int) $existing->activ : 1,
         ];
@@ -790,11 +1338,33 @@ class PublicPartnerController
             'telefon' => 'telefon',
         ];
         foreach ($map as $input => $field) {
-            $value = trim((string) ($payload[$input] ?? ''));
+            $value = $this->sanitizeCompanyValue((string) ($payload[$input] ?? ''));
             if ($value !== '') {
                 $data[$field] = $value;
             }
         }
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($payload['legal_representative_name'] ?? ($payload['representative_name'] ?? '')));
+        if ($legalRepresentativeName !== '') {
+            $data['legal_representative_name'] = $legalRepresentativeName;
+        }
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($payload['legal_representative_role'] ?? ($payload['representative_function'] ?? '')));
+        if ($legalRepresentativeRole !== '') {
+            $data['legal_representative_role'] = $legalRepresentativeRole;
+        }
+        $bankName = $this->sanitizeCompanyValue((string) ($payload['bank_name'] ?? ($payload['banca'] ?? '')));
+        if ($bankName !== '') {
+            $data['bank_name'] = $bankName;
+        }
+        $iban = $this->sanitizeIban((string) ($payload['iban'] ?? ($payload['bank_account'] ?? '')));
+        if ($iban !== '') {
+            $data['iban'] = $iban;
+        }
+
+        $data['representative_name'] = (string) ($data['legal_representative_name'] ?? '');
+        $data['representative_function'] = (string) ($data['legal_representative_role'] ?? '');
+        $data['banca'] = (string) ($data['bank_name'] ?? '');
+        $data['bank_account'] = (string) ($data['iban'] ?? '');
 
         Company::save($data);
     }
@@ -840,6 +1410,45 @@ class PublicPartnerController
         );
     }
 
+    private function ensureSupplierDefaultCommission(string $supplierCui, mixed $commission): void
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $value = $this->normalizeCommissionPercent($commission);
+        if ($value === null) {
+            return;
+        }
+
+        Partner::updateDefaultCommission($supplierCui, $value);
+    }
+
+    private function normalizeCommissionPercent(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = str_replace(',', '.', $raw);
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        $commission = (float) $normalized;
+        if ($commission < 0) {
+            return null;
+        }
+
+        return $commission;
+    }
+
     private function updateLinkAfterCompanySave(array $context, string $partnerCui, string $supplierCui, int $nextStep): void
     {
         if (!Database::tableExists('enrollment_links')) {
@@ -852,7 +1461,7 @@ class PublicPartnerController
         }
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
         $stepValue = $nextStep > 0 ? $nextStep : $currentStep;
@@ -872,6 +1481,11 @@ class PublicPartnerController
                  relation_supplier_cui = :relation_supplier_cui,
                  relation_client_cui = :relation_client_cui,
                  current_step = :current_step,
+                 onboarding_status = :onboarding_status,
+                 checkbox_confirmed = :checkbox_confirmed,
+                 submitted_at = :submitted_at,
+                 approved_at = :approved_at,
+                 approved_by_user_id = :approved_by_user_id,
                  uses = uses + 1,
                  last_used_at = :last_used_at,
                  updated_at = :updated_at
@@ -881,6 +1495,11 @@ class PublicPartnerController
                 'relation_supplier_cui' => $relationSupplier !== '' ? $relationSupplier : null,
                 'relation_client_cui' => $relationClient !== '' ? $relationClient : null,
                 'current_step' => $stepValue,
+                'onboarding_status' => 'draft',
+                'checkbox_confirmed' => 0,
+                'submitted_at' => null,
+                'approved_at' => null,
+                'approved_by_user_id' => null,
                 'last_used_at' => $now,
                 'updated_at' => $now,
                 'id' => $linkId,
@@ -894,7 +1513,7 @@ class PublicPartnerController
             return;
         }
 
-        if ($currentStep < 1 || $currentStep > 3) {
+        if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
         $now = date('Y-m-d H:i:s');
@@ -916,6 +1535,268 @@ class PublicPartnerController
         ]);
     }
 
+    private function buildDocumentsProgress(array $contracts): array
+    {
+        $requiredContracts = [];
+        foreach ($contracts as $contract) {
+            if (!empty($contract['required_onboarding'])) {
+                $requiredContracts[] = $contract;
+            }
+        }
+
+        $requiredSigned = 0;
+        $missing = [];
+        foreach ($requiredContracts as $contract) {
+            $signedPath = trim((string) ($contract['signed_upload_path'] ?? $contract['signed_file_path'] ?? ''));
+            if ($signedPath !== '') {
+                $requiredSigned++;
+            } else {
+                $missing[] = [
+                    'id' => (int) ($contract['id'] ?? 0),
+                    'title' => (string) ($contract['title'] ?? 'Document'),
+                    'doc_type' => (string) ($contract['doc_type'] ?? 'contract'),
+                ];
+            }
+        }
+
+        $requiredTotal = count($requiredContracts);
+        $allSigned = $requiredTotal === 0 || $requiredSigned >= $requiredTotal;
+
+        return [
+            'required_total' => $requiredTotal,
+            'required_signed' => $requiredSigned,
+            'all_signed' => $allSigned,
+            'missing' => $missing,
+        ];
+    }
+
+    private function resolveOnboardingStatus(array $link): string
+    {
+        $status = trim((string) ($link['onboarding_status'] ?? 'draft'));
+        if (!in_array($status, ['draft', 'waiting_signature', 'submitted', 'approved', 'rejected'], true)) {
+            return 'draft';
+        }
+
+        return $status;
+    }
+
+    private function refreshOnboardingStatus(int $linkId, string $fallback): string
+    {
+        if ($linkId <= 0 || !Database::tableExists('enrollment_links') || !Database::columnExists('enrollment_links', 'onboarding_status')) {
+            return $fallback;
+        }
+        $row = Database::fetchOne('SELECT onboarding_status FROM enrollment_links WHERE id = :id LIMIT 1', ['id' => $linkId]);
+        if (!$row) {
+            return $fallback;
+        }
+
+        return $this->resolveOnboardingStatus($row);
+    }
+
+    private function syncOnboardingStatus(int $linkId, string $currentStatus, string $partnerCui, array $documentsProgress): void
+    {
+        if ($linkId <= 0 || !Database::tableExists('enrollment_links') || !Database::columnExists('enrollment_links', 'onboarding_status')) {
+            return;
+        }
+        if (in_array($currentStatus, ['submitted', 'approved'], true)) {
+            return;
+        }
+
+        $target = 'draft';
+        if ($partnerCui !== '' && (int) ($documentsProgress['required_total'] ?? 0) > 0) {
+            $target = 'waiting_signature';
+        }
+        if ($target === $currentStatus) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE enrollment_links SET onboarding_status = :onboarding_status, updated_at = :updated_at WHERE id = :id',
+            [
+                'onboarding_status' => $target,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'id' => $linkId,
+            ]
+        );
+    }
+
+    private function ensureEditableOnboarding(array $link): void
+    {
+        $status = $this->resolveOnboardingStatus($link);
+        if (!in_array($status, self::EDITABLE_ONBOARDING_STATUSES, true)) {
+            Response::abort(403, 'Inrolarea a fost trimisa spre activare sau este deja aprobata.');
+        }
+    }
+
+    private function hasMandatoryCompanyProfile(string $cui): bool
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '' || !Database::tableExists('companies')) {
+            return false;
+        }
+
+        $company = Company::findByCui($cui);
+        if (!$company) {
+            return false;
+        }
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($company->bank_name ?? $company->banca ?? ''));
+        $iban = $this->sanitizeIban((string) ($company->iban ?? $company->bank_account ?? ''));
+
+        return $legalRepresentativeName !== ''
+            && $legalRepresentativeRole !== ''
+            && $bankName !== ''
+            && $this->isValidIban($iban);
+    }
+
+    private function sanitizeCompanyValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function sanitizeContactValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function normalizeContactDepartment(string $value): string
+    {
+        $value = strtolower($this->sanitizeContactValue($value));
+        if ($value === '') {
+            return '';
+        }
+
+        foreach (self::CONTACT_DEPARTMENTS as $department) {
+            if ($value === strtolower($department)) {
+                return $department;
+            }
+        }
+
+        return '';
+    }
+
+    private function ensureLegalRepresentativeContact(string $partnerCui, string $name, string $email, string $phone): void
+    {
+        if (!Database::tableExists('partner_contacts')) {
+            return;
+        }
+
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        $name = $this->sanitizeCompanyValue($name);
+        $email = $this->sanitizeContactValue($email);
+        $phone = $this->sanitizeContactValue($phone);
+        if ($partnerCui === '' || $name === '') {
+            return;
+        }
+
+        $existing = Database::fetchOne(
+            'SELECT id, email, phone
+             FROM partner_contacts
+             WHERE partner_cui = :partner_cui
+               AND LOWER(TRIM(role)) = LOWER(TRIM(:role))
+             ORDER BY id DESC
+             LIMIT 1',
+            [
+                'partner_cui' => $partnerCui,
+                'role' => self::CONTACT_DEPARTMENTS[0],
+            ]
+        );
+        if (!$existing) {
+            $existing = Database::fetchOne(
+                'SELECT id, email, phone
+                 FROM partner_contacts
+                 WHERE partner_cui = :partner_cui
+                   AND LOWER(TRIM(name)) = LOWER(TRIM(:name))
+                 ORDER BY id DESC
+                 LIMIT 1',
+                [
+                    'partner_cui' => $partnerCui,
+                    'name' => $name,
+                ]
+            );
+        }
+
+        if ($existing) {
+            $resolvedEmail = $email !== '' ? $email : (string) ($existing['email'] ?? '');
+            $resolvedPhone = $phone !== '' ? $phone : (string) ($existing['phone'] ?? '');
+            Database::execute(
+                'UPDATE partner_contacts
+                 SET role = :role,
+                     email = :email,
+                     phone = :phone
+                 WHERE id = :id',
+                [
+                    'role' => self::CONTACT_DEPARTMENTS[0],
+                    'email' => $resolvedEmail !== '' ? $resolvedEmail : null,
+                    'phone' => $resolvedPhone !== '' ? $resolvedPhone : null,
+                    'id' => (int) ($existing['id'] ?? 0),
+                ]
+            );
+
+            return;
+        }
+
+        $hasPrimary = Database::columnExists('partner_contacts', 'is_primary');
+        if ($hasPrimary) {
+            Database::execute(
+                'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, is_primary, created_at)
+                 VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :is_primary, :created_at)',
+                [
+                    'partner' => $partnerCui,
+                    'supplier' => null,
+                    'client' => null,
+                    'name' => $name,
+                    'email' => $email !== '' ? $email : null,
+                    'phone' => $phone !== '' ? $phone : null,
+                    'role' => self::CONTACT_DEPARTMENTS[0],
+                    'is_primary' => 0,
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]
+            );
+
+            return;
+        }
+
+        Database::execute(
+            'INSERT INTO partner_contacts (partner_cui, supplier_cui, client_cui, name, email, phone, role, created_at)
+             VALUES (:partner, :supplier, :client, :name, :email, :phone, :role, :created_at)',
+            [
+                'partner' => $partnerCui,
+                'supplier' => null,
+                'client' => null,
+                'name' => $name,
+                'email' => $email !== '' ? $email : null,
+                'phone' => $phone !== '' ? $phone : null,
+                'role' => self::CONTACT_DEPARTMENTS[0],
+                'created_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+    }
+
+    private function sanitizeIban(string $value): string
+    {
+        $value = strtoupper($value);
+        $value = preg_replace('/\s+/', '', $value);
+        $value = preg_replace('/[^A-Z0-9]/', '', (string) $value);
+
+        return (string) $value;
+    }
+
+    private function isValidIban(string $iban): bool
+    {
+        $length = strlen($iban);
+
+        return $length >= 15 && $length <= 34;
+    }
+
     private function mergePrefill(array $prefill, array $incoming): array
     {
         $map = [
@@ -927,15 +1808,112 @@ class PublicPartnerController
             'judet' => 'judet',
             'telefon' => 'telefon',
             'email' => 'email',
+            'legal_representative_name' => 'legal_representative_name',
+            'legal_representative_role' => 'legal_representative_role',
+            'bank_name' => 'bank_name',
+            'iban' => 'iban',
+            'representative_name' => 'legal_representative_name',
+            'representative_function' => 'legal_representative_role',
+            'banca' => 'bank_name',
+            'bank_account' => 'iban',
         ];
         foreach ($map as $key => $target) {
-            $value = trim((string) ($incoming[$key] ?? ''));
+            $value = $target === 'iban'
+                ? $this->sanitizeIban((string) ($incoming[$key] ?? ''))
+                : $this->sanitizeCompanyValue((string) ($incoming[$key] ?? ''));
             if ($value !== '') {
                 $prefill[$target] = $value;
             }
         }
 
         return $prefill;
+    }
+
+    private function allowedContractsById(array $scope): array
+    {
+        $rows = $this->fetchContracts($scope);
+        $map = [];
+        foreach ($rows as $row) {
+            $id = isset($row['id']) ? (int) $row['id'] : 0;
+            if ($id <= 0) {
+                continue;
+            }
+            $map[$id] = $row;
+        }
+
+        return $map;
+    }
+
+    private function requiredUploadTargetContractIds(array $allowedContracts): array
+    {
+        $required = [];
+        foreach ($allowedContracts as $id => $contract) {
+            if (!empty($contract['required_onboarding'])) {
+                $required[] = (int) $id;
+            }
+        }
+        if (!empty($required)) {
+            return $required;
+        }
+
+        return array_map(static fn ($id): int => (int) $id, array_keys($allowedContracts));
+    }
+
+    private function markContractSignedUpload(int $contractId, string $path): void
+    {
+        if ($contractId <= 0 || $path === '') {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE contracts
+             SET signed_upload_path = :path,
+                 signed_file_path = :path,
+                 status = :status,
+                 updated_at = :now
+             WHERE id = :id',
+            [
+                'path' => $path,
+                'status' => 'signed_uploaded',
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $contractId,
+            ]
+        );
+        Audit::record('contract.signed_uploaded', 'contract', $contractId, ['rows_count' => 1]);
+    }
+
+    private function normalizePostedContractIds(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $item) {
+            $result[] = (int) $item;
+        }
+
+        return $result;
+    }
+
+    private function extractUploadedFiles(?array $files): array
+    {
+        if (!$files || !isset($files['name']) || !is_array($files['name'])) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($files['name'] as $index => $name) {
+            $result[] = [
+                'name' => (string) ($files['name'][$index] ?? ''),
+                'type' => (string) ($files['type'][$index] ?? ''),
+                'tmp_name' => (string) ($files['tmp_name'][$index] ?? ''),
+                'error' => (int) ($files['error'][$index] ?? UPLOAD_ERR_NO_FILE),
+                'size' => (int) ($files['size'][$index] ?? 0),
+            ];
+        }
+
+        return $result;
     }
 
     private function storeUpload(?array $file, string $subdir, array $allowedExtensions): ?string
@@ -973,25 +1951,499 @@ class PublicPartnerController
         return 'storage/uploads/' . trim($subdir, '/') . '/' . $name;
     }
 
-    private function streamFile(string $relativePath): void
+    private function resolveFirstDossierResource(array $resources): ?array
     {
+        foreach ($resources as $resource) {
+            $relativePath = trim((string) ($resource['file_path'] ?? ''));
+            $relativePathClean = ltrim($relativePath, '/');
+            if ($relativePathClean === '' || !str_starts_with($relativePathClean, 'storage/uploads/' . self::RESOURCE_UPLOAD_SUBDIR . '/')) {
+                continue;
+            }
+
+            $absolutePath = $this->resolveUploadAbsolutePath($relativePath);
+            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+                continue;
+            }
+
+            $ext = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
+            return [
+                'absolute_path' => $absolutePath,
+                'filename' => $this->buildResourceDownloadFilename($resource),
+                'is_pdf' => $ext === 'pdf',
+            ];
+        }
+
+        return null;
+    }
+
+    private function buildDraftTemplatePreviewList(string $linkType): array
+    {
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        if (empty($templates)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($templates as $template) {
+            $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($templateId <= 0) {
+                continue;
+            }
+
+            $title = trim((string) ($template['name'] ?? 'Document draft'));
+            if ($title === '') {
+                $title = 'Document draft';
+            }
+
+            $result[] = [
+                'template_id' => $templateId,
+                'priority' => isset($template['priority']) ? (int) $template['priority'] : 100,
+                'title' => $title,
+            ];
+        }
+
+        return $result;
+    }
+
+    private function findRequiredOnboardingTemplateById(int $templateId, string $linkType): ?array
+    {
+        if ($templateId <= 0) {
+            return null;
+        }
+
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        foreach ($templates as $template) {
+            $currentId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($currentId === $templateId) {
+                return $template;
+            }
+        }
+
+        return null;
+    }
+
+    private function buildDraftContractFromTemplate(array $template): array
+    {
+        $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+        $docType = $this->resolveTemplateDocTypeForDraft($template);
+        $title = trim((string) ($template['name'] ?? 'Document draft'));
+        if ($title === '') {
+            $title = 'Document draft';
+        }
+
+        return [
+            'id' => 0,
+            'template_id' => $templateId,
+            'partner_cui' => null,
+            'supplier_cui' => null,
+            'client_cui' => null,
+            'title' => $title,
+            'doc_type' => $docType,
+            'contract_date' => date('Y-m-d'),
+            'created_at' => date('Y-m-d H:i:s'),
+            'doc_no' => 0,
+            'doc_series' => '',
+            'doc_full_no' => '',
+        ];
+    }
+
+    private function buildDraftTemplateFilesForDossier(string $linkType): array
+    {
+        $templateService = new ContractTemplateService();
+        $templates = $templateService->getRequiredOnboardingTemplates($linkType);
+        if (empty($templates)) {
+            return [];
+        }
+
+        $pdfService = new ContractPdfService();
+        $usedPriorities = [];
+        $result = [];
+        foreach ($templates as $template) {
+            $templateId = isset($template['id']) ? (int) $template['id'] : 0;
+            if ($templateId <= 0) {
+                continue;
+            }
+
+            $priority = isset($template['priority']) ? (int) $template['priority'] : 100;
+            $priorityKey = (string) $priority;
+            if (isset($usedPriorities[$priorityKey])) {
+                continue;
+            }
+            $usedPriorities[$priorityKey] = true;
+
+            $docType = $this->resolveTemplateDocTypeForDraft($template);
+            $draftContract = $this->buildDraftContractFromTemplate($template);
+
+            $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+            $pdfBinary = $pdfService->generatePdfBinaryFromHtml($html, 'onboarding-draft-' . $templateId . '-' . $priority);
+            if ($pdfBinary === '') {
+                continue;
+            }
+
+            $tmp = tempnam(sys_get_temp_dir(), 'onboarding_draft_');
+            if ($tmp === false) {
+                continue;
+            }
+            $tmpPdfPath = $tmp . '.pdf';
+            if (!@rename($tmp, $tmpPdfPath)) {
+                $tmpPdfPath = $tmp;
+            }
+            if (@file_put_contents($tmpPdfPath, $pdfBinary) === false || !is_file($tmpPdfPath) || filesize($tmpPdfPath) <= 0) {
+                @unlink($tmpPdfPath);
+                continue;
+            }
+
+            $result[] = [
+                'priority' => $priority,
+                'absolute_path' => $tmpPdfPath,
+                'filename' => $this->buildTemplateDraftFilename($template, $priority, $docType),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function resolveTemplateDocTypeForDraft(array $template): string
+    {
+        $docKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
+        if ($docKind === 'contract') {
+            return 'contract';
+        }
+
+        $rawDocType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
+        if ($rawDocType === '') {
+            return 'document';
+        }
+        $sanitized = preg_replace('/[^a-zA-Z0-9_.-]/', '', $rawDocType);
+        $sanitized = strtolower(trim((string) $sanitized));
+
+        return $sanitized !== '' ? $sanitized : 'document';
+    }
+
+    private function buildTemplateDraftFilename(array $template, int $priority, string $docType): string
+    {
+        $name = trim((string) ($template['name'] ?? 'document-draft'));
+        if ($name === '') {
+            $name = 'document-draft';
+        }
+        $base = 'prioritate-' . $priority . '-' . $name . '-draft';
+        $base = preg_replace('/\s+/', '-', $base);
+        $base = preg_replace('/[^a-zA-Z0-9._-]/', '-', (string) $base);
+        $base = trim((string) $base, '-');
+        if ($base === '') {
+            $base = 'prioritate-' . $priority . '-' . $docType . '-draft';
+        }
+
+        return $this->sanitizeDownloadFilename($base . '.pdf', 'prioritate-' . $priority . '-draft.pdf');
+    }
+
+    private function registerTempCleanup(array $paths): void
+    {
+        if (empty($paths)) {
+            return;
+        }
+
+        $tmpRoot = rtrim((string) sys_get_temp_dir(), '/');
+        $validPaths = [];
+        foreach ($paths as $path) {
+            $path = trim((string) $path);
+            if ($path === '') {
+                continue;
+            }
+            if ($tmpRoot !== '' && !str_starts_with($path, $tmpRoot)) {
+                continue;
+            }
+            $validPaths[$path] = $path;
+        }
+        if (empty($validPaths)) {
+            return;
+        }
+
+        register_shutdown_function(static function () use ($validPaths): void {
+            foreach ($validPaths as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+        });
+    }
+
+    private function buildResourceDownloadFilename(array $resource): string
+    {
+        $originalName = trim((string) ($resource['original_name'] ?? ''));
+        if ($originalName !== '') {
+            return $this->sanitizeDownloadFilename($originalName, 'document-onboarding');
+        }
+
+        $title = trim((string) ($resource['title'] ?? 'document-onboarding'));
+        $ext = strtolower(pathinfo((string) ($resource['file_path'] ?? ''), PATHINFO_EXTENSION));
+        $filename = $title !== '' ? $title : 'document-onboarding';
+        if ($ext !== '') {
+            $filename .= '.' . $ext;
+        }
+
+        return $this->sanitizeDownloadFilename($filename, 'document-onboarding' . ($ext !== '' ? ('.' . $ext) : ''));
+    }
+
+    private function buildContractDownloadFilename(array $contract, bool $signed): string
+    {
+        $docNo = trim((string) ($contract['doc_full_no'] ?? ''));
+        if ($docNo === '') {
+            $docNoRaw = (int) ($contract['doc_no'] ?? 0);
+            if ($docNoRaw > 0) {
+                $series = trim((string) ($contract['doc_series'] ?? ''));
+                $docNoPadded = str_pad((string) $docNoRaw, 6, '0', STR_PAD_LEFT);
+                $docNo = $series !== '' ? ($series . '-' . $docNoPadded) : $docNoPadded;
+            }
+        }
+
+        $baseName = $docNo !== '' ? ('document-' . $docNo) : trim((string) ($contract['title'] ?? 'document'));
+        if ($baseName === '') {
+            $baseName = 'document';
+        }
+        $baseName = preg_replace('/\s+/', '-', $baseName);
+        $baseName = trim((string) $baseName, '-');
+        if ($baseName === '') {
+            $baseName = 'document';
+        }
+        if ($signed) {
+            $baseName .= '-semnat';
+        }
+
+        $candidatePath = $signed
+            ? trim((string) ($contract['signed_upload_path'] ?? $contract['signed_file_path'] ?? ''))
+            : trim((string) ($contract['generated_pdf_path'] ?? $contract['generated_file_path'] ?? ''));
+        $ext = strtolower(pathinfo($candidatePath, PATHINFO_EXTENSION));
+        if ($ext === '') {
+            $ext = 'pdf';
+        }
+
+        return $this->sanitizeDownloadFilename($baseName . '.' . $ext, $baseName . '.' . $ext);
+    }
+
+    private function sanitizeDownloadFilename(string $filename, string $fallback): string
+    {
+        $filename = trim($filename);
+        $filename = str_replace(["\r", "\n", "\0", '/', '\\'], '-', $filename);
+        $filename = preg_replace('/[^a-zA-Z0-9._ -]/', '-', (string) $filename);
+        $filename = preg_replace('/\s+/', ' ', (string) $filename);
+        $filename = trim((string) $filename, " .-");
+        if ($filename === '') {
+            $filename = trim($fallback);
+        }
+        if ($filename === '') {
+            $filename = 'document';
+        }
+        if (strlen($filename) > 180) {
+            $filename = substr($filename, 0, 180);
+        }
+
+        return $filename;
+    }
+
+    private function resolveUploadAbsolutePath(string $relativePath): string
+    {
+        $clean = ltrim(trim($relativePath), '/');
+        if ($clean === '' || !str_starts_with($clean, 'storage/uploads/')) {
+            return '';
+        }
         $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-        $clean = ltrim($relativePath, '/');
-        if (!str_starts_with($clean, 'storage/uploads/')) {
-            Response::abort(404);
-        }
-        $sub = substr($clean, strlen('storage/uploads/'));
-        $path = realpath($base . '/storage/uploads/' . ltrim($sub, '/'));
         $root = realpath($base . '/storage/uploads');
-        if (!$path || !$root || !str_starts_with($path, $root) || !is_readable($path)) {
+        if ($root === false) {
+            return '';
+        }
+        $path = realpath($base . '/' . $clean);
+        if ($path === false || !str_starts_with($path, $root)) {
+            return '';
+        }
+
+        return $path;
+    }
+
+    private function createZipArchive(array $entries): string
+    {
+        if (empty($entries) || !class_exists(\ZipArchive::class)) {
+            return '';
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'onboarding_dossier_');
+        if ($tmp === false) {
+            return '';
+        }
+        $zipPath = $tmp . '.zip';
+        @rename($tmp, $zipPath);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmp);
+            @unlink($zipPath);
+            return '';
+        }
+
+        $usedNames = [];
+        $addedFiles = 0;
+        foreach ($entries as $entry) {
+            $absolutePath = trim((string) ($entry['absolute_path'] ?? ''));
+            if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+                continue;
+            }
+
+            $baseName = $this->sanitizeDownloadFilename(
+                (string) ($entry['filename'] ?? basename($absolutePath)),
+                basename($absolutePath)
+            );
+            $candidate = $baseName;
+            $nameBase = pathinfo($baseName, PATHINFO_FILENAME);
+            $nameExt = pathinfo($baseName, PATHINFO_EXTENSION);
+            $suffix = 2;
+            while (isset($usedNames[strtolower($candidate)])) {
+                $candidate = $nameBase . '-' . $suffix;
+                if ($nameExt !== '') {
+                    $candidate .= '.' . $nameExt;
+                }
+                $suffix++;
+            }
+            $usedNames[strtolower($candidate)] = true;
+            if ($zip->addFile($absolutePath, $candidate)) {
+                $addedFiles++;
+            }
+        }
+        $zip->close();
+
+        if ($addedFiles <= 0 || !is_file($zipPath) || filesize($zipPath) <= 0) {
+            @unlink($zipPath);
+            return '';
+        }
+
+        return $zipPath;
+    }
+
+    private function mergePdfFiles(array $files): string
+    {
+        if (count($files) < 2) {
+            return '';
+        }
+
+        $binary = $this->findGhostscriptBinary();
+        if ($binary === '') {
+            return '';
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'onboarding_merge_');
+        if ($tmp === false) {
+            return '';
+        }
+        $output = $tmp . '.pdf';
+        @rename($tmp, $output);
+
+        $args = [
+            escapeshellarg($binary),
+            '-dBATCH',
+            '-dNOPAUSE',
+            '-q',
+            '-sDEVICE=pdfwrite',
+            '-dCompatibilityLevel=1.4',
+            '-sOutputFile=' . escapeshellarg($output),
+        ];
+        foreach ($files as $file) {
+            $absolute = trim((string) $file);
+            if ($absolute === '' || !is_file($absolute) || !is_readable($absolute)) {
+                continue;
+            }
+            $args[] = escapeshellarg($absolute);
+        }
+        if (count($args) <= 7) {
+            @unlink($output);
+            return '';
+        }
+
+        $command = implode(' ', $args);
+        $descriptors = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $process = @proc_open($command, $descriptors, $pipes);
+        if (!is_resource($process)) {
+            @unlink($output);
+            return '';
+        }
+        if (isset($pipes[1]) && is_resource($pipes[1])) {
+            stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+        }
+        if (isset($pipes[2]) && is_resource($pipes[2])) {
+            stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+        }
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0 || !is_file($output) || filesize($output) <= 0) {
+            @unlink($output);
+            return '';
+        }
+
+        return $output;
+    }
+
+    private function findGhostscriptBinary(): string
+    {
+        $candidates = [
+            '/usr/bin/gs',
+            '/usr/local/bin/gs',
+            '/bin/gs',
+            'gs',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (str_contains($candidate, '/')) {
+                if (is_file($candidate) && is_executable($candidate)) {
+                    return $candidate;
+                }
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return '';
+    }
+
+    private function streamAbsoluteFile(string $absolutePath, string $downloadFilename, string $contentType, bool $deleteAfterSend): void
+    {
+        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
             Response::abort(404);
         }
-        $filename = basename($path);
-        header('Content-Type: application/octet-stream');
+
+        if ($deleteAfterSend) {
+            register_shutdown_function(static function () use ($absolutePath): void {
+                @unlink($absolutePath);
+            });
+        }
+
+        $filename = $this->sanitizeDownloadFilename($downloadFilename, basename($absolutePath));
+        header('Content-Type: ' . ($contentType !== '' ? $contentType : 'application/octet-stream'));
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($path));
-        readfile($path);
+        header('Content-Length: ' . filesize($absolutePath));
+        header('X-Content-Type-Options: nosniff');
+        readfile($absolutePath);
         exit;
+    }
+
+    private function streamFile(string $relativePath, ?string $downloadFilename = null): void
+    {
+        $path = $this->resolveUploadAbsolutePath($relativePath);
+        if ($path === '' || !is_readable($path)) {
+            Response::abort(404);
+        }
+
+        $filename = $downloadFilename !== null
+            ? $this->sanitizeDownloadFilename($downloadFilename, basename($path))
+            : basename($path);
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $contentType = $ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+        $this->streamAbsoluteFile($path, $filename, $contentType, false);
     }
 
     private function throttle(string $hash): bool

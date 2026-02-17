@@ -1,4 +1,9 @@
-<?php $title = 'Setari'; ?>
+<?php
+    $title = 'Setari';
+    $documentRegistry = $documentRegistry ?? [];
+    $registryClient = is_array($documentRegistry['client'] ?? null) ? $documentRegistry['client'] : [];
+    $registrySupplier = is_array($documentRegistry['supplier'] ?? null) ? $documentRegistry['supplier'] : [];
+?>
 
 <div class="flex items-center justify-between">
     <div>
@@ -141,29 +146,56 @@
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Branding</h2>
-        <p class="mt-1 text-sm text-slate-600">Actualizeaza logo-ul aplicatiei ERP.</p>
+        <p class="mt-1 text-sm text-slate-600">Actualizeaza logo-ul aplicatiei ERP pentru mod normal si dark mode.</p>
 
-        <div class="mt-4 grid gap-6 md:grid-cols-[200px_1fr]">
-            <div class="rounded border border-slate-200 bg-slate-50 p-4 text-center">
-                <?php if (!empty($logoUrl)): ?>
-                    <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="mx-auto h-16 w-auto">
-                <?php else: ?>
-                    <div class="text-sm text-slate-600">Fara logo incarcat</div>
-                <?php endif; ?>
+        <div class="mt-4 grid gap-6 md:grid-cols-2">
+            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="text-sm font-semibold text-slate-800">Logo mod normal</div>
+                <div class="mt-3 rounded border border-slate-200 bg-white p-4 text-center">
+                    <?php if (!empty($logoUrl)): ?>
+                        <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP mod normal" class="mx-auto h-16 w-auto">
+                    <?php else: ?>
+                        <div class="text-sm text-slate-600">Fara logo incarcat</div>
+                    <?php endif; ?>
+                </div>
+                <div class="mt-3 space-y-2">
+                    <label class="block text-sm font-medium text-slate-700" for="logo">
+                        Incarca logo mod normal (png, jpg, svg)
+                    </label>
+                    <input
+                        id="logo"
+                        name="logo"
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg"
+                        class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                </div>
             </div>
 
-            <div class="space-y-3">
-                <label class="block text-sm font-medium text-slate-700" for="logo">
-                    Logo ERP (png, jpg, svg)
-                </label>
-                <input
-                    id="logo"
-                    name="logo"
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.svg"
-                    class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-                <p class="text-xs text-slate-600">Poti lasa gol daca nu schimbi logo-ul.</p>
+            <div class="rounded border border-slate-200 bg-slate-900 p-4">
+                <div class="text-sm font-semibold text-slate-100">Logo dark mode</div>
+                <div class="mt-3 rounded border border-slate-700 bg-slate-950 p-4 text-center">
+                    <?php if (!empty($logoDarkUrl)): ?>
+                        <img src="<?= htmlspecialchars($logoDarkUrl) ?>" alt="Logo ERP dark mode" class="mx-auto h-16 w-auto">
+                    <?php elseif (!empty($logoUrl)): ?>
+                        <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP fallback dark mode" class="mx-auto h-16 w-auto opacity-80">
+                    <?php else: ?>
+                        <div class="text-sm text-slate-300">Fara logo dark incarcat</div>
+                    <?php endif; ?>
+                </div>
+                <div class="mt-3 space-y-2">
+                    <label class="block text-sm font-medium text-slate-100" for="logo_dark">
+                        Incarca logo dark mode (png, jpg, svg)
+                    </label>
+                    <input
+                        id="logo_dark"
+                        name="logo_dark"
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg"
+                        class="block w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                    >
+                    <p class="text-xs text-slate-300">Daca lipseste, in dark mode se foloseste logo-ul normal.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -261,6 +293,137 @@
         </button>
     </div>
 </form>
+
+<div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-lg font-semibold text-slate-900">Registru documente - setari globale</h2>
+    <p class="mt-1 text-sm text-slate-600">
+        Configureaza separat numerotarea pentru documentele de clienti si pentru cele de furnizori.
+    </p>
+
+    <?php
+        $registryCards = [
+            'client' => [
+                'title' => 'Registru clienti',
+                'description' => 'Numerotarea folosita pentru documentele generate pentru clienti.',
+                'data' => $registryClient,
+            ],
+            'supplier' => [
+                'title' => 'Registru furnizori',
+                'description' => 'Numerotarea folosita pentru documentele generate pentru furnizori.',
+                'data' => $registrySupplier,
+            ],
+        ];
+    ?>
+
+    <div class="mt-4 grid gap-6 xl:grid-cols-2">
+        <?php foreach ($registryCards as $scope => $card): ?>
+            <?php
+                $registryData = is_array($card['data'] ?? null) ? $card['data'] : [];
+                $registryAvailable = !empty($registryData['available']);
+                $registrySeries = (string) ($registryData['series'] ?? '');
+                $registryStartNo = max(1, (int) ($registryData['start_no'] ?? 1));
+                $registryNextNo = max($registryStartNo, (int) ($registryData['next_no'] ?? $registryStartNo));
+                $registryUpdatedAt = (string) ($registryData['updated_at'] ?? '');
+            ?>
+            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900"><?= htmlspecialchars((string) ($card['title'] ?? 'Registru')) ?></h3>
+                        <p class="mt-1 text-xs text-slate-600"><?= htmlspecialchars((string) ($card['description'] ?? '')) ?></p>
+                    </div>
+                    <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        <?= $scope === 'supplier' ? 'Furnizori' : 'Clienti' ?>
+                    </span>
+                </div>
+
+                <?php if (!$registryAvailable): ?>
+                    <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Registrul nu este disponibil momentan.
+                    </div>
+                <?php else: ?>
+                    <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/save') ?>" class="mt-4 space-y-4">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                        <input type="hidden" name="return_to" value="/admin/setari">
+                        <div class="grid gap-3 sm:grid-cols-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Serie</label>
+                                <input
+                                    type="text"
+                                    name="series"
+                                    value="<?= htmlspecialchars($registrySeries) ?>"
+                                    maxlength="16"
+                                    placeholder="ex: CTR"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Start</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="start_no"
+                                    value="<?= $registryStartNo ?>"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Urmatorul nr.</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="next_no"
+                                    value="<?= $registryNextNo ?>"
+                                    class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                            </div>
+                        </div>
+                        <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+                            Salveaza registrul
+                        </button>
+                    </form>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="text-sm text-slate-700">
+                            Ultima actualizare:
+                            <span class="font-semibold text-slate-900"><?= htmlspecialchars($registryUpdatedAt !== '' ? $registryUpdatedAt : '—') ?></span>
+                        </div>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/set-start') ?>" class="inline-flex items-end gap-3">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                            <input type="hidden" name="return_to" value="/admin/setari">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700">Start nou</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    name="start_no"
+                                    value="<?= $registryStartNo ?>"
+                                    class="mt-1 w-28 rounded border border-slate-300 px-2 py-1.5 text-sm"
+                                >
+                                <input type="hidden" name="series" value="<?= htmlspecialchars($registrySeries) ?>">
+                            </div>
+                            <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                                Seteaza start
+                            </button>
+                        </form>
+                        <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/reset-start') ?>">
+                            <?= App\Support\Csrf::input() ?>
+                            <input type="hidden" name="registry_scope" value="<?= htmlspecialchars($scope) ?>">
+                            <input type="hidden" name="return_to" value="/admin/setari">
+                            <button
+                                class="rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                                onclick="return confirm('Resetezi numerotarea la start pentru acest registru?')"
+                            >
+                                Reseteaza la start
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
 
 <div class="mt-6 rounded-lg border border-rose-200 bg-rose-50/40 p-6 shadow-sm">
     <h2 class="text-lg font-semibold text-slate-900">Date test</h2>

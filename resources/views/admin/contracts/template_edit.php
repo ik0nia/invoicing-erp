@@ -22,6 +22,15 @@
     <div class="mt-2 text-xs text-blue-700">
         Foloseste variabilele intre acolade duble, de exemplu: <strong>{{partner.name}}</strong>
     </div>
+    <div class="mt-1 text-xs text-blue-700">
+        Datele despre reprezentant si banca se completeaza din Companii/Inrolare.
+    </div>
+    <div class="mt-1 text-xs text-blue-700">
+        Variabila <strong>{{contacts.table}}</strong> insereaza automat tabelul cu contactele companiei.
+    </div>
+    <div class="mt-1 text-xs text-blue-700">
+        Pentru documente secundare, foloseste <strong>{{contract.reference_no}}</strong> si <strong>{{contract.reference_date}}</strong>.
+    </div>
     <div class="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <?php foreach ($variables as $item): ?>
             <div class="flex items-center justify-between gap-2 rounded border border-blue-100 bg-white px-2 py-1 text-xs text-blue-800">
@@ -38,7 +47,7 @@
     </div>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/update') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/update') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
     <div class="grid gap-4 md:grid-cols-2">
@@ -54,7 +63,19 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="template-kind">Tip document</label>
+            <label class="block text-sm font-medium text-slate-700" for="template-doc-type">Doc type (indexare)</label>
+            <input
+                id="template-doc-type"
+                name="doc_type"
+                type="text"
+                value="<?= htmlspecialchars((string) ($template['doc_type'] ?? $template['template_type'] ?? '')) ?>"
+                placeholder="ex: client_agreement"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                required
+            >
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="template-kind">Categorie document</label>
             <select
                 id="template-kind"
                 name="doc_kind"
@@ -98,6 +119,10 @@
             Creeaza automat la inrolare
         </label>
         <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" name="required_onboarding" class="rounded border-slate-300" <?= !empty($template['required_onboarding']) ? 'checked' : '' ?>>
+            Obligatoriu la onboarding
+        </label>
+        <label class="ml-6 inline-flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" name="is_active" class="rounded border-slate-300" <?= !empty($template['is_active']) ? 'checked' : '' ?>>
             Activ
         </label>
@@ -115,10 +140,93 @@
         <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
             Salveaza modificari
         </button>
+        <a
+            href="<?= App\Support\Url::to('admin/contract-templates/download-draft?id=' . (int) ($template['id'] ?? 0)) ?>"
+            class="rounded border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+        >
+            Descarca PDF draft
+        </a>
     </div>
 </form>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/preview') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<?php
+    $stampPath = trim((string) ($template['stamp_image_path'] ?? ''));
+    $stampMetaRaw = (string) ($template['stamp_image_meta'] ?? '');
+    $stampMeta = [];
+    if ($stampMetaRaw !== '') {
+        $decodedMeta = json_decode($stampMetaRaw, true);
+        if (is_array($decodedMeta)) {
+            $stampMeta = $decodedMeta;
+        }
+    }
+    $stampOriginalName = (string) ($stampMeta['original_name'] ?? '');
+    $stampUploadedAt = (string) ($stampMeta['uploaded_at'] ?? '');
+    $stampPreviewUrl = $stampPath !== ''
+        ? App\Support\Url::to('admin/contract-templates/stamp?id=' . (int) ($template['id'] ?? 0) . '&t=' . urlencode((string) ($template['updated_at'] ?? $stampUploadedAt ?? '')))
+        : '';
+?>
+
+<div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
+    <div class="text-sm font-semibold text-slate-700">Stampila / Semnatura (optional)</div>
+    <p class="mt-1 text-xs text-slate-500">
+        Stampila este specifica acestui model. O poti insera in document cu variabila {{stamp.image}}.
+    </p>
+
+    <?php if ($stampPreviewUrl !== ''): ?>
+        <div class="mt-4">
+            <div class="text-xs font-medium text-slate-600">Imagine curenta</div>
+            <img
+                src="<?= htmlspecialchars($stampPreviewUrl) ?>"
+                alt="Stampila model"
+                class="mt-2 max-h-28 rounded border border-slate-200 bg-slate-50 p-1"
+            >
+            <?php if ($stampOriginalName !== '' || $stampUploadedAt !== ''): ?>
+                <div class="mt-2 text-xs text-slate-500">
+                    <?php if ($stampOriginalName !== ''): ?>
+                        Fisier: <?= htmlspecialchars($stampOriginalName) ?>
+                    <?php endif; ?>
+                    <?php if ($stampUploadedAt !== ''): ?>
+                        <span class="ml-2">Incarcat la: <?= htmlspecialchars($stampUploadedAt) ?></span>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/upload-stamp') ?>" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-end gap-3">
+        <?= App\Support\Csrf::input() ?>
+        <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="stamp_image">Incarca imagine stampila</label>
+            <input
+                id="stamp_image"
+                name="stamp_image"
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                class="mt-1 block rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+            <p class="mt-1 text-xs text-slate-500">Formate acceptate: PNG, JPG, JPEG, WEBP. Maxim 5MB.</p>
+        </div>
+        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+            Salveaza stampila
+        </button>
+    </form>
+
+    <?php if ($stampPreviewUrl !== ''): ?>
+        <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/remove-stamp') ?>" class="mt-3">
+            <?= App\Support\Csrf::input() ?>
+            <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
+            <button
+                class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                onclick="return confirm('Stergi stampila din acest model?')"
+            >
+                Sterge stampila
+            </button>
+        </form>
+    <?php endif; ?>
+</div>
+
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/preview') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="<?= (int) ($template['id'] ?? 0) ?>">
     <div class="text-sm font-semibold text-slate-700">Previzualizare</div>

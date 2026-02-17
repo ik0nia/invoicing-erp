@@ -78,6 +78,8 @@ class SagaExportService
         $products = [];
         $sumValues = 0.0;
         $sumGross = 0.0;
+        $hasNegativeQty = false;
+        $hasPositiveQty = false;
         foreach ($lines as $line) {
             $code = trim((string) ($line['cod_saga'] ?? ''));
             if ($code === '') {
@@ -85,6 +87,11 @@ class SagaExportService
             }
 
             $quantity = (float) ($line['quantity'] ?? 0);
+            if ($quantity < -0.0001) {
+                $hasNegativeQty = true;
+            } elseif ($quantity > 0.0001) {
+                $hasPositiveQty = true;
+            }
             $unitPrice = (float) ($line['unit_price'] ?? 0);
             $lineTotal = $unitPrice > 0 ? round($unitPrice * $quantity, 4) : (float) ($line['line_total'] ?? 0);
             $lineTotalVat = (float) ($line['line_total_vat'] ?? 0);
@@ -95,6 +102,14 @@ class SagaExportService
                 'cantitate' => $quantity,
                 'val_produse' => round($lineTotal, 2),
             ];
+        }
+
+        $isStorno = $sumValues < -0.009 || $sumGross < -0.009 || ($hasNegativeQty && !$hasPositiveQty);
+        if ($isStorno) {
+            foreach ($products as &$product) {
+                $product['val_produse'] = abs((float) ($product['val_produse'] ?? 0));
+            }
+            unset($product);
         }
 
         $dbTotal = (float) Database::fetchValue(
@@ -161,7 +176,7 @@ class SagaExportService
             $this->sagaStatusService->markProcessing($packageId);
         }
 
-        $pretVanz = number_format($sellTotal, 4, '.', '');
+        $pretVanz = number_format($isStorno ? abs($sellTotal) : $sellTotal, 4, '.', '');
         $payload = [
             'pachet' => [
                 'id_doc' => $packageNo,
@@ -171,9 +186,9 @@ class SagaExportService
                 'denumire' => $this->normalizeName($label),
                 'pret_vanz' => $pretVanz,
                 'cota_tva' => round($vatPercent, 2),
-                'cost_total' => round($sumValues, 2),
+                'cost_total' => $isStorno ? abs(round($sumValues, 2)) : round($sumValues, 2),
                 'gestiune' => '0001',
-                'cantitate_produsa' => 1.0,
+                'cantitate_produsa' => $isStorno ? -1.0 : 1.0,
                 'status' => $status,
             ],
             'produse' => $products,
@@ -191,6 +206,7 @@ class SagaExportService
                 'sell_gross' => round($sellGross, 4),
                 'vat_percent' => $vatPercent,
                 'pret_vanz_calc' => $pretVanz,
+                'is_storno' => $isStorno,
             ];
         }
 

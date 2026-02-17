@@ -13,7 +13,7 @@
     </a>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/companii/save') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/companii/save') ?>" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
 
     <div class="grid gap-4 md:grid-cols-2">
@@ -132,12 +132,34 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="banca">Banca</label>
+            <label class="block text-sm font-medium text-slate-700" for="legal_representative_name">Reprezentant legal</label>
             <input
-                id="banca"
-                name="banca"
+                id="legal_representative_name"
+                name="legal_representative_name"
                 type="text"
-                value="<?= htmlspecialchars($form['banca'] ?? '') ?>"
+                value="<?= htmlspecialchars($form['legal_representative_name'] ?? '') ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="legal_representative_role">Functie reprezentant</label>
+            <input
+                id="legal_representative_role"
+                name="legal_representative_role"
+                type="text"
+                value="<?= htmlspecialchars($form['legal_representative_role'] ?? '') ?>"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="bank_name">Banca</label>
+            <input
+                id="bank_name"
+                name="bank_name"
+                type="text"
+                value="<?= htmlspecialchars($form['bank_name'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
@@ -151,6 +173,7 @@
                 value="<?= htmlspecialchars($form['iban'] ?? '') ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
+            <p class="mt-1 text-xs text-slate-500">Cont bancar al companiei, utilizat în contracte și facturi.</p>
         </div>
 
         <div>
@@ -199,7 +222,7 @@
     </div>
 </form>
 
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-lg font-semibold text-slate-900">Contacte</h2>

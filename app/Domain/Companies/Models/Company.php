@@ -19,8 +19,14 @@ class Company
     public string $tara;
     public string $email;
     public string $telefon;
+    public string $legal_representative_name = '';
+    public string $legal_representative_role = '';
+    public ?string $representative_name = null;
+    public ?string $representative_function = null;
     public ?string $banca = null;
     public ?string $iban = null;
+    public ?string $bank_account = null;
+    public ?string $bank_name = null;
     public string $tip_companie;
     public bool $activ;
 
@@ -39,8 +45,14 @@ class Company
         $company->tara = $row['tara'];
         $company->email = $row['email'];
         $company->telefon = $row['telefon'];
+        $company->legal_representative_name = (string) ($row['legal_representative_name'] ?? $row['representative_name'] ?? '');
+        $company->legal_representative_role = (string) ($row['legal_representative_role'] ?? $row['representative_function'] ?? '');
+        $company->representative_name = $row['representative_name'] ?? null;
+        $company->representative_function = $row['representative_function'] ?? null;
         $company->banca = $row['banca'] ?? null;
-        $company->iban = $row['iban'] ?? null;
+        $company->iban = $row['iban'] ?? '';
+        $company->bank_account = $row['bank_account'] ?? null;
+        $company->bank_name = $row['bank_name'] ?? ($row['banca'] ?? null);
         $company->tip_companie = $row['tip_companie'];
         $company->activ = (bool) $row['activ'];
 
@@ -137,7 +149,7 @@ class Company
                 'email' => $data['email'],
                 'telefon' => $data['telefon'],
                 'banca' => $data['banca'] ?? null,
-                'iban' => $data['iban'] ?? null,
+                'iban' => (string) ($data['iban'] ?? ''),
                 'tip_companie' => $data['tip_companie'],
                 'activ' => $data['activ'],
                 'created_at' => $now,
@@ -145,6 +157,57 @@ class Company
             ]
         );
 
+        self::updateProfileFields((string) ($data['cui'] ?? ''), [
+            'legal_representative_name' => $data['legal_representative_name'] ?? null,
+            'legal_representative_role' => $data['legal_representative_role'] ?? null,
+            'bank_name' => $data['bank_name'] ?? ($data['banca'] ?? null),
+            'iban' => $data['iban'] ?? null,
+            'representative_name' => $data['representative_name'] ?? null,
+            'representative_function' => $data['representative_function'] ?? null,
+            'bank_account' => $data['bank_account'] ?? null,
+        ]);
+
         return self::findByCui($data['cui']);
+    }
+
+    public static function updateProfileFields(string $cui, array $profile): void
+    {
+        if ($cui === '' || !Database::tableExists('companies')) {
+            return;
+        }
+
+        $columns = [
+            'legal_representative_name',
+            'legal_representative_role',
+            'bank_name',
+            'iban',
+            'representative_name',
+            'representative_function',
+            'bank_account',
+        ];
+        $updates = [];
+        $params = ['cui' => $cui];
+
+        foreach ($columns as $column) {
+            if (!array_key_exists($column, $profile) || !Database::columnExists('companies', $column)) {
+                continue;
+            }
+            $value = trim((string) ($profile[$column] ?? ''));
+            $updates[] = $column . ' = :' . $column;
+            $params[$column] = $value;
+        }
+
+        if (empty($updates)) {
+            return;
+        }
+        if (Database::columnExists('companies', 'updated_at')) {
+            $updates[] = 'updated_at = :updated_at';
+            $params['updated_at'] = date('Y-m-d H:i:s');
+        }
+
+        Database::execute(
+            'UPDATE companies SET ' . implode(', ', $updates) . ' WHERE cui = :cui',
+            $params
+        );
     }
 }

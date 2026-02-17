@@ -9,6 +9,7 @@ use App\Support\Auth;
 use App\Support\CompanyName;
 use App\Support\Database;
 use App\Support\Response;
+use App\Support\SchemaEnsurer;
 use App\Support\Session;
 
 class CompanyController
@@ -102,10 +103,16 @@ class CompanyController
             'tara' => trim($_POST['tara'] ?? 'România'),
             'email' => trim($_POST['email'] ?? ''),
             'telefon' => trim($_POST['telefon'] ?? ''),
-            'banca' => trim($_POST['banca'] ?? ''),
-            'iban' => trim($_POST['iban'] ?? ''),
+            'legal_representative_name' => trim((string) ($_POST['legal_representative_name'] ?? '')),
+            'legal_representative_role' => trim((string) ($_POST['legal_representative_role'] ?? '')),
+            'bank_name' => trim((string) ($_POST['bank_name'] ?? $_POST['banca'] ?? '')),
+            'iban' => strtoupper(preg_replace('/\s+/', '', (string) ($_POST['iban'] ?? ''))),
             'activ' => !empty($_POST['activ']) ? 1 : 0,
         ];
+        $data['representative_name'] = $data['legal_representative_name'];
+        $data['representative_function'] = $data['legal_representative_role'];
+        $data['banca'] = $data['bank_name'];
+        $data['bank_account'] = $data['iban'];
         $defaultCommissionInput = str_replace(',', '.', (string) ($_POST['default_commission'] ?? ''));
         $existing = $data['cui'] !== '' ? Company::findByCui($data['cui']) : null;
         $data['tip_firma'] = $existing?->tip_firma ?? 'SRL';
@@ -212,8 +219,11 @@ class CompanyController
             'tara' => $company?->tara ?? 'România',
             'email' => $company?->email ?? '',
             'telefon' => $company?->telefon ?? '',
+            'legal_representative_name' => $company?->legal_representative_name ?? $company?->representative_name ?? $partner?->representative_name ?? '',
+            'legal_representative_role' => $company?->legal_representative_role ?? $company?->representative_function ?? $partner?->representative_function ?? '',
             'banca' => $company?->banca ?? '',
             'iban' => $company?->iban ?? '',
+            'bank_name' => $company?->bank_name ?? $partner?->bank_name ?? $company?->banca ?? '',
             'activ' => $company?->activ ?? true,
             'default_commission' => $defaultCommissionValue,
         ];
@@ -281,6 +291,8 @@ class CompanyController
         if (Database::tableExists('companies') && !Database::columnExists('companies', 'iban')) {
             Database::execute('ALTER TABLE companies ADD COLUMN iban VARCHAR(64) NULL AFTER banca');
         }
+        SchemaEnsurer::ensureCompaniesLegalContractColumns();
+        SchemaEnsurer::ensureCompaniesProfileColumns();
 
         return true;
     }

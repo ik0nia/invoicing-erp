@@ -10,6 +10,10 @@ class Partner
     public int $id;
     public string $cui;
     public string $denumire;
+    public ?string $representative_name = null;
+    public ?string $representative_function = null;
+    public ?string $bank_account = null;
+    public ?string $bank_name = null;
     public float $default_commission = 0.0;
     public bool $is_supplier = false;
     public bool $is_client = false;
@@ -20,6 +24,10 @@ class Partner
         $partner->id = (int) $row['id'];
         $partner->cui = (string) $row['cui'];
         $partner->denumire = CompanyName::normalize((string) $row['denumire']);
+        $partner->representative_name = $row['representative_name'] ?? null;
+        $partner->representative_function = $row['representative_function'] ?? null;
+        $partner->bank_account = $row['bank_account'] ?? null;
+        $partner->bank_name = $row['bank_name'] ?? null;
         $partner->default_commission = (float) ($row['default_commission'] ?? 0);
         $partner->is_supplier = !empty($row['is_supplier']);
         $partner->is_client = !empty($row['is_client']);

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Settings\Http\Controllers;
 
+use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
@@ -27,16 +28,10 @@ class SettingsController
     {
         Auth::requireSuperAdmin();
 
-        $logoPath = $this->settings->get('branding.logo_path');
-        $logoUrl = null;
-
-        if ($logoPath) {
-            $absolutePath = BASE_PATH . '/' . ltrim($logoPath, '/');
-
-            if (file_exists($absolutePath)) {
-                $logoUrl = \App\Support\Url::asset($logoPath);
-            }
-        }
+        $logoPath = (string) $this->settings->get('branding.logo_path', '');
+        $logoDarkPath = (string) $this->settings->get('branding.logo_dark_path', '');
+        $logoUrl = $this->resolveBrandingLogoUrl($logoPath);
+        $logoDarkUrl = $this->resolveBrandingLogoUrl($logoDarkPath);
 
         $fgoApiKey = (string) $this->settings->get('fgo.api_key', '');
         $fgoSeries = (string) $this->settings->get('fgo.series', '');
@@ -61,10 +56,16 @@ class SettingsController
             'banca' => (string) $this->settings->get('company.banca', ''),
             'iban' => (string) $this->settings->get('company.iban', ''),
         ];
+        $documentRegistry = [
+            DocumentNumberService::REGISTRY_SCOPE_CLIENT => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_CLIENT),
+            DocumentNumberService::REGISTRY_SCOPE_SUPPLIER => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER),
+        ];
 
         Response::view('admin/settings/index', [
             'logoPath' => $logoPath,
             'logoUrl' => $logoUrl,
+            'logoDarkPath' => $logoDarkPath,
+            'logoDarkUrl' => $logoDarkUrl,
             'fgoApiKey' => $fgoApiKey,
             'fgoSeries' => $fgoSeries,
             'fgoSeriesList' => $fgoSeriesList,
@@ -72,6 +73,7 @@ class SettingsController
             'fgoBaseUrl' => $fgoBaseUrl,
             'openApiKey' => $openApiKey,
             'company' => $company,
+            'documentRegistry' => $documentRegistry,
         ]);
     }
 
@@ -80,71 +82,22 @@ class SettingsController
         Auth::requireSuperAdmin();
 
         $logoUpdated = false;
+        $logoDarkUpdated = false;
         if (isset($_FILES['logo']) && $_FILES['logo']['error'] !== UPLOAD_ERR_NO_FILE) {
-            if ($_FILES['logo']['error'] !== UPLOAD_ERR_OK) {
-                Session::flash('error', 'Te rog incarca un fisier valid.');
+            $storedPath = $this->storeBrandingLogoUpload($_FILES['logo'], 'logo');
+            if ($storedPath === null) {
                 Response::redirect('/admin/setari');
             }
-
-            $file = $_FILES['logo'];
-            $maxSize = 2 * 1024 * 1024;
-
-            if ($file['size'] > $maxSize) {
-                Session::flash('error', 'Logo-ul trebuie sa fie sub 2 MB.');
-                Response::redirect('/admin/setari');
-            }
-
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = $finfo ? finfo_file($finfo, $file['tmp_name']) : ($file['type'] ?? '');
-
-            if ($finfo) {
-                finfo_close($finfo);
-            }
-
-            $allowed = [
-                'image/png' => 'png',
-                'image/jpeg' => 'jpg',
-                'image/svg+xml' => 'svg',
-            ];
-
-            if (!array_key_exists($mime, $allowed)) {
-                Session::flash('error', 'Format logo invalid. Acceptam png, jpg sau svg.');
-                Response::redirect('/admin/setari');
-            }
-
-            $extension = $allowed[$mime];
-            $storageDir = BASE_PATH . '/storage/erp';
-            $publicDir = BASE_PATH . '/public/storage/erp';
-
-            if (!is_dir($storageDir)) {
-                mkdir($storageDir, 0775, true);
-            }
-
-            if (!is_dir($publicDir)) {
-                mkdir($publicDir, 0775, true);
-            }
-
-            $filename = 'logo.' . $extension;
-            $targetPath = $storageDir . '/' . $filename;
-
-            if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
-                Session::flash('error', 'Nu am putut salva fisierul incarcat.');
-                Response::redirect('/admin/setari');
-            }
-
-            foreach (['png', 'jpg', 'svg'] as $ext) {
-                if ($ext === $extension) {
-                    continue;
-                }
-
-                @unlink($storageDir . '/logo.' . $ext);
-                @unlink($publicDir . '/logo.' . $ext);
-            }
-
-            @copy($targetPath, $publicDir . '/' . $filename);
-
-            $this->settings->set('branding.logo_path', 'storage/erp/' . $filename);
+            $this->settings->set('branding.logo_path', $storedPath);
             $logoUpdated = true;
+        }
+        if (isset($_FILES['logo_dark']) && $_FILES['logo_dark']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $storedPath = $this->storeBrandingLogoUpload($_FILES['logo_dark'], 'logo-dark');
+            if ($storedPath === null) {
+                Response::redirect('/admin/setari');
+            }
+            $this->settings->set('branding.logo_dark_path', $storedPath);
+            $logoDarkUpdated = true;
         }
 
         $apiKey = trim($_POST['fgo_api_key'] ?? '');
@@ -167,7 +120,7 @@ class SettingsController
             'iban' => trim($_POST['company_iban'] ?? ''),
         ];
 
-        $savedSomething = $logoUpdated;
+        $savedSomething = $logoUpdated || $logoDarkUpdated;
 
         if ($apiKey !== '') {
             $this->settings->set('fgo.api_key', $apiKey);
@@ -223,6 +176,119 @@ class SettingsController
         }
 
         Response::redirect('/admin/setari');
+    }
+
+    private function resolveBrandingLogoUrl(string $logoPath): ?string
+    {
+        $logoPath = trim($logoPath);
+        if ($logoPath === '') {
+            return null;
+        }
+
+        $absolutePath = BASE_PATH . '/' . ltrim($logoPath, '/');
+        if (!file_exists($absolutePath)) {
+            return null;
+        }
+
+        return \App\Support\Url::asset($logoPath);
+    }
+
+    private function loadDocumentRegistrySettings(string $registryScope): array
+    {
+        $settings = [
+            'scope' => $registryScope,
+            'series' => '',
+            'start_no' => 1,
+            'next_no' => 1,
+            'updated_at' => '',
+            'available' => false,
+        ];
+        if (!Database::tableExists('document_registry')) {
+            return $settings;
+        }
+
+        try {
+            $numberService = new DocumentNumberService();
+            $row = $numberService->ensureRegistryRow('contract', [
+                'registry_scope' => $registryScope,
+            ]);
+            $startNo = max(1, (int) ($row['start_no'] ?? 1));
+            $nextNo = max($startNo, (int) ($row['next_no'] ?? $startNo));
+            $settings['series'] = trim((string) ($row['series'] ?? ''));
+            $settings['start_no'] = $startNo;
+            $settings['next_no'] = $nextNo;
+            $settings['updated_at'] = (string) ($row['updated_at'] ?? '');
+            $settings['available'] = true;
+        } catch (\Throwable $exception) {
+            $settings['available'] = false;
+        }
+
+        return $settings;
+    }
+
+    private function storeBrandingLogoUpload(array $file, string $baseName): ?string
+    {
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            Session::flash('error', 'Te rog incarca un fisier valid.');
+            return null;
+        }
+        $maxSize = 2 * 1024 * 1024;
+        if ((int) ($file['size'] ?? 0) > $maxSize) {
+            Session::flash('error', 'Logo-ul trebuie sa fie sub 2 MB.');
+            return null;
+        }
+
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            Session::flash('error', 'Te rog incarca un fisier valid.');
+            return null;
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo ? (string) finfo_file($finfo, $tmpName) : (string) ($file['type'] ?? '');
+        if ($finfo) {
+            finfo_close($finfo);
+        }
+
+        $allowed = [
+            'image/png' => 'png',
+            'image/jpeg' => 'jpg',
+            'image/svg+xml' => 'svg',
+        ];
+        if (!array_key_exists($mime, $allowed)) {
+            Session::flash('error', 'Format logo invalid. Acceptam png, jpg sau svg.');
+            return null;
+        }
+
+        $extension = $allowed[$mime];
+        $storageDir = BASE_PATH . '/storage/erp';
+        $publicDir = BASE_PATH . '/public/storage/erp';
+
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0775, true);
+        }
+        if (!is_dir($publicDir)) {
+            mkdir($publicDir, 0775, true);
+        }
+
+        $filename = $baseName . '.' . $extension;
+        $targetPath = $storageDir . '/' . $filename;
+        if (!move_uploaded_file($tmpName, $targetPath)) {
+            Session::flash('error', 'Nu am putut salva fisierul incarcat.');
+            return null;
+        }
+
+        foreach (['png', 'jpg', 'svg'] as $ext) {
+            if ($ext === $extension) {
+                continue;
+            }
+            @unlink($storageDir . '/' . $baseName . '.' . $ext);
+            @unlink($publicDir . '/' . $baseName . '.' . $ext);
+        }
+
+        @copy($targetPath, $publicDir . '/' . $filename);
+
+        return 'storage/erp/' . $filename;
     }
 
     public function generateDemo(): void
@@ -629,16 +695,6 @@ class SettingsController
                 @unlink($item);
             }
         }
-    }
-
-    public function manual(): void
-    {
-        Auth::requireAdmin();
-
-        Response::view('admin/manual', [
-            'version' => self::APP_VERSION,
-            'releases' => $this->readChangelog(),
-        ]);
     }
 
     public function changelog(): void
