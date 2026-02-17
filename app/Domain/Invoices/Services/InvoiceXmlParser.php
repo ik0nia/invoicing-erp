@@ -2,6 +2,8 @@
 
 namespace App\Domain\Invoices\Services;
 
+use App\Support\Logger;
+
 class InvoiceXmlParser
 {
     private const NS_INVOICE = 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2';
@@ -24,7 +26,7 @@ class InvoiceXmlParser
         if (!$xml) {
             $fallback = $this->parseByRegex($contents);
             if ($fallback !== null) {
-                return $fallback;
+                return $this->applyDiscountRedistribution($fallback);
             }
 
             $message = $this->libxmlErrorMessage();
@@ -127,7 +129,7 @@ class InvoiceXmlParser
             throw new \RuntimeException('XML nu contine suficiente date pentru prelucrare.' . ($message ? ' ' . $message : ''));
         }
 
-        return $data;
+        return $this->applyDiscountRedistribution($data);
     }
 
     private function stripBom(string $contents): string
@@ -643,6 +645,203 @@ class InvoiceXmlParser
         }
 
         return $base;
+    }
+
+    private function applyDiscountRedistribution(array $data): array
+    {
+        $rawLines = $data['lines'] ?? [];
+        if (!is_array($rawLines) || empty($rawLines)) {
+            return $data;
+        }
+
+        $lines = [];
+        $productIndexesByVat = [];
+        $discountIndexes = [];
+
+        foreach (array_values($rawLines) as $index => $line) {
+            if (!is_array($line)) {
+                continue;
+            }
+
+            $normalized = $this->normalizeLinePayload($line, $index + 1);
+            $isDiscount = $this->isDiscountLine($normalized);
+            $normalized['line_type'] = $isDiscount ? 'discount' : 'product';
+            $lines[] = $normalized;
+
+            if ($isDiscount) {
+                $discountIndexes[] = count($lines) - 1;
+                continue;
+            }
+
+            $vatKey = $this->vatKey((float) $normalized['tax_percent']);
+            $productIndexesByVat[$vatKey][] = count($lines) - 1;
+        }
+
+        if (empty($discountIndexes)) {
+            return $data;
+        }
+
+        foreach ($discountIndexes as $discountIndex) {
+            $discountLine = $lines[$discountIndex];
+            $vatKey = $this->vatKey((float) $discountLine['tax_percent']);
+            $targetIndexes = $productIndexesByVat[$vatKey] ?? [];
+
+            if (empty($targetIndexes)) {
+                Logger::logWarning('xml_discount_no_matching_vat_lines', [
+                    'invoice_number' => (string) ($data['invoice_number'] ?? ''),
+                    'discount_line_no' => (string) ($discountLine['line_no'] ?? ''),
+                    'discount_product_name' => (string) ($discountLine['product_name'] ?? ''),
+                    'discount_tax_percent' => (float) ($discountLine['tax_percent'] ?? 0),
+                    'discount_net' => (float) ($discountLine['line_total'] ?? 0),
+                ]);
+                continue;
+            }
+
+            $discountNet = abs((float) ($discountLine['line_total'] ?? 0));
+            if ($discountNet <= 0.00001) {
+                continue;
+            }
+
+            $shares = $this->splitAmountEqually($discountNet, count($targetIndexes));
+            foreach ($targetIndexes as $pos => $targetIndex) {
+                $share = (float) ($shares[$pos] ?? 0.0);
+                if ($share <= 0.0) {
+                    continue;
+                }
+
+                $targetLine = $lines[$targetIndex];
+                $adjustedNet = round((float) $targetLine['line_total'] - $share, 2);
+                $taxPercent = (float) ($targetLine['tax_percent'] ?? 0.0);
+                $adjustedGross = round($adjustedNet * (1 + ($taxPercent / 100)), 2);
+
+                $targetLine['line_total'] = $adjustedNet;
+                $targetLine['line_total_vat'] = $adjustedGross;
+
+                $qty = (float) ($targetLine['quantity'] ?? 0.0);
+                if (abs($qty) > 0.00001) {
+                    $targetLine['unit_price'] = round($adjustedNet / $qty, 6);
+                }
+
+                $lines[$targetIndex] = $targetLine;
+            }
+        }
+
+        $finalLines = [];
+        $sumNet = 0.0;
+        $sumGross = 0.0;
+
+        foreach ($lines as $line) {
+            if (($line['line_type'] ?? 'product') === 'discount') {
+                continue;
+            }
+
+            unset($line['line_type']);
+            $finalLines[] = $line;
+            $sumNet += (float) ($line['line_total'] ?? 0.0);
+            $sumGross += (float) ($line['line_total_vat'] ?? 0.0);
+        }
+
+        $data['lines'] = $finalLines;
+        $data['total_without_vat'] = round($sumNet, 2);
+        $data['total_with_vat'] = round($sumGross, 2);
+        $data['total_vat'] = round($data['total_with_vat'] - $data['total_without_vat'], 2);
+
+        return $data;
+    }
+
+    private function normalizeLinePayload(array $line, int $position): array
+    {
+        $lineNo = trim((string) ($line['line_no'] ?? ''));
+        if ($lineNo === '') {
+            $lineNo = (string) $position;
+        }
+
+        $productName = trim((string) ($line['product_name'] ?? ''));
+        $unitCode = trim((string) ($line['unit_code'] ?? ''));
+        if ($unitCode === '') {
+            $unitCode = 'BUC';
+        }
+
+        $quantity = (float) ($line['quantity'] ?? 0.0);
+        $lineTotal = (float) ($line['line_total'] ?? 0.0);
+        $taxPercent = (float) ($line['tax_percent'] ?? 0.0);
+        $lineTotalVat = isset($line['line_total_vat'])
+            ? (float) $line['line_total_vat']
+            : round($lineTotal * (1 + ($taxPercent / 100)), 2);
+
+        $unitPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : 0.0;
+        if (!isset($line['unit_price']) && abs($quantity) > 0.00001) {
+            $unitPrice = round($lineTotal / $quantity, 6);
+        }
+
+        return [
+            'line_no' => $lineNo,
+            'product_name' => $productName,
+            'quantity' => $quantity,
+            'unit_code' => $unitCode,
+            'unit_price' => $unitPrice,
+            'line_total' => round($lineTotal, 2),
+            'tax_percent' => $taxPercent,
+            'line_total_vat' => round($lineTotalVat, 2),
+        ];
+    }
+
+    private function isDiscountLine(array $line): bool
+    {
+        $lineTotal = (float) ($line['line_total'] ?? 0.0);
+        $lineTotalVat = (float) ($line['line_total_vat'] ?? 0.0);
+        if ($lineTotal >= -0.00001 && $lineTotalVat >= -0.00001) {
+            return false;
+        }
+
+        $name = $this->normalizeDiscountText((string) ($line['product_name'] ?? ''));
+        if ($name === '') {
+            return false;
+        }
+
+        if (str_contains($name, 'discount') || str_contains($name, 'reduc')) {
+            return true;
+        }
+
+        return preg_match('/\bdisc[a-z]*/', $name) === 1;
+    }
+
+    private function normalizeDiscountText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            return mb_strtolower($value, 'UTF-8');
+        }
+
+        return strtolower($value);
+    }
+
+    private function vatKey(float $vatPercent): string
+    {
+        return number_format($vatPercent, 2, '.', '');
+    }
+
+    private function splitAmountEqually(float $amount, int $parts): array
+    {
+        if ($parts <= 0 || $amount <= 0) {
+            return [];
+        }
+
+        $totalCents = max(0, (int) round($amount * 100));
+        $baseCents = intdiv($totalCents, $parts);
+        $remainder = $totalCents % $parts;
+        $shares = [];
+
+        for ($i = 0; $i < $parts; $i++) {
+            $shareCents = $baseCents + ($i < $remainder ? 1 : 0);
+            $shares[] = $shareCents / 100;
+        }
+
+        return $shares;
     }
 
     private function domValue(\DOMXPath $xpath, string $query, ?\DOMNode $context = null): ?string
