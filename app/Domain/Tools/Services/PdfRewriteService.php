@@ -888,6 +888,11 @@ class PdfRewriteService
                 continue;
             }
 
+            $inline = $this->extractInlineValueAfterLabel($line, $labelRegex, $valueRegex);
+            if ($inline !== '') {
+                return $inline;
+            }
+
             for ($j = $i; $j < min($i + 4, $count); $j++) {
                 $candidate = trim((string) $lines[$j]);
                 if ($candidate === '' || preg_match($labelRegex, $candidate) === 1) {
@@ -905,6 +910,39 @@ class PdfRewriteService
         return '';
     }
 
+    private function extractInlineValueAfterLabel(string $line, string $labelRegex, string $valueRegex): string
+    {
+        $candidate = trim($line);
+        if ($candidate === '') {
+            return '';
+        }
+
+        for ($pass = 0; $pass < 3; $pass++) {
+            if (preg_match($labelRegex, $candidate) !== 1) {
+                break;
+            }
+            $updated = preg_replace('/^[^:]+:\s*/u', '', $candidate, 1);
+            if (!is_string($updated) || $updated === $candidate) {
+                break;
+            }
+            $candidate = trim($updated);
+        }
+
+        if ($candidate === '') {
+            return '';
+        }
+
+        if ($valueRegex === '/.+/') {
+            return $candidate;
+        }
+
+        if (preg_match($valueRegex, $candidate, $match) === 1) {
+            return trim((string) ($match[0] ?? ''));
+        }
+
+        return '';
+    }
+
     private function parseItems(array $lines): array
     {
         $headerIndex = $this->findItemsHeaderIndex($lines);
@@ -912,7 +950,7 @@ class PdfRewriteService
             return [];
         }
 
-        $numericRows = $this->parseNumericRows($lines);
+        $numericRows = $this->parseNumericRows($lines, $headerIndex);
         $productRows = $this->parseProductRows($lines, $headerIndex);
         $items = [];
 
@@ -1006,33 +1044,63 @@ class PdfRewriteService
         return -1;
     }
 
-    private function parseNumericRows(array $lines): array
+    private function parseNumericRows(array $lines, int $headerIndex): array
     {
+        $tokenStream = [];
         $rows = [];
-        foreach ($lines as $lineRaw) {
-            $line = trim((string) $lineRaw);
+        $limit = $headerIndex > 0 ? min($headerIndex, count($lines)) : count($lines);
+        for ($i = 0; $i < $limit; $i++) {
+            $line = trim((string) $lines[$i]);
             if ($line === '') {
                 continue;
             }
 
-            if (preg_match('/\(([0-9]+(?:[\.,][0-9]+)?)%\)/', $line, $vatMatch) !== 1) {
+            $combined = $this->parseCombinedNumericRow($line);
+            if ($combined !== null) {
+                $rows[] = $combined;
                 continue;
             }
 
-            $withoutPercent = preg_replace('/\([0-9]+(?:[\.,][0-9]+)?%\)/', ' ', $line) ?? $line;
-            $tokens = $this->extractNumberTokens($withoutPercent);
-            if (count($tokens) < 5) {
+            if (preg_match('/^\(([0-9]+(?:[\.,][0-9]+)?)%\)$/', $line, $vatMatch) === 1) {
+                $tokenStream[] = [
+                    'type' => 'vat',
+                    'value' => $this->toFloat((string) $vatMatch[1]),
+                ];
+                continue;
+            }
+
+            $scalar = $this->parseScalarNumber($line);
+            if ($scalar !== null) {
+                $tokenStream[] = [
+                    'type' => 'num',
+                    'value' => $scalar,
+                ];
+            }
+        }
+
+        $count = count($tokenStream);
+        for ($i = 0; $i + 5 < $count; $i++) {
+            $window = array_slice($tokenStream, $i, 6);
+            if (
+                ($window[0]['type'] ?? '') !== 'num'
+                || ($window[1]['type'] ?? '') !== 'num'
+                || ($window[2]['type'] ?? '') !== 'num'
+                || ($window[3]['type'] ?? '') !== 'vat'
+                || ($window[4]['type'] ?? '') !== 'num'
+                || ($window[5]['type'] ?? '') !== 'num'
+            ) {
                 continue;
             }
 
             $rows[] = [
-                'quantity' => (float) $tokens[0],
-                'unit_price' => (float) $tokens[1],
-                'total_without_vat' => (float) $tokens[2],
-                'vat_percent' => $this->toFloat((string) $vatMatch[1]),
-                'vat_value' => (float) $tokens[3],
-                'total_with_vat' => (float) $tokens[4],
+                'quantity' => (float) $window[0]['value'],
+                'unit_price' => (float) $window[1]['value'],
+                'total_without_vat' => (float) $window[2]['value'],
+                'vat_percent' => (float) $window[3]['value'],
+                'vat_value' => (float) $window[4]['value'],
+                'total_with_vat' => (float) $window[5]['value'],
             ];
+            $i += 5;
         }
 
         return $rows;
@@ -1055,40 +1123,114 @@ class PdfRewriteService
                 break;
             }
 
-            $parts = preg_split('/\s+/', $line) ?: [];
-            if (count($parts) < 3) {
-                continue;
+            if (preg_match('/^(\d+)\s+(.+?)\s+([A-Za-z0-9]{2,})$/', $line, $singleLineMatch) === 1) {
+                $positionNo = (int) $singleLineMatch[1];
+                $name = $this->normalizeSpacing(trim((string) $singleLineMatch[2]));
+                $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', (string) $singleLineMatch[3]) ?? ''));
+                if ($positionNo > 0 && $name !== '' && !$this->isReservedProductLabel($name) && $this->isUnitToken($unit)) {
+                    $rows[$positionNo] = ['name' => $name, 'unit' => $unit];
+                    continue;
+                }
             }
 
-            $first = trim((string) array_shift($parts));
-            if ($first === '' || ctype_digit($first) !== true) {
+            if (ctype_digit($line) !== true) {
                 continue;
             }
-            $positionNo = (int) $first;
+            $positionNo = (int) $line;
             if ($positionNo <= 0) {
                 continue;
             }
 
-            $unitRaw = trim((string) array_pop($parts));
-            $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
-            if ($unit === '' || !$this->isUnitToken($unit)) {
+            $nameIndex = $this->nextNonEmptyLineIndex($lines, $i + 1, $count);
+            if ($nameIndex === null) {
+                break;
+            }
+            $nameLine = trim((string) $lines[$nameIndex]);
+            if ($this->isItemsStopLine($nameLine)) {
+                break;
+            }
+            if ($nameLine === '' || $this->isReservedProductLabel($nameLine)) {
+                $i = $nameIndex;
                 continue;
             }
 
-            $name = trim(implode(' ', $parts));
-            $name = $this->normalizeSpacing($name);
-            if ($name === '' || $this->isReservedProductLabel($name)) {
+            $unitIndex = $this->nextNonEmptyLineIndex($lines, $nameIndex + 1, $count);
+            if ($unitIndex === null) {
+                break;
+            }
+            $unitRaw = trim((string) $lines[$unitIndex]);
+            if ($this->isItemsStopLine($unitRaw)) {
+                break;
+            }
+            $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
+            if (!$this->isUnitToken($unit)) {
+                $i = $nameIndex;
                 continue;
             }
 
             $rows[$positionNo] = [
-                'name' => $name,
+                'name' => $this->normalizeSpacing($nameLine),
                 'unit' => $unit,
             ];
+            $i = $unitIndex;
         }
 
         ksort($rows);
         return $rows;
+    }
+
+    private function parseCombinedNumericRow(string $line): ?array
+    {
+        if (preg_match('/\(([0-9]+(?:[\.,][0-9]+)?)%\)/', $line, $vatMatch) !== 1) {
+            return null;
+        }
+        $withoutPercent = preg_replace('/\([0-9]+(?:[\.,][0-9]+)?%\)/', ' ', $line) ?? $line;
+        $tokens = $this->extractNumberTokens($withoutPercent);
+        if (count($tokens) < 5) {
+            return null;
+        }
+
+        return [
+            'quantity' => (float) $tokens[0],
+            'unit_price' => (float) $tokens[1],
+            'total_without_vat' => (float) $tokens[2],
+            'vat_percent' => $this->toFloat((string) $vatMatch[1]),
+            'vat_value' => (float) $tokens[3],
+            'total_with_vat' => (float) $tokens[4],
+        ];
+    }
+
+    private function parseScalarNumber(string $line): ?float
+    {
+        if (preg_match('/^(\d+(?:\s\d{3})*(?:[\.,]\d+)?)(?:\s*Lei)?$/iu', $line, $match) !== 1) {
+            return null;
+        }
+
+        return $this->toFloat((string) $match[1]);
+    }
+
+    private function nextNonEmptyLineIndex(array $lines, int $start, int $count): ?int
+    {
+        for ($index = $start; $index < $count; $index++) {
+            if (trim((string) $lines[$index]) !== '') {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function isItemsStopLine(string $line): bool
+    {
+        $trimmed = trim($line);
+        if ($trimmed === '') {
+            return false;
+        }
+        if (preg_match('/^Total\b/i', $trimmed) === 1 || strtoupper($trimmed) === 'TOTAL') {
+            return true;
+        }
+
+        return false;
     }
 
     private function extractNumberTokens(string $text): array
@@ -1247,12 +1389,30 @@ class PdfRewriteService
             'vat_percent' => 0.0,
         ];
 
-        foreach ($lines as $line) {
-            $trimmed = trim((string) $line);
+        $lineCount = count($lines);
+        for ($i = 0; $i < $lineCount; $i++) {
+            $trimmed = trim((string) $lines[$i]);
             if ($trimmed === '' || preg_match('/^Total\b/i', $trimmed) !== 1) {
                 continue;
             }
+
             $numberTokens = $this->extractNumberTokens($trimmed);
+            if (count($numberTokens) < 3) {
+                for ($j = $i + 1; $j < min($lineCount, $i + 6); $j++) {
+                    $scalar = $this->parseScalarNumber(trim((string) $lines[$j]));
+                    if ($scalar === null) {
+                        if ($this->isItemsStopLine((string) $lines[$j])) {
+                            break;
+                        }
+                        continue;
+                    }
+                    $numberTokens[] = $scalar;
+                    if (count($numberTokens) >= 3) {
+                        break;
+                    }
+                }
+            }
+
             if (count($numberTokens) >= 3) {
                 $totals['without_vat'] = (float) $numberTokens[0];
                 $totals['vat'] = (float) $numberTokens[1];
