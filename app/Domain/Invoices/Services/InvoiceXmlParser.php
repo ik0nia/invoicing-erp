@@ -666,6 +666,8 @@ class InvoiceXmlParser
             $normalized = $this->normalizeLinePayload($line, $index + 1);
             $isDiscount = $this->isDiscountLine($normalized);
             $normalized['line_type'] = $isDiscount ? 'discount' : 'product';
+            $normalized['cost_line_total'] = (float) $normalized['line_total'];
+            $normalized['cost_line_total_vat'] = (float) $normalized['line_total_vat'];
             $lines[] = $normalized;
 
             if ($isDiscount) {
@@ -675,10 +677,6 @@ class InvoiceXmlParser
 
             $vatKey = $this->vatKey((float) $normalized['tax_percent']);
             $productIndexesByVat[$vatKey][] = count($lines) - 1;
-        }
-
-        if (empty($discountIndexes)) {
-            return $data;
         }
 
         foreach ($discountIndexes as $discountIndex) {
@@ -710,26 +708,18 @@ class InvoiceXmlParser
                 }
 
                 $targetLine = $lines[$targetIndex];
-                $adjustedNet = round((float) $targetLine['line_total'] - $share, 2);
+                $adjustedNet = round((float) $targetLine['cost_line_total'] - $share, 2);
                 $taxPercent = (float) ($targetLine['tax_percent'] ?? 0.0);
                 $adjustedGross = round($adjustedNet * (1 + ($taxPercent / 100)), 2);
 
-                $targetLine['line_total'] = $adjustedNet;
-                $targetLine['line_total_vat'] = $adjustedGross;
-
-                $qty = (float) ($targetLine['quantity'] ?? 0.0);
-                if (abs($qty) > 0.00001) {
-                    $targetLine['unit_price'] = round($adjustedNet / $qty, 6);
-                }
+                $targetLine['cost_line_total'] = $adjustedNet;
+                $targetLine['cost_line_total_vat'] = $adjustedGross;
 
                 $lines[$targetIndex] = $targetLine;
             }
         }
 
         $finalLines = [];
-        $sumNet = 0.0;
-        $sumGross = 0.0;
-
         foreach ($lines as $line) {
             if (($line['line_type'] ?? 'product') === 'discount') {
                 continue;
@@ -737,14 +727,9 @@ class InvoiceXmlParser
 
             unset($line['line_type']);
             $finalLines[] = $line;
-            $sumNet += (float) ($line['line_total'] ?? 0.0);
-            $sumGross += (float) ($line['line_total_vat'] ?? 0.0);
         }
 
         $data['lines'] = $finalLines;
-        $data['total_without_vat'] = round($sumNet, 2);
-        $data['total_with_vat'] = round($sumGross, 2);
-        $data['total_vat'] = round($data['total_with_vat'] - $data['total_without_vat'], 2);
 
         return $data;
     }
@@ -783,6 +768,8 @@ class InvoiceXmlParser
             'line_total' => round($lineTotal, 2),
             'tax_percent' => $taxPercent,
             'line_total_vat' => round($lineTotalVat, 2),
+            'cost_line_total' => round($lineTotal, 2),
+            'cost_line_total_vat' => round($lineTotalVat, 2),
         ];
     }
 

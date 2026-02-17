@@ -30,8 +30,13 @@ class PackageTotalsService
             ];
         }
 
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
+        $costNetSelect = $hasCostNet ? ', cost_line_total' : '';
+        $costGrossSelect = $hasCostGross ? ', cost_line_total_vat' : '';
+
         $rows = Database::fetchAll(
-            'SELECT product_name, line_total, line_total_vat
+            'SELECT product_name, line_total, line_total_vat' . $costNetSelect . $costGrossSelect . '
              FROM invoice_in_lines
              WHERE package_id = :id',
             ['id' => $packageId]
@@ -45,9 +50,11 @@ class PackageTotalsService
                 continue;
             }
 
+            $effectiveNet = $this->effectiveNet($row);
+            $effectiveGross = $this->effectiveGross($row);
             $lineCount++;
-            $sumNet += (float) ($row['line_total'] ?? 0);
-            $sumGross += (float) ($row['line_total_vat'] ?? 0);
+            $sumNet += $effectiveNet;
+            $sumGross += $effectiveGross;
         }
 
         return [
@@ -69,8 +76,13 @@ class PackageTotalsService
             ];
         }
 
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
+        $costNetSelect = $hasCostNet ? ', cost_line_total' : '';
+        $costGrossSelect = $hasCostGross ? ', cost_line_total_vat' : '';
+
         $rows = Database::fetchAll(
-            'SELECT product_name, line_total, line_total_vat
+            'SELECT product_name, line_total, line_total_vat' . $costNetSelect . $costGrossSelect . '
              FROM invoice_in_lines
              WHERE invoice_in_id = :id',
             ['id' => $invoiceId]
@@ -84,9 +96,11 @@ class PackageTotalsService
                 continue;
             }
 
+            $effectiveNet = $this->effectiveNet($row);
+            $effectiveGross = $this->effectiveGross($row);
             $lineCount++;
-            $sumNet += (float) ($row['line_total'] ?? 0);
-            $sumGross += (float) ($row['line_total_vat'] ?? 0);
+            $sumNet += $effectiveNet;
+            $sumGross += $effectiveGross;
         }
 
         return [
@@ -95,6 +109,24 @@ class PackageTotalsService
             'vat_percent' => 0.0,
             'line_count' => $lineCount,
         ];
+    }
+
+    private function effectiveNet(array $row): float
+    {
+        if (array_key_exists('cost_line_total', $row) && $row['cost_line_total'] !== null) {
+            return (float) $row['cost_line_total'];
+        }
+
+        return (float) ($row['line_total'] ?? 0.0);
+    }
+
+    private function effectiveGross(array $row): float
+    {
+        if (array_key_exists('cost_line_total_vat', $row) && $row['cost_line_total_vat'] !== null) {
+            return (float) $row['cost_line_total_vat'];
+        }
+
+        return (float) ($row['line_total_vat'] ?? 0.0);
     }
 
     private function isDiscountLine(array $line): bool

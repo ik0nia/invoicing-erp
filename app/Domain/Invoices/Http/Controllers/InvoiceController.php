@@ -75,6 +75,11 @@ class InvoiceController
             $lines = InvoiceInLine::forInvoice($invoiceId);
             $packages = Package::forInvoice($invoiceId);
             $packageStats = $this->packageStats($lines, $packages);
+            $packageGrossTotal = 0.0;
+            foreach ($packageStats as $stat) {
+                $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
+            }
+            $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
@@ -124,6 +129,10 @@ class InvoiceController
                     }
                 }
             }
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                // Discount invoices are sold at product price; configured client commission is ignored.
+                $commissionPercent = 0.0;
+            }
 
             $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
             $collectedTotal = 0.0;
@@ -170,7 +179,12 @@ class InvoiceController
             }
 
             $commissionBase = $invoice->commission_percent ?? $commissionPercent;
-            if ($commissionBase !== null) {
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                $commissionBase = 0.0;
+            }
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                $clientTotal = round($packageGrossTotal, 2);
+            } elseif ($commissionBase !== null) {
                 $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
             }
             $canRefacereInvoice = $this->canRefacereInvoice($user);
@@ -214,6 +228,7 @@ class InvoiceController
                 'canRefacereInvoice' => $canRefacereInvoice,
                 'refacerePackages' => $refacerePackages,
                 'invoiceAdjustments' => $invoiceAdjustments,
+                'hasDiscountPricing' => $hasDiscountPricing,
             ]);
         }
 
@@ -2028,21 +2043,6 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($clientCui));
         }
 
-        $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-        if (!$commission) {
-            Session::flash('error', 'Nu exista comision pentru acest client.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
-        }
-
-        Database::execute(
-            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
-            [
-                'commission' => $commission->commission,
-                'now' => date('Y-m-d H:i:s'),
-                'id' => $invoice->id,
-            ]
-        );
-
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packages = Package::forInvoice($invoiceId);
         if (empty($packages)) {
@@ -2051,6 +2051,31 @@ class InvoiceController
         }
 
         $packageStats = $this->packageStats($lines, $packages);
+        $packageGrossTotal = 0.0;
+        foreach ($packageStats as $stat) {
+            $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
+        }
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+
+        $commissionPercent = 0.0;
+        if (!$hasDiscountPricing) {
+            $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+            if (!$commission) {
+                Session::flash('error', 'Nu exista comision pentru acest client.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+            }
+            $commissionPercent = (float) $commission->commission;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+            [
+                'commission' => $hasDiscountPricing ? 0.0 : $commissionPercent,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
         $content = [];
 
         foreach ($packages as $package) {
@@ -2059,7 +2084,9 @@ class InvoiceController
             }
 
             $stat = $packageStats[$package->id];
-            $total = $this->commissionService->applyCommission($stat['total_vat'], $commission->commission);
+            $total = $hasDiscountPricing
+                ? round((float) ($stat['total_vat'] ?? 0.0), 2)
+                : $this->commissionService->applyCommission((float) ($stat['total_vat'] ?? 0.0), $commissionPercent);
 
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
@@ -2608,16 +2635,20 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($selectedClientCui));
         }
 
-        $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
-            ? (float) $adjustment['commission_percent']
-            : null;
-        if ($commissionPercent === null) {
-            $commission = Commission::forSupplierClient($invoice->supplier_cui, $selectedClientCui);
-            if (!$commission) {
-                Session::flash('error', 'Nu exista comision pentru acest client.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
+        $commissionPercent = 0.0;
+        if (!$hasDiscountPricing) {
+            $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
+                ? (float) $adjustment['commission_percent']
+                : null;
+            if ($commissionPercent === null) {
+                $commission = Commission::forSupplierClient($invoice->supplier_cui, $selectedClientCui);
+                if (!$commission) {
+                    Session::flash('error', 'Nu exista comision pentru acest client.');
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+                }
+                $commissionPercent = (float) $commission->commission;
             }
-            $commissionPercent = (float) $commission->commission;
         }
 
         $packageIds = [];
@@ -2638,7 +2669,9 @@ class InvoiceController
         }
 
         $packagesById = $this->fetchPackagesByIds($packageIds);
-        $totalsByPackage = $this->packageTotalsForIds($packageIds);
+        $totalsByPackage = $hasDiscountPricing
+            ? $this->packageSalesTotalsForIds($packageIds)
+            : $this->packageTotalsForIds($packageIds);
         $content = [];
         foreach (['storno_package_id', 'replacement_package_id'] as $column) {
             foreach ($adjustmentRows as $row) {
@@ -2651,7 +2684,9 @@ class InvoiceController
                 if (abs($packageTotalVat) < 0.0001) {
                     continue;
                 }
-                $packageClientTotal = $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
+                $packageClientTotal = $hasDiscountPricing
+                    ? round($packageTotalVat, 2)
+                    : $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
                 $label = $this->packageLabel($package);
                 $content[] = [
                     'Denumire' => $label,
@@ -2836,21 +2871,36 @@ class InvoiceController
 
         $unitPrice = (float) $line->unit_price;
         $taxPercent = (float) $line->tax_percent;
+        $costUnitPrice = null;
+        if ($line->cost_line_total !== null && $currentQty > 0.00001) {
+            $costUnitPrice = (float) $line->cost_line_total / $currentQty;
+        }
 
         $remainingTotal = round($remainingQty * $unitPrice, 2);
         $remainingTotalVat = round($remainingTotal * (1 + $taxPercent / 100), 2);
+        $remainingCostTotal = $costUnitPrice !== null ? round($remainingQty * $costUnitPrice, 2) : null;
+        $remainingCostTotalVat = $remainingCostTotal !== null
+            ? round($remainingCostTotal * (1 + $taxPercent / 100), 2)
+            : null;
 
         $splitTotal = round($splitQty * $unitPrice, 2);
         $splitTotalVat = round($splitTotal * (1 + $taxPercent / 100), 2);
+        $splitCostTotal = $costUnitPrice !== null ? round($splitQty * $costUnitPrice, 2) : null;
+        $splitCostTotalVat = $splitCostTotal !== null
+            ? round($splitCostTotal * (1 + $taxPercent / 100), 2)
+            : null;
 
         Database::execute(
             'UPDATE invoice_in_lines
-             SET quantity = :qty, line_total = :total, line_total_vat = :total_vat
+             SET quantity = :qty, line_total = :total, line_total_vat = :total_vat,
+                 cost_line_total = :cost_total, cost_line_total_vat = :cost_total_vat
              WHERE id = :id',
             [
                 'qty' => $remainingQty,
                 'total' => $remainingTotal,
                 'total_vat' => $remainingTotalVat,
+                'cost_total' => $remainingCostTotal,
+                'cost_total_vat' => $remainingCostTotalVat,
                 'id' => $line->id,
             ]
         );
@@ -2876,6 +2926,8 @@ class InvoiceController
                 line_total,
                 tax_percent,
                 line_total_vat,
+                cost_line_total,
+                cost_line_total_vat,
                 package_id,
                 created_at
             ) VALUES (
@@ -2888,6 +2940,8 @@ class InvoiceController
                 :line_total,
                 :tax_percent,
                 :line_total_vat,
+                :cost_line_total,
+                :cost_line_total_vat,
                 :package_id,
                 :created_at
             )',
@@ -2901,6 +2955,8 @@ class InvoiceController
                 'line_total' => $splitTotal,
                 'tax_percent' => $taxPercent,
                 'line_total_vat' => $splitTotalVat,
+                'cost_line_total' => $splitCostTotal,
+                'cost_line_total_vat' => $splitCostTotalVat,
                 'package_id' => $line->package_id,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -3564,6 +3620,8 @@ class InvoiceController
                     line_total DECIMAL(12,2) NOT NULL DEFAULT 0,
                     tax_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
                     line_total_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    cost_line_total DECIMAL(12,2) NULL,
+                    cost_line_total_vat DECIMAL(12,2) NULL,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
             );
@@ -3692,6 +3750,12 @@ class InvoiceController
         }
         if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'stock_saga')) {
             Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN stock_saga DECIMAL(12,3) NULL AFTER cod_saga');
+        }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cost_line_total')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cost_line_total DECIMAL(12,2) NULL AFTER line_total_vat');
+        }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cost_line_total_vat')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cost_line_total_vat DECIMAL(12,2) NULL AFTER cost_line_total');
         }
         if (!Database::tableExists('saga_products')) {
             Database::execute(
@@ -4672,17 +4736,9 @@ class InvoiceController
 
     private function recalculateInvoiceTotals(int $invoiceId, string $now): array
     {
-        $totals = Database::fetchOne(
-            'SELECT
-                COALESCE(SUM(line_total), 0) AS total_without_vat,
-                COALESCE(SUM(line_total_vat), 0) AS total_with_vat
-             FROM invoice_in_lines
-             WHERE invoice_in_id = :invoice',
-            ['invoice' => $invoiceId]
-        ) ?? [];
-
-        $totalWithoutVat = round((float) ($totals['total_without_vat'] ?? 0.0), 2);
-        $totalWithVat = round((float) ($totals['total_with_vat'] ?? 0.0), 2);
+        $totals = $this->packageTotalsService->calculateInvoiceTotals($invoiceId);
+        $totalWithoutVat = round((float) ($totals['sum_net'] ?? 0.0), 2);
+        $totalWithVat = round((float) ($totals['sum_gross'] ?? 0.0), 2);
         $totalVat = round($totalWithVat - $totalWithoutVat, 2);
 
         Database::execute(
@@ -4911,6 +4967,58 @@ class InvoiceController
         }
 
         return $totals;
+    }
+
+    private function packageSalesTotalsForIds(array $packageIds): array
+    {
+        if (empty($packageIds) || !Database::tableExists('invoice_in_lines')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($packageIds) as $index => $packageId) {
+            $key = 'p' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = (int) $packageId;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id,
+                    COUNT(*) AS line_count,
+                    COALESCE(SUM(line_total), 0) AS total,
+                    COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE package_id IN (' . implode(',', $placeholders) . ')
+             GROUP BY package_id',
+            $params
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $totals[(int) ($row['package_id'] ?? 0)] = [
+                'line_count' => (int) ($row['line_count'] ?? 0),
+                'total' => (float) ($row['total'] ?? 0),
+                'total_vat' => (float) ($row['total_vat'] ?? 0),
+            ];
+        }
+
+        return $totals;
+    }
+
+    private function invoiceHasDiscountPricing(InvoiceIn $invoice, ?float $salesGrossTotal = null): bool
+    {
+        $invoiceGross = (float) ($invoice->total_with_vat ?? 0.0);
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = (float) Database::fetchValue(
+                'SELECT COALESCE(SUM(line_total_vat), 0)
+                 FROM invoice_in_lines
+                 WHERE invoice_in_id = :invoice',
+                ['invoice' => (int) $invoice->id]
+            );
+        }
+
+        return $salesGrossTotal > ($invoiceGross + 0.009);
     }
 
     private function ensurePackageAutoIncrement(): void

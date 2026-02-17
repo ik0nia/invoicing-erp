@@ -18,6 +18,8 @@ class InvoiceInLine
     public float $line_total;
     public float $tax_percent;
     public float $line_total_vat;
+    public ?float $cost_line_total = null;
+    public ?float $cost_line_total_vat = null;
     public ?int $package_id;
 
     public static function create(int $invoiceId, array $data): void
@@ -33,6 +35,8 @@ class InvoiceInLine
                 line_total,
                 tax_percent,
                 line_total_vat,
+                cost_line_total,
+                cost_line_total_vat,
                 package_id,
                 created_at
             ) VALUES (
@@ -45,6 +49,8 @@ class InvoiceInLine
                 :line_total,
                 :tax_percent,
                 :line_total_vat,
+                :cost_line_total,
+                :cost_line_total_vat,
                 :package_id,
                 :created_at
             )',
@@ -58,6 +64,8 @@ class InvoiceInLine
                 'line_total' => $data['line_total'],
                 'tax_percent' => $data['tax_percent'],
                 'line_total_vat' => $data['line_total_vat'],
+                'cost_line_total' => $data['cost_line_total'] ?? null,
+                'cost_line_total_vat' => $data['cost_line_total_vat'] ?? null,
                 'package_id' => $data['package_id'] ?? null,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -131,6 +139,12 @@ class InvoiceInLine
         $line->line_total = (float) $row['line_total'];
         $line->tax_percent = (float) $row['tax_percent'];
         $line->line_total_vat = (float) $row['line_total_vat'];
+        $line->cost_line_total = array_key_exists('cost_line_total', $row) && $row['cost_line_total'] !== null
+            ? (float) $row['cost_line_total']
+            : null;
+        $line->cost_line_total_vat = array_key_exists('cost_line_total_vat', $row) && $row['cost_line_total_vat'] !== null
+            ? (float) $row['cost_line_total_vat']
+            : null;
         $line->package_id = $row['package_id'] !== null ? (int) $row['package_id'] : null;
 
         return $line;
