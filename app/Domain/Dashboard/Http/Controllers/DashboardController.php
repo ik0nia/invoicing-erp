@@ -9,6 +9,8 @@ use App\Support\Response;
 
 class DashboardController
 {
+    private array $invoiceSalesGrossCache = [];
+
     public function index(): void
     {
         Auth::requireLogin();
@@ -169,7 +171,7 @@ class DashboardController
             }
 
             $monthIssuedRows = Database::fetchAll(
-                'SELECT supplier_cui, selected_client_cui, commission_percent, total_with_vat,
+                'SELECT id, supplier_cui, selected_client_cui, commission_percent, total_with_vat,
                         COALESCE(fgo_date, issue_date) AS invoice_date, fgo_number
                  FROM invoices_in
                  WHERE COALESCE(fgo_date, issue_date) BETWEEN :start AND :end
@@ -404,17 +406,36 @@ class DashboardController
 
     private function resolveCommission(array $row, array $commissionMap): float
     {
-        if (isset($row['commission_percent']) && $row['commission_percent'] !== null) {
-            return (float) $row['commission_percent'];
+        $commission = isset($row['commission_percent']) && $row['commission_percent'] !== null
+            ? (float) $row['commission_percent']
+            : null;
+
+        if ($commission === null) {
+            $supplier = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+            $client = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
+            if ($supplier !== '' && $client !== '' && isset($commissionMap[$supplier][$client])) {
+                $commission = (float) $commissionMap[$supplier][$client];
+            }
         }
 
-        $supplier = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
-        $client = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
-        if ($supplier !== '' && $client !== '' && isset($commissionMap[$supplier][$client])) {
-            return (float) $commissionMap[$supplier][$client];
+        $discountCommission = $this->discountCommissionForInvoiceRow($row);
+        if ($discountCommission !== null) {
+            $invoiceId = (int) ($row['id'] ?? 0);
+            if ($invoiceId > 0 && ($commission === null || abs($commission - $discountCommission) >= 0.000001)) {
+                Database::execute(
+                    'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                    [
+                        'commission' => $discountCommission,
+                        'now' => date('Y-m-d H:i:s'),
+                        'id' => $invoiceId,
+                    ]
+                );
+            }
+
+            return $discountCommission;
         }
 
-        return 0.0;
+        return (float) ($commission ?? 0.0);
     }
 
     private function applyCommission(float $amount, float $percent): float
@@ -425,5 +446,45 @@ class DashboardController
         }
 
         return round($amount / $factor, 2);
+    }
+
+    private function discountCommissionForInvoiceRow(array $row): ?float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_in_lines')) {
+            return null;
+        }
+
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceGross <= 0.0) {
+            return null;
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($salesGross <= ($invoiceGross + 0.009)) {
+            return null;
+        }
+
+        $percent = (($salesGross / $invoiceGross) - 1.0) * 100.0;
+        if ($percent <= 0.0) {
+            return null;
+        }
+
+        return round($percent, 6);
+    }
+
+    private function invoiceSalesGrossTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesGrossCache[$invoiceId])) {
+            return (float) $this->invoiceSalesGrossCache[$invoiceId];
+        }
+
+        $value = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0) FROM invoice_in_lines WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+        $this->invoiceSalesGrossCache[$invoiceId] = $value;
+
+        return $value;
     }
 }

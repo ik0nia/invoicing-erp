@@ -81,6 +81,9 @@ class InvoiceController
                 $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
             }
             $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+            if ($hasDiscountPricing) {
+                $this->syncDiscountCommissionPercent($invoice, $packageGrossTotal);
+            }
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
@@ -1578,6 +1581,10 @@ class InvoiceController
         }
 
         $this->generatePackages($invoice->id);
+        $invoiceFresh = InvoiceIn::find($invoice->id);
+        if ($invoiceFresh && $this->invoiceHasDiscountPricing($invoiceFresh)) {
+            $this->syncDiscountCommissionPercent($invoiceFresh);
+        }
         $this->invoiceAuditService->recordImportXml($invoice);
 
         Session::flash('status', 'Factura a fost importata.');
@@ -2058,8 +2065,9 @@ class InvoiceController
         }
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
 
-        $commissionPercent = 0.0;
-        if (!$hasDiscountPricing) {
+        if ($hasDiscountPricing) {
+            $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $packageGrossTotal);
+        } else {
             $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
             if (!$commission) {
                 Session::flash('error', 'Nu exista comision pentru acest client.');
@@ -2071,7 +2079,7 @@ class InvoiceController
         Database::execute(
             'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
             [
-                'commission' => $hasDiscountPricing ? 0.0 : $commissionPercent,
+                'commission' => $commissionPercent,
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoice->id,
             ]
@@ -5034,6 +5042,55 @@ class InvoiceController
         return $value;
     }
 
+    private function discountPricingCommissionPercent(float $invoiceGrossTotal, float $salesGrossTotal): float
+    {
+        if ($invoiceGrossTotal <= 0.0 || $salesGrossTotal <= 0.0) {
+            return 0.0;
+        }
+        if ($salesGrossTotal <= ($invoiceGrossTotal + 0.009)) {
+            return 0.0;
+        }
+
+        $percent = (($salesGrossTotal / $invoiceGrossTotal) - 1.0) * 100.0;
+
+        return round($percent, 6);
+    }
+
+    private function syncDiscountCommissionPercent(InvoiceIn $invoice, ?float $salesGrossTotal = null): ?float
+    {
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        }
+        if (!$this->invoiceHasDiscountPricing($invoice, $salesGrossTotal)) {
+            return null;
+        }
+
+        $commissionPercent = $this->discountPricingCommissionPercent(
+            (float) ($invoice->total_with_vat ?? 0.0),
+            (float) $salesGrossTotal
+        );
+        if ($commissionPercent <= 0.0) {
+            return null;
+        }
+
+        $currentCommission = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+        if ($currentCommission !== null && abs($currentCommission - $commissionPercent) < 0.000001) {
+            return $commissionPercent;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+            [
+                'commission' => $commissionPercent,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+        $invoice->commission_percent = $commissionPercent;
+
+        return $commissionPercent;
+    }
+
     private function ensurePackageAutoIncrement(): void
     {
         $count = (int) Database::fetchValue('SELECT COUNT(*) FROM packages');
@@ -5139,11 +5196,15 @@ class InvoiceController
         $clientTotal = null;
         $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $salesGrossTotal);
+        if ($hasDiscountPricing) {
+            $discountCommission = $this->syncDiscountCommissionPercent($invoice, $salesGrossTotal);
+            if ($discountCommission !== null) {
+                $commission = $discountCommission;
+            }
+        }
 
         if ($commission !== null) {
-            $clientTotal = $hasDiscountPricing
-                ? round($salesGrossTotal, 2)
-                : $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
