@@ -2,6 +2,7 @@
 
 namespace App\Domain\Contracts\Http\Controllers;
 
+use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Contracts\Services\ContractTemplateVariables;
 use App\Domain\Contracts\Services\TemplateRenderer;
 use App\Support\Audit;
@@ -345,6 +346,73 @@ class ContractTemplatesController
                 'client_cui' => $clientCui,
             ],
         ]);
+    }
+
+    public function downloadDraftPdf(): void
+    {
+        $this->requireTemplateRole();
+
+        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        if ($id <= 0) {
+            Response::redirect('/admin/contract-templates');
+        }
+
+        $template = Database::fetchOne('SELECT * FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $id]);
+        if (!$template) {
+            Response::abort(404, 'Model inexistent.');
+        }
+
+        $docKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
+        $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? $docKind));
+        if ($docKind === 'contract') {
+            $docType = 'contract';
+        }
+        if ($docType === '') {
+            $docType = 'document';
+        }
+
+        $draftContract = [
+            'id' => 0,
+            'template_id' => (int) ($template['id'] ?? 0),
+            'partner_cui' => null,
+            'supplier_cui' => null,
+            'client_cui' => null,
+            'title' => (string) ($template['name'] ?? 'Document draft'),
+            'doc_type' => $docType,
+            'contract_date' => date('Y-m-d'),
+            'created_at' => date('Y-m-d H:i:s'),
+            'doc_no' => 0,
+            'doc_series' => '',
+            'doc_full_no' => '',
+        ];
+
+        $pdfService = new ContractPdfService();
+        $html = $pdfService->renderHtmlForContract($draftContract, 'admin');
+        $pdfBinary = $pdfService->generatePdfBinaryFromHtml(
+            $html,
+            'template-draft-' . (int) ($template['id'] ?? 0)
+        );
+        if ($pdfBinary === '') {
+            Response::abort(503, 'PDF indisponibil momentan. Verifica configurarea wkhtmltopdf/dompdf.');
+        }
+
+        $rawName = trim((string) ($template['name'] ?? 'model-contract'));
+        $safeName = strtolower(trim((string) preg_replace('/[^a-zA-Z0-9_-]+/', '-', $rawName), '-'));
+        if ($safeName === '') {
+            $safeName = 'model-contract-' . (int) ($template['id'] ?? 0);
+        }
+        $filename = $safeName . '-draft.pdf';
+
+        Audit::record('contract_template.draft_pdf_downloaded', 'contract_template', (int) ($template['id'] ?? 0), [
+            'rows_count' => 1,
+        ]);
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . strlen($pdfBinary));
+        header('X-Content-Type-Options: nosniff');
+        echo $pdfBinary;
+        exit;
     }
 
     public function uploadStamp(): void

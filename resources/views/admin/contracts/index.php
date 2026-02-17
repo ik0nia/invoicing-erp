@@ -4,6 +4,7 @@
     $title = 'Contracte';
     $templates = $templates ?? [];
     $contracts = $contracts ?? [];
+    $companyNamesByCui = is_array($companyNamesByCui ?? null) ? $companyNamesByCui : [];
     $pdfAvailable = !empty($pdfAvailable);
     $canApproveContracts = Auth::isInternalStaff();
     $statusLabels = [
@@ -29,23 +30,6 @@
     </div>
 </div>
 
-<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-    <div class="font-semibold">Flux contracte</div>
-    <ol class="mt-2 list-decimal space-y-1 pl-5">
-        <li>Contract in <strong>Ciorna</strong></li>
-        <li>Genereaza PDF contract</li>
-        <li>Trimite catre semnare</li>
-        <li>Incarca semnat</li>
-        <li>Aprobare (staff intern: super_admin/admin/contabil/operator)</li>
-    </ol>
-    <div class="mt-2 text-xs text-blue-700">
-        Statusuri: Ciorna, Generat, Trimis, Semnat (incarcat), Aprobat.
-    </div>
-    <div class="mt-2 text-xs text-blue-700">
-        [1] Ciorna &rarr; [2] Generat &rarr; [3] Semnat &rarr; [4] Aprobat
-    </div>
-</div>
-
 <?php if (!$pdfAvailable): ?>
     <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         Generarea PDF nu este disponibila (wkhtmltopdf lipsa). Contractele pot fi salvate, dar download-ul PDF va fi indisponibil
@@ -53,7 +37,7 @@
     </div>
 <?php endif; ?>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
@@ -123,7 +107,7 @@
     </div>
 </form>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <div class="flex flex-wrap items-center gap-3">
         <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
@@ -157,12 +141,11 @@
     <table class="w-full text-left text-sm">
         <thead class="bg-slate-50 text-slate-600">
             <tr>
-                <th class="px-3 py-2">Titlu</th>
-                <th class="px-3 py-2">Doc type</th>
                 <th class="px-3 py-2">Nr. registru</th>
+                <th class="px-3 py-2">Relatie</th>
+                <th class="px-3 py-2">Titlu</th>
                 <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
-                <th class="px-3 py-2">Relatie</th>
                 <th class="px-3 py-2">Descarcare</th>
                 <th class="px-3 py-2"></th>
             </tr>
@@ -170,7 +153,7 @@
         <tbody>
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -178,17 +161,21 @@
                 <?php foreach ($contracts as $contract): ?>
                     <?php
                         $downloadUrl = App\Support\Url::to('admin/contracts/download?id=' . (int) $contract['id']);
-                        $relation = '';
-                        if (!empty($contract['supplier_cui']) || !empty($contract['client_cui'])) {
-                            $relation = trim((string) ($contract['supplier_cui'] ?? '')) . ' / ' . trim((string) ($contract['client_cui'] ?? ''));
-                        }
+                        $relationSupplierCui = preg_replace('/\D+/', '', (string) ($contract['supplier_cui'] ?? ''));
+                        $relationClientCui = preg_replace('/\D+/', '', (string) ($contract['client_cui'] ?? ''));
+                        $relationPartnerCui = preg_replace('/\D+/', '', (string) ($contract['partner_cui'] ?? ''));
+                        $relationSupplierName = $relationSupplierCui !== ''
+                            ? (string) ($companyNamesByCui[$relationSupplierCui] ?? $relationSupplierCui)
+                            : '';
+                        $relationClientName = $relationClientCui !== ''
+                            ? (string) ($companyNamesByCui[$relationClientCui] ?? $relationClientCui)
+                            : '';
+                        $relationPartnerName = $relationPartnerCui !== ''
+                            ? (string) ($companyNamesByCui[$relationPartnerCui] ?? $relationPartnerCui)
+                            : '';
                         $statusKey = (string) ($contract['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                         $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
-                        $downloadReady = !empty($contract['signed_upload_path'])
-                            || !empty($contract['signed_file_path'])
-                            || !empty($contract['generated_pdf_path'])
-                            || $pdfAvailable;
                         $docNoDisplay = trim((string) ($contract['doc_full_no'] ?? ''));
                         if ($docNoDisplay === '') {
                             $docNo = (int) ($contract['doc_no'] ?? 0);
@@ -208,8 +195,6 @@
                         }
                     ?>
                     <tr class="border-t border-slate-100">
-                        <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600 font-mono"><?= htmlspecialchars((string) ($contract['doc_type'] ?? 'contract')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($docNoDisplay !== ''): ?>
                                 <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
@@ -217,19 +202,30 @@
                                 <span class="text-amber-700">Fara numar</span>
                             <?php endif; ?>
                         </td>
+                        <td class="px-3 py-2 text-slate-600">
+                            <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName === ''): ?>
+                                —
+                            <?php else: ?>
+                                <?php if ($relationSupplierName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Furnizor:</span> <?= htmlspecialchars($relationSupplierName) ?></div>
+                                <?php endif; ?>
+                                <?php if ($relationClientName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Client:</span> <?= htmlspecialchars($relationClientName) ?></div>
+                                <?php endif; ?>
+                                <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName !== ''): ?>
+                                    <div><span class="text-xs text-slate-500">Companie:</span> <?= htmlspecialchars($relationPartnerName) ?></div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                 <?= htmlspecialchars($statusLabel) ?>
                             </span>
                         </td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($relation !== '' ? $relation : '—') ?></td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?php if ($downloadReady): ?>
-                                <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
-                            <?php else: ?>
-                                —
-                            <?php endif; ?>
+                            <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                         </td>
                         <td class="px-3 py-2 text-right">
                             <?php if (($contract['status'] ?? '') !== 'approved'): ?>

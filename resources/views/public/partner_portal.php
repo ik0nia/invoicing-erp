@@ -6,6 +6,8 @@
     $contacts = $contacts ?? [];
     $relationContacts = $relationContacts ?? [];
     $contracts = $contracts ?? [];
+    $draftContractTemplates = is_array($draftContractTemplates ?? null) ? $draftContractTemplates : [];
+    $onboardingResources = $onboardingResources ?? [];
     $documentsProgress = $documentsProgress ?? [
         'required_total' => 0,
         'required_signed' => 0,
@@ -16,9 +18,10 @@
     $token = $token ?? '';
     $error = $error ?? '';
     $currentStep = (int) ($currentStep ?? 1);
-    if ($currentStep < 1 || $currentStep > 3) {
+    if ($currentStep < 1 || $currentStep > 4) {
         $currentStep = 1;
     }
+    $maxStep = 4;
     $onboardingStatus = (string) ($onboardingStatus ?? 'draft');
     $pdfAvailable = !empty($pdfAvailable);
     $permissions = $context['permissions'] ?? [
@@ -40,11 +43,11 @@
         'rejected' => 'Respins',
     ];
     $onboardingClasses = [
-        'draft' => 'bg-slate-100 text-slate-700',
-        'waiting_signature' => 'bg-amber-100 text-amber-800',
-        'submitted' => 'bg-blue-100 text-blue-800',
-        'approved' => 'bg-emerald-100 text-emerald-800',
-        'rejected' => 'bg-rose-100 text-rose-800',
+        'draft' => 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+        'waiting_signature' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+        'submitted' => 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+        'approved' => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
+        'rejected' => 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200',
     ];
     $statusLabels = [
         'draft' => 'Ciorna',
@@ -54,51 +57,104 @@
         'approved' => 'Aprobat',
     ];
     $statusClasses = [
-        'draft' => 'bg-slate-100 text-slate-700',
-        'generated' => 'bg-blue-100 text-blue-700',
-        'sent' => 'bg-amber-100 text-amber-700',
-        'signed_uploaded' => 'bg-purple-100 text-purple-700',
-        'approved' => 'bg-emerald-100 text-emerald-700',
+        'draft' => 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+        'generated' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200',
+        'sent' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200',
+        'signed_uploaded' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-200',
+        'approved' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200',
     ];
     $contactDepartments = $contactDepartments ?? ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
+    $linkType = (string) ($context['link']['type'] ?? 'client');
+    $isSupplierFlow = $linkType === 'supplier';
+    $stepLabels = [
+        1 => 'Pasul 1/4 - Instructiuni onboarding',
+        2 => 'Pasul 2/4 - Date firma',
+        3 => 'Pasul 3/4 - Date de contact',
+        4 => 'Pasul 4/4 - Documente si confirmare',
+    ];
     $companyDisplayName = trim((string) ($prefill['denumire'] ?? ($company?->denumire ?? '')));
     $title = $companyDisplayName !== ''
         ? ('Inrolare partener: ' . $companyDisplayName)
         : 'Inrolare partener';
+    $hasMandatoryCompanyProfile = trim((string) ($prefill['legal_representative_name'] ?? '')) !== ''
+        && trim((string) ($prefill['legal_representative_role'] ?? '')) !== ''
+        && trim((string) ($prefill['bank_name'] ?? '')) !== ''
+        && trim((string) ($prefill['iban'] ?? '')) !== '';
+    $contactCount = count($contacts) + count($relationContacts);
+    $stepCompletion = [
+        1 => true,
+        2 => $partnerCui !== '' && $hasMandatoryCompanyProfile,
+        3 => $contactCount > 0,
+        4 => $allRequiredSigned && $partnerCui !== '',
+    ];
+    if ($isReadOnly) {
+        $stepCompletion[4] = true;
+    }
+    $completedStepsCount = 0;
+    foreach ($stepCompletion as $isCompletedStep) {
+        if (!empty($isCompletedStep)) {
+            $completedStepsCount++;
+        }
+    }
+    $wizardProgressPercent = (int) round(($completedStepsCount / max(1, $maxStep)) * 100);
 ?>
 
-<div class="max-w-6xl">
-    <div>
-        <h1 class="text-2xl font-semibold text-slate-900"><?= htmlspecialchars($title) ?></h1>
-        <p class="mt-1 text-sm text-slate-600">Link unic pentru completare date, incarcare documente si trimitere spre activare manuala.</p>
-    </div>
+<div class="mx-auto w-full max-w-6xl space-y-5">
 
     <?php if ($error !== ''): ?>
-        <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-200">
             <?= htmlspecialchars((string) $error) ?>
         </div>
     <?php endif; ?>
 
     <?php if (!empty($permissions['can_view'])): ?>
-        <div class="mt-4 flex flex-wrap items-center gap-3 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
-            <span class="font-semibold text-slate-700">Status onboarding:</span>
-            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700' ?>">
-                <?= htmlspecialchars($onboardingLabels[$onboardingStatus] ?? ucfirst($onboardingStatus)) ?>
-            </span>
-            <span class="text-slate-500">
-                Documente obligatorii semnate: <?= $requiredSigned ?>/<?= $requiredTotal ?>
-            </span>
+        <div class="rounded-2xl border border-blue-100 bg-blue-50 p-5 shadow-sm dark:border-slate-700 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <div class="text-sm font-semibold text-blue-700 dark:text-blue-300"><?= htmlspecialchars($title) ?></div>
+                    <h2 class="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">Completeaza pasii in ordine pentru activare</h2>
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                        <span class="font-semibold text-slate-700 dark:text-slate-200">Status:</span>
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100' ?>">
+                            <?= htmlspecialchars($onboardingLabels[$onboardingStatus] ?? ucfirst($onboardingStatus)) ?>
+                        </span>
+                    </div>
+                </div>
+                <div class="grid w-full gap-3 sm:grid-cols-3 lg:w-auto lg:min-w-[420px]">
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Pas curent</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Documente obligatorii</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= $requiredSigned ?>/<?= $requiredTotal ?></div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Contacte adaugate</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= (int) $contactCount ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-600 dark:text-slate-300">
+                    <span>Progres completare</span>
+                    <span><?= (int) $wizardProgressPercent ?>%</span>
+                </div>
+                <div class="h-2 rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div class="h-2 rounded-full bg-blue-600" style="width: <?= (int) $wizardProgressPercent ?>%;"></div>
+                </div>
+            </div>
         </div>
 
         <?php if (!$pdfAvailable): ?>
-            <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
                 Generarea PDF este momentan indisponibila pe server. Puteti continua completarea, dar download-ul PDF va deveni disponibil
                 dupa configurarea utilitarului wkhtmltopdf de catre echipa interna.
             </div>
         <?php endif; ?>
 
         <?php if ($isReadOnly): ?>
-            <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
                 <?php if ($onboardingStatus === 'submitted'): ?>
                     Cererea a fost trimisa spre activare. Un angajat intern va analiza si aproba inrolarea.
                 <?php else: ?>
@@ -107,32 +163,197 @@
             </div>
         <?php endif; ?>
 
-        <div class="mt-4 rounded border border-slate-200 bg-white px-4 py-3 text-sm">
-            <div class="text-sm font-semibold text-slate-700">Navigare pasi: <?= (int) $currentStep ?>/3</div>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <?php foreach ([1 => 'Pasul 1/3 - Date companie si contacte', 2 => 'Pasul 2/3 - Documente', 3 => 'Pasul 3/3 - Confirmare finala'] as $step => $label): ?>
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="text-sm font-semibold text-slate-700 dark:text-slate-100">Navigare rapida pe pasi</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Pas curent: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+            </div>
+            <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <?php foreach ($stepLabels as $step => $label): ?>
+                    <?php
+                        $isActiveStep = $currentStep === $step;
+                        $isCompletedStep = !empty($stepCompletion[$step]);
+                        $stepButtonClasses = 'w-full rounded-xl border px-3 py-3 text-left text-sm transition';
+                        if ($isActiveStep) {
+                            $stepButtonClasses .= ' border-blue-600 bg-blue-50 text-blue-800 shadow-sm dark:border-blue-400 dark:bg-blue-950/70 dark:text-blue-100';
+                        } elseif ($isCompletedStep) {
+                            $stepButtonClasses .= ' border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100 dark:hover:bg-emerald-900/70';
+                        } else {
+                            $stepButtonClasses .= ' border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800';
+                        }
+                        $stepStatus = $isCompletedStep
+                            ? 'Completat'
+                            : ($isActiveStep ? 'In lucru' : 'In asteptare');
+                    ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) $step ?>">
-                        <button
-                            class="rounded border px-3 py-1.5 text-xs font-semibold <?= $currentStep === $step ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50' ?>"
-                        >
-                            <?= htmlspecialchars($label) ?>
+                        <button class="<?= $stepButtonClasses ?>">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                                    <?= (int) $step ?>
+                                </span>
+                                <span class="text-[11px] font-semibold uppercase tracking-wide"><?= htmlspecialchars($stepStatus) ?></span>
+                            </div>
+                            <div class="mt-2 text-xs font-semibold"><?= htmlspecialchars($label) ?></div>
                         </button>
                     </form>
                 <?php endforeach; ?>
             </div>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
-            <div class="text-base font-semibold text-slate-800">Pasul 1/3: Date companie + contacte</div>
-            <p class="mt-1 text-sm text-slate-500">
-                Salvati datele firmei, apoi adaugati persoanele de contact. Pentru onboarding client, relatia este fixa pe furnizorul din link.
+        <?php if ($currentStep === 1): ?>
+            <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-1">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 1 din 4</div>
+                        <div class="text-lg font-semibold text-slate-900">Instructiuni onboarding</div>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Start rapid</span>
+                </div>
+                <?php if ($isSupplierFlow): ?>
+                    <p class="mt-4 text-sm leading-6 text-slate-700">
+                        Acest link este pentru onboarding <strong>furnizor</strong>. In pasii urmatori vei completa datele firmei,
+                        datele de contact, apoi vei descarca si incarca documentele semnate pentru activare.
+                    </p>
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                        <li>Pasul 2: completeaza datele companiei (reprezentant legal, banca, IBAN).</li>
+                        <li>Pasul 3: adauga persoanele de contact relevante (ex. financiar-contabil).</li>
+                        <li>Pasul 4: descarca documentele, semneaza, incarca si trimite spre activare.</li>
+                    </ul>
+                <?php else: ?>
+                    <p class="mt-4 text-sm leading-6 text-slate-700">
+                        Acest link este pentru onboarding <strong>client</strong>. Relatia cu furnizorul este preconfigurata in link.
+                        Urmareste pasii de mai jos pentru completare si trimitere spre activare.
+                    </p>
+                    <ul class="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                        <li>Pasul 2: verifica si completeaza datele companiei.</li>
+                        <li>Pasul 3: adauga contacte operationale si financiar-contabile.</li>
+                        <li>Pasul 4: gestioneaza documentele obligatorii si confirma trimiterea.</li>
+                    </ul>
+                <?php endif; ?>
+
+                <?php if (!empty($onboardingResources)): ?>
+                    <div class="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                        <div class="text-sm font-semibold text-slate-800">Documente pentru descarcare (Pasul 1)</div>
+                        <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                            <?php foreach ($onboardingResources as $resource): ?>
+                                <?php
+                                    $resourceId = (int) ($resource['id'] ?? 0);
+                                    $resourceTitle = trim((string) ($resource['title'] ?? 'Document onboarding'));
+                                    if ($resourceTitle === '') {
+                                        $resourceTitle = 'Document onboarding';
+                                    }
+                                    $resourceOriginalName = trim((string) ($resource['original_name'] ?? ''));
+                                    $resourceDownloadUrl = App\Support\Url::to('p/' . $token . '/resource?id=' . $resourceId);
+                                ?>
+                                <li class="flex flex-wrap items-center gap-2">
+                                    <a href="<?= htmlspecialchars($resourceDownloadUrl) ?>" class="font-semibold text-blue-700 hover:text-blue-800">
+                                        <?= htmlspecialchars($resourceTitle) ?>
+                                    </a>
+                                    <?php if ($resourceOriginalName !== ''): ?>
+                                        <span class="text-xs text-slate-500">(<?= htmlspecialchars($resourceOriginalName) ?>)</span>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
+
+                <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div class="text-sm font-semibold text-slate-800">Preview-uri contracte onboarding</div>
+                    <?php if (empty($contracts)): ?>
+                        <?php if (empty($draftContractTemplates)): ?>
+                            <p class="mt-2 text-sm text-slate-500">
+                                Nu exista template-uri onboarding obligatorii configurate pentru acest tip de inrolare.
+                            </p>
+                        <?php else: ?>
+                            <p class="mt-2 text-sm text-slate-600">
+                                Pana la generarea documentelor pe relatie, poti previzualiza si descarca drafturile din template-uri.
+                            </p>
+                            <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                                <?php foreach ($draftContractTemplates as $draftTemplate): ?>
+                                    <?php
+                                        $templateId = (int) ($draftTemplate['template_id'] ?? 0);
+                                        if ($templateId <= 0) {
+                                            continue;
+                                        }
+                                        $draftTitle = trim((string) ($draftTemplate['title'] ?? 'Document draft'));
+                                        if ($draftTitle === '') {
+                                            $draftTitle = 'Document draft';
+                                        }
+                                        $draftPriority = (int) ($draftTemplate['priority'] ?? 100);
+                                        $draftPreviewUrl = App\Support\Url::to('p/' . $token . '/preview-draft?template_id=' . $templateId);
+                                        $draftDownloadUrl = App\Support\Url::to('p/' . $token . '/download-draft?template_id=' . $templateId);
+                                    ?>
+                                    <li class="flex flex-wrap items-center gap-3">
+                                        <span class="font-medium text-slate-700"><?= htmlspecialchars($draftTitle) ?></span>
+                                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                            Draft P<?= (int) $draftPriority ?>
+                                        </span>
+                                        <a href="<?= htmlspecialchars($draftPreviewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Preview draft</a>
+                                        <a href="<?= htmlspecialchars($draftDownloadUrl) ?>" class="text-blue-700 hover:text-blue-800">Descarca draft PDF</a>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <ul class="mt-3 space-y-2 text-sm text-slate-700">
+                            <?php foreach ($contracts as $contractPreview): ?>
+                                <?php
+                                    $contractId = (int) ($contractPreview['id'] ?? 0);
+                                    if ($contractId <= 0) {
+                                        continue;
+                                    }
+                                    $contractTitle = trim((string) ($contractPreview['title'] ?? 'Document'));
+                                    if ($contractTitle === '') {
+                                        $contractTitle = 'Document';
+                                    }
+                                    $previewUrl = App\Support\Url::to('p/' . $token . '/preview?id=' . $contractId);
+                                    $downloadGeneratedUrl = App\Support\Url::to('p/' . $token . '/download?kind=generated&id=' . $contractId);
+                                ?>
+                                <li class="flex flex-wrap items-center gap-3">
+                                    <span class="font-medium text-slate-700"><?= htmlspecialchars($contractTitle) ?></span>
+                                    <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Preview</a>
+                                    <a href="<?= htmlspecialchars($downloadGeneratedUrl) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+
+                    <?php if (!empty($onboardingResources) || !empty($contracts) || !empty($draftContractTemplates)): ?>
+                        <div class="mt-4">
+                            <a
+                                href="<?= htmlspecialchars(App\Support\Url::to('p/' . $token . '/download-dosar')) ?>"
+                                class="inline-flex items-center rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                                Descarca dosar onboarding
+                            </a>
+                            <p class="mt-1 text-xs text-slate-500">
+                                Dosarul contine documentul incarcat la Pasul 1 + draft-urile de contract (ordonate dupa prioritate). Daca merge PDF nu este disponibil pe server, vei primi ZIP.
+                            </p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($currentStep === 2): ?>
+        <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 2 din 4</div>
+                    <div class="text-lg font-semibold text-slate-900">Date firma</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Profil companie</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
+                Completeaza datele de identificare ale companiei. Pentru a continua, profilul firmei trebuie sa fie complet.
             </p>
 
-            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-4">
+            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-company') ?>" class="mt-5 space-y-4">
                 <?= App\Support\Csrf::input() ?>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
                     <div>
                         <label class="block text-sm font-medium text-slate-700" for="cui">CUI</label>
                         <input
@@ -273,117 +494,136 @@
                     </div>
                 </div>
                 <?php if (!$isReadOnly): ?>
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        <button class="rounded border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-                            Salveaza date companie
-                        </button>
+                    <div class="mt-1 flex flex-wrap gap-2">
                         <button
                             name="next_step"
-                            value="2"
+                            value="3"
                             class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
                         >
-                            Salveaza si continua la documente
+                            Salveaza si continua la contacte
                         </button>
                     </div>
                 <?php endif; ?>
             </form>
-
-            <div class="mt-6 border-t border-slate-100 pt-4">
-                <div class="text-sm font-semibold text-slate-700">Contacte companie</div>
-                <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    Daca doriti sa primiti facturile pe o alta adresa de e-mail decat cea generala a companiei, adaugati un contact
-                    in departamentul <strong>Financiar-contabil</strong> cu datele de contact dedicate.
-                </div>
-                <?php if ($partnerCui === ''): ?>
-                    <div class="mt-2 text-sm text-slate-500">Salvati datele companiei pentru a adauga contacte.</div>
-                <?php else: ?>
-                    <div class="mt-3 overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 text-slate-600">
-                                <tr>
-                                    <th class="px-3 py-2">Nume</th>
-                                    <th class="px-3 py-2">Departament</th>
-                                    <th class="px-3 py-2">Email</th>
-                                    <th class="px-3 py-2">Telefon</th>
-                                    <th class="px-3 py-2"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php if (empty($contacts) && empty($relationContacts)): ?>
-                                    <tr>
-                                        <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
-                                    </tr>
-                                <?php else: ?>
-                                    <?php foreach ($contacts as $contact): ?>
-                                        <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-right">
-                                                <?php if (!$isReadOnly): ?>
-                                                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
-                                                        <?= App\Support\Csrf::input() ?>
-                                                        <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
-                                                        <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    <?php foreach ($relationContacts as $contact): ?>
-                                        <tr class="border-t border-slate-100">
-                                            <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
-                                            <td class="px-3 py-2 text-right">
-                                                <?php if (!$isReadOnly): ?>
-                                                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
-                                                        <?= App\Support\Csrf::input() ?>
-                                                        <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
-                                                        <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <?php if (!$isReadOnly): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 md:grid-cols-5">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
-                            <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
-                            <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
-                                <?php foreach ($contactDepartments as $department): ?>
-                                    <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                            <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">
-                            <div class="md:col-span-5">
-                                <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                                    Adauga contact
-                                </button>
-                            </div>
-                        </form>
-                    <?php endif; ?>
-                <?php endif; ?>
-            </div>
         </div>
+        <?php endif; ?>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-2">
-            <div class="text-base font-semibold text-slate-800">Pasul 2/3: Documente obligatorii</div>
-            <p class="mt-1 text-sm text-slate-500">
-                Pentru a continua, incarcati documentele semnate obligatorii.
+        <?php if ($currentStep === 3): ?>
+            <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 3 din 4</div>
+                        <div class="text-lg font-semibold text-slate-900">Date de contact</div>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Persoane de legatura</span>
+                </div>
+                <p class="mt-4 text-sm text-slate-600">
+                    Adauga persoanele de contact pentru relationarea operationala si financiar-contabila.
+                </p>
+                <div class="mt-6 border-t border-slate-100 pt-4">
+                    <div class="text-sm font-semibold text-slate-700">Contacte companie</div>
+                    <div class="mt-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Daca doriti sa primiti facturile pe o alta adresa de e-mail decat cea generala a companiei, adaugati un contact
+                        in departamentul <strong>Financiar-contabil</strong> cu datele de contact dedicate.
+                    </div>
+                    <?php if ($partnerCui === ''): ?>
+                        <div class="mt-2 text-sm text-slate-500">Salvati datele companiei in Pasul 2 pentru a adauga contacte.</div>
+                    <?php else: ?>
+                        <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-slate-50 text-slate-600">
+                                    <tr>
+                                        <th class="px-3 py-2">Nume</th>
+                                        <th class="px-3 py-2">Departament</th>
+                                        <th class="px-3 py-2">Email</th>
+                                        <th class="px-3 py-2">Telefon</th>
+                                        <th class="px-3 py-2"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($contacts) && empty($relationContacts)): ?>
+                                        <tr>
+                                            <td colspan="5" class="px-3 py-4 text-sm text-slate-500">Nu exista contacte inregistrate.</td>
+                                        </tr>
+                                    <?php else: ?>
+                                        <?php foreach ($contacts as $contact): ?>
+                                            <tr class="border-t border-slate-100">
+                                                <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-right">
+                                                    <?php if (!$isReadOnly): ?>
+                                                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
+                                                            <?= App\Support\Csrf::input() ?>
+                                                            <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
+                                                            <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                        <?php foreach ($relationContacts as $contact): ?>
+                                            <tr class="border-t border-slate-100">
+                                                <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contact['name'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['role'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['email'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($contact['phone'] ?? '')) ?></td>
+                                                <td class="px-3 py-2 text-right">
+                                                    <?php if (!$isReadOnly): ?>
+                                                        <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/delete-contact') ?>">
+                                                            <?= App\Support\Csrf::input() ?>
+                                                            <input type="hidden" name="id" value="<?= (int) $contact['id'] ?>">
+                                                            <button class="text-xs font-semibold text-rose-600 hover:text-rose-700">Sterge</button>
+                                                        </form>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <?php if (!$isReadOnly): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/save-contact') ?>" class="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-5">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="partner_cui" value="<?= htmlspecialchars((string) $partnerCui) ?>">
+                                <input type="text" name="name" placeholder="Nume" class="rounded border border-slate-300 px-3 py-2 text-sm md:col-span-2" required>
+                                <select name="role" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
+                                    <?php foreach ($contactDepartments as $department): ?>
+                                        <option value="<?= htmlspecialchars((string) $department) ?>"><?= htmlspecialchars((string) $department) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="email" name="email" placeholder="Email" class="rounded border border-slate-300 px-3 py-2 text-sm">
+                                <input type="text" name="phone" placeholder="Telefon" class="rounded border border-slate-300 px-3 py-2 text-sm">
+                                <div class="md:col-span-5">
+                                    <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                        Adauga contact
+                                    </button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($currentStep === 4): ?>
+        <div class="mt-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-4">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Pasul 4 din 4</div>
+                    <div class="text-lg font-semibold text-slate-900">Documente si confirmare</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Finalizare onboarding</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
+                Descarca documentele generate, incarca semnaturile obligatorii si trimite inrolarea spre activare.
             </p>
 
             <?php if ($partnerCui === ''): ?>
-                <div class="mt-4 text-sm text-slate-500">Salvati mai intai datele companiei (Pasul 1).</div>
+                <div class="mt-4 text-sm text-slate-500">Salvati mai intai datele companiei (Pasul 2).</div>
             <?php else: ?>
                 <?php
                     $registryMissing = [];
@@ -399,7 +639,7 @@
                 <div class="mt-4 rounded border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     Progres documente obligatorii: <strong><?= $requiredSigned ?>/<?= $requiredTotal ?></strong>.
                     <?php if (!$allRequiredSigned): ?>
-                        Pentru a continua la Pasul 3, incarcati toate semnaturile obligatorii.
+                        Pentru a finaliza inrolarea, incarcati toate semnaturile obligatorii.
                     <?php else: ?>
                         Toate documentele obligatorii sunt semnate.
                     <?php endif; ?>
@@ -423,7 +663,7 @@
                     </div>
                 <?php endif; ?>
 
-                <div class="mt-4 overflow-x-auto">
+                <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left text-sm">
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
@@ -438,7 +678,9 @@
                         <tbody>
                             <?php if (empty($contracts)): ?>
                                 <tr>
-                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">Nu exista documente generate pentru acest onboarding.</td>
+                                    <td colspan="6" class="px-3 py-4 text-sm text-slate-500">
+                                        Nu exista documente generate pentru acest onboarding inca. Poti folosi drafturile din Pasul 1.
+                                    </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($contracts as $contract): ?>
@@ -489,9 +731,7 @@
                                         <td class="px-3 py-2 text-slate-600">
                                             <div class="flex flex-wrap gap-3 text-xs font-semibold">
                                                 <a href="<?= htmlspecialchars($previewUrl) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">Previzualizeaza</a>
-                                                <?php if ($hasGeneratedPdf || $pdfAvailable): ?>
-                                                    <a href="<?= htmlspecialchars($downloadGenerated) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
-                                                <?php endif; ?>
+                                                <a href="<?= htmlspecialchars($downloadGenerated) ?>" class="text-blue-700 hover:text-blue-800">Descarca PDF</a>
                                                 <?php if ($hasSigned): ?>
                                                     <a href="<?= htmlspecialchars($downloadSigned) ?>" class="text-blue-700 hover:text-blue-800">Descarca semnat</a>
                                                 <?php endif; ?>
@@ -620,9 +860,15 @@
             <?php endif; ?>
         </div>
 
-        <div class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" id="pas-3">
-            <div class="text-base font-semibold text-slate-800">Pasul 3/3: Confirmare finala</div>
-            <p class="mt-1 text-sm text-slate-500">
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" id="pas-4-confirmare">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Finalizare</div>
+                    <div class="text-lg font-semibold text-slate-900">Confirmare finala</div>
+                </div>
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Verificare si trimitere</span>
+            </div>
+            <p class="mt-4 text-sm text-slate-600">
                 Verificati datele si trimiteti cererea spre activare. Activarea este manuala si poate fi facuta doar de angajati interni.
             </p>
 
@@ -659,7 +905,7 @@
             <?php else: ?>
                 <?php if (!$allRequiredSigned): ?>
                     <div class="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        Pentru a continua, incarcati documentele semnate obligatorii din Pasul 2.
+                        Pentru a continua, incarcati documentele semnate obligatorii din sectiunea de mai sus.
                     </div>
                 <?php endif; ?>
                 <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/submit-activation') ?>" class="mt-4">
@@ -678,6 +924,32 @@
                     </div>
                 </form>
             <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
+        <div class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+            <div>
+                <?php if ($currentStep > 1): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="step" value="<?= (int) ($currentStep - 1) ?>">
+                        <button class="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">
+                            &larr; Pasul anterior (<?= (int) ($currentStep - 1) ?>/<?= (int) $maxStep ?>)
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
+            <div>
+                <?php if (!$isReadOnly && $currentStep < $maxStep): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="step" value="<?= (int) ($currentStep + 1) ?>">
+                        <button class="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">
+                            Pasul urmator (<?= (int) ($currentStep + 1) ?>/<?= (int) $maxStep ?>) &rarr;
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 </div>

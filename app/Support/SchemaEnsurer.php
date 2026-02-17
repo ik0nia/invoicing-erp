@@ -44,8 +44,16 @@ class SchemaEnsurer
             self::ensureEnrollmentLinksTable();
         });
 
+        self::runStep('enrollment_resources_table', static function (): void {
+            self::ensureEnrollmentResourcesTable();
+        });
+
         self::runStep('partner_relations_table', static function (): void {
             self::ensurePartnerRelationsTable();
+        });
+
+        self::runStep('association_requests_table', static function (): void {
+            self::ensureAssociationRequestsTable();
         });
 
         self::runStep('partner_contacts_table', static function (): void {
@@ -346,6 +354,142 @@ class SchemaEnsurer
         }
     }
 
+    public static function ensureEnrollmentResourcesTable(): void
+    {
+        if (!self::tableExists('enrollment_resources')) {
+            self::safeExecute(
+                'CREATE TABLE IF NOT EXISTS enrollment_resources (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    applies_to ENUM("supplier", "client", "both") NOT NULL DEFAULT "both",
+                    file_path VARCHAR(255) NOT NULL,
+                    original_name VARCHAR(255) NULL,
+                    mime_type VARCHAR(128) NULL,
+                    file_ext VARCHAR(16) NULL,
+                    sort_order INT NOT NULL DEFAULT 100,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_by_user_id INT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL,
+                    INDEX idx_enrollment_resources_applies (applies_to, is_active),
+                    INDEX idx_enrollment_resources_order (sort_order, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+                [],
+                'enrollment_resources_create'
+            );
+            unset(self::$tableCache['enrollment_resources']);
+            self::$tableCache['enrollment_resources'] = self::tableExists('enrollment_resources');
+        }
+
+        if (!self::tableExists('enrollment_resources')) {
+            return;
+        }
+
+        if (!self::columnExists('enrollment_resources', 'title')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN title VARCHAR(255) NOT NULL',
+                [],
+                'enrollment_resources_add_title'
+            );
+            unset(self::$columnCache['enrollment_resources.title']);
+        }
+        if (!self::columnExists('enrollment_resources', 'applies_to')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN applies_to ENUM("supplier", "client", "both") NOT NULL DEFAULT "both" AFTER title',
+                [],
+                'enrollment_resources_add_applies_to'
+            );
+            unset(self::$columnCache['enrollment_resources.applies_to']);
+        }
+        if (!self::columnExists('enrollment_resources', 'file_path')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN file_path VARCHAR(255) NOT NULL AFTER applies_to',
+                [],
+                'enrollment_resources_add_file_path'
+            );
+            unset(self::$columnCache['enrollment_resources.file_path']);
+        }
+        if (!self::columnExists('enrollment_resources', 'original_name')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN original_name VARCHAR(255) NULL AFTER file_path',
+                [],
+                'enrollment_resources_add_original_name'
+            );
+            unset(self::$columnCache['enrollment_resources.original_name']);
+        }
+        if (!self::columnExists('enrollment_resources', 'mime_type')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN mime_type VARCHAR(128) NULL AFTER original_name',
+                [],
+                'enrollment_resources_add_mime_type'
+            );
+            unset(self::$columnCache['enrollment_resources.mime_type']);
+        }
+        if (!self::columnExists('enrollment_resources', 'file_ext')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN file_ext VARCHAR(16) NULL AFTER mime_type',
+                [],
+                'enrollment_resources_add_file_ext'
+            );
+            unset(self::$columnCache['enrollment_resources.file_ext']);
+        }
+        if (!self::columnExists('enrollment_resources', 'sort_order')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN sort_order INT NOT NULL DEFAULT 100 AFTER file_ext',
+                [],
+                'enrollment_resources_add_sort_order'
+            );
+            unset(self::$columnCache['enrollment_resources.sort_order']);
+        }
+        if (!self::columnExists('enrollment_resources', 'is_active')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER sort_order',
+                [],
+                'enrollment_resources_add_is_active'
+            );
+            unset(self::$columnCache['enrollment_resources.is_active']);
+        }
+        if (!self::columnExists('enrollment_resources', 'created_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN created_by_user_id INT NULL AFTER is_active',
+                [],
+                'enrollment_resources_add_created_by'
+            );
+            unset(self::$columnCache['enrollment_resources.created_by_user_id']);
+        }
+        if (!self::columnExists('enrollment_resources', 'created_at')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER created_by_user_id',
+                [],
+                'enrollment_resources_add_created_at'
+            );
+            unset(self::$columnCache['enrollment_resources.created_at']);
+        }
+        if (!self::columnExists('enrollment_resources', 'updated_at')) {
+            self::safeExecute(
+                'ALTER TABLE enrollment_resources ADD COLUMN updated_at DATETIME NULL AFTER created_at',
+                [],
+                'enrollment_resources_add_updated_at'
+            );
+            unset(self::$columnCache['enrollment_resources.updated_at']);
+        }
+
+        if (self::columnExists('enrollment_resources', 'applies_to') && self::columnExists('enrollment_resources', 'is_active')) {
+            self::ensureIndex(
+                'enrollment_resources',
+                'idx_enrollment_resources_applies',
+                'ALTER TABLE enrollment_resources ADD INDEX idx_enrollment_resources_applies (applies_to, is_active)'
+            );
+        }
+        if (self::columnExists('enrollment_resources', 'sort_order') && self::columnExists('enrollment_resources', 'created_at')) {
+            self::ensureIndex(
+                'enrollment_resources',
+                'idx_enrollment_resources_order',
+                'ALTER TABLE enrollment_resources ADD INDEX idx_enrollment_resources_order (sort_order, created_at)'
+            );
+        }
+    }
+
     public static function ensurePartnerRelationsTable(): void
     {
         if (!self::tableExists('partner_relations')) {
@@ -363,6 +507,154 @@ class SchemaEnsurer
             );
             unset(self::$tableCache['partner_relations']);
             self::$tableCache['partner_relations'] = self::tableExists('partner_relations');
+        }
+    }
+
+    public static function ensureAssociationRequestsTable(): void
+    {
+        if (!self::tableExists('association_requests')) {
+            self::safeExecute(
+                'CREATE TABLE IF NOT EXISTS association_requests (
+                    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                    supplier_cui VARCHAR(32) NOT NULL,
+                    client_cui VARCHAR(32) NOT NULL,
+                    commission_percent DECIMAL(8,4) NULL,
+                    status ENUM("pending", "approved", "rejected") NOT NULL DEFAULT "pending",
+                    requested_by_user_id INT NULL,
+                    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    decided_by_user_id INT NULL,
+                    decided_at DATETIME NULL,
+                    decision_note VARCHAR(255) NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NULL,
+                    UNIQUE KEY uq_association_requests_pair (supplier_cui, client_cui),
+                    INDEX idx_association_requests_status (status, requested_at),
+                    INDEX idx_association_requests_supplier (supplier_cui),
+                    INDEX idx_association_requests_client (client_cui)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+                [],
+                'association_requests_create'
+            );
+            unset(self::$tableCache['association_requests']);
+            self::$tableCache['association_requests'] = self::tableExists('association_requests');
+        }
+
+        if (!self::tableExists('association_requests')) {
+            return;
+        }
+
+        if (!self::columnExists('association_requests', 'supplier_cui')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN supplier_cui VARCHAR(32) NOT NULL',
+                [],
+                'association_requests_add_supplier'
+            );
+            unset(self::$columnCache['association_requests.supplier_cui']);
+        }
+        if (!self::columnExists('association_requests', 'client_cui')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN client_cui VARCHAR(32) NOT NULL AFTER supplier_cui',
+                [],
+                'association_requests_add_client'
+            );
+            unset(self::$columnCache['association_requests.client_cui']);
+        }
+        if (!self::columnExists('association_requests', 'commission_percent')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN commission_percent DECIMAL(8,4) NULL AFTER client_cui',
+                [],
+                'association_requests_add_commission'
+            );
+            unset(self::$columnCache['association_requests.commission_percent']);
+        }
+        if (!self::columnExists('association_requests', 'status')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN status ENUM("pending", "approved", "rejected") NOT NULL DEFAULT "pending" AFTER commission_percent',
+                [],
+                'association_requests_add_status'
+            );
+            unset(self::$columnCache['association_requests.status']);
+        }
+        if (!self::columnExists('association_requests', 'requested_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN requested_by_user_id INT NULL AFTER status',
+                [],
+                'association_requests_add_requested_by'
+            );
+            unset(self::$columnCache['association_requests.requested_by_user_id']);
+        }
+        if (!self::columnExists('association_requests', 'requested_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER requested_by_user_id',
+                [],
+                'association_requests_add_requested_at'
+            );
+            unset(self::$columnCache['association_requests.requested_at']);
+        }
+        if (!self::columnExists('association_requests', 'decided_by_user_id')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decided_by_user_id INT NULL AFTER requested_at',
+                [],
+                'association_requests_add_decided_by'
+            );
+            unset(self::$columnCache['association_requests.decided_by_user_id']);
+        }
+        if (!self::columnExists('association_requests', 'decided_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decided_at DATETIME NULL AFTER decided_by_user_id',
+                [],
+                'association_requests_add_decided_at'
+            );
+            unset(self::$columnCache['association_requests.decided_at']);
+        }
+        if (!self::columnExists('association_requests', 'decision_note')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN decision_note VARCHAR(255) NULL AFTER decided_at',
+                [],
+                'association_requests_add_decision_note'
+            );
+            unset(self::$columnCache['association_requests.decision_note']);
+        }
+        if (!self::columnExists('association_requests', 'created_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER decision_note',
+                [],
+                'association_requests_add_created_at'
+            );
+            unset(self::$columnCache['association_requests.created_at']);
+        }
+        if (!self::columnExists('association_requests', 'updated_at')) {
+            self::safeExecute(
+                'ALTER TABLE association_requests ADD COLUMN updated_at DATETIME NULL AFTER created_at',
+                [],
+                'association_requests_add_updated_at'
+            );
+            unset(self::$columnCache['association_requests.updated_at']);
+        }
+
+        if (self::columnExists('association_requests', 'supplier_cui') && self::columnExists('association_requests', 'client_cui')) {
+            self::ensureIndex(
+                'association_requests',
+                'uq_association_requests_pair',
+                'ALTER TABLE association_requests ADD UNIQUE INDEX uq_association_requests_pair (supplier_cui, client_cui)'
+            );
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_supplier',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_supplier (supplier_cui)'
+            );
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_client',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_client (client_cui)'
+            );
+        }
+        if (self::columnExists('association_requests', 'status') && self::columnExists('association_requests', 'requested_at')) {
+            self::ensureIndex(
+                'association_requests',
+                'idx_association_requests_status',
+                'ALTER TABLE association_requests ADD INDEX idx_association_requests_status (status, requested_at)'
+            );
         }
     }
 
@@ -443,10 +735,6 @@ class SchemaEnsurer
         }
 
         if (self::tableExists('contract_templates')) {
-            self::ensureIndex('contract_templates', 'idx_templates_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_type (template_type)');
-            self::ensureIndex('contract_templates', 'idx_templates_auto', 'ALTER TABLE contract_templates ADD INDEX idx_templates_auto (auto_on_enrollment, applies_to)');
-            self::ensureIndex('contract_templates', 'idx_templates_active', 'ALTER TABLE contract_templates ADD INDEX idx_templates_active (is_active)');
-            self::ensureIndex('contract_templates', 'idx_templates_priority', 'ALTER TABLE contract_templates ADD INDEX idx_templates_priority (priority)');
             if (!self::columnExists('contract_templates', 'applies_to')) {
                 self::safeExecute('ALTER TABLE contract_templates ADD COLUMN applies_to ENUM("client", "supplier", "both") NOT NULL DEFAULT "both" AFTER template_type', [], 'contract_templates_applies_to');
                 unset(self::$columnCache['contract_templates.applies_to']);
@@ -511,8 +799,24 @@ class SchemaEnsurer
                     'contract_templates_required_backfill'
                 );
             }
-            self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
-            self::ensureIndex('contract_templates', 'idx_templates_stamp_path', 'ALTER TABLE contract_templates ADD INDEX idx_templates_stamp_path (stamp_image_path)');
+            if (self::columnExists('contract_templates', 'template_type')) {
+                self::ensureIndex('contract_templates', 'idx_templates_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_type (template_type)');
+            }
+            if (self::columnExists('contract_templates', 'auto_on_enrollment') && self::columnExists('contract_templates', 'applies_to')) {
+                self::ensureIndex('contract_templates', 'idx_templates_auto', 'ALTER TABLE contract_templates ADD INDEX idx_templates_auto (auto_on_enrollment, applies_to)');
+            }
+            if (self::columnExists('contract_templates', 'is_active')) {
+                self::ensureIndex('contract_templates', 'idx_templates_active', 'ALTER TABLE contract_templates ADD INDEX idx_templates_active (is_active)');
+            }
+            if (self::columnExists('contract_templates', 'priority')) {
+                self::ensureIndex('contract_templates', 'idx_templates_priority', 'ALTER TABLE contract_templates ADD INDEX idx_templates_priority (priority)');
+            }
+            if (self::columnExists('contract_templates', 'doc_type')) {
+                self::ensureIndex('contract_templates', 'idx_templates_doc_type', 'ALTER TABLE contract_templates ADD INDEX idx_templates_doc_type (doc_type)');
+            }
+            if (self::columnExists('contract_templates', 'stamp_image_path')) {
+                self::ensureIndex('contract_templates', 'idx_templates_stamp_path', 'ALTER TABLE contract_templates ADD INDEX idx_templates_stamp_path (stamp_image_path)');
+            }
         }
     }
 
@@ -558,10 +862,18 @@ class SchemaEnsurer
         }
 
         if (self::tableExists('contracts')) {
-            self::ensureIndex('contracts', 'idx_contracts_status', 'ALTER TABLE contracts ADD INDEX idx_contracts_status (status)');
-            self::ensureIndex('contracts', 'idx_contracts_partner', 'ALTER TABLE contracts ADD INDEX idx_contracts_partner (partner_cui)');
-            self::ensureIndex('contracts', 'idx_contracts_relation', 'ALTER TABLE contracts ADD INDEX idx_contracts_relation (supplier_cui, client_cui)');
-            self::ensureIndex('contracts', 'idx_contracts_created', 'ALTER TABLE contracts ADD INDEX idx_contracts_created (created_at)');
+            if (self::columnExists('contracts', 'status')) {
+                self::ensureIndex('contracts', 'idx_contracts_status', 'ALTER TABLE contracts ADD INDEX idx_contracts_status (status)');
+            }
+            if (self::columnExists('contracts', 'partner_cui')) {
+                self::ensureIndex('contracts', 'idx_contracts_partner', 'ALTER TABLE contracts ADD INDEX idx_contracts_partner (partner_cui)');
+            }
+            if (self::columnExists('contracts', 'supplier_cui') && self::columnExists('contracts', 'client_cui')) {
+                self::ensureIndex('contracts', 'idx_contracts_relation', 'ALTER TABLE contracts ADD INDEX idx_contracts_relation (supplier_cui, client_cui)');
+            }
+            if (self::columnExists('contracts', 'created_at')) {
+                self::ensureIndex('contracts', 'idx_contracts_created', 'ALTER TABLE contracts ADD INDEX idx_contracts_created (created_at)');
+            }
             if (!self::columnExists('contracts', 'doc_type')) {
                 self::safeExecute(
                     'ALTER TABLE contracts ADD COLUMN doc_type VARCHAR(64) NOT NULL DEFAULT "contract" AFTER title',
@@ -642,8 +954,9 @@ class SchemaEnsurer
                     'contracts_signed_upload_backfill'
                 );
             }
-            self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
-            self::ensureIndex('contracts', 'idx_contracts_doc_no', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_no (doc_type, doc_no)');
+            if (self::columnExists('contracts', 'doc_type') && self::columnExists('contracts', 'contract_date')) {
+                self::ensureIndex('contracts', 'idx_contracts_doc_date', 'ALTER TABLE contracts ADD INDEX idx_contracts_doc_date (doc_type, contract_date)');
+            }
         }
     }
 
@@ -725,6 +1038,29 @@ class SchemaEnsurer
                         'updated_at' => date('Y-m-d H:i:s'),
                     ],
                     'document_registry_seed_global'
+                );
+            }
+            $supplierRow = Database::fetchOne(
+                'SELECT id FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+                ['doc_type' => 'global_supplier']
+            );
+            if (!$supplierRow) {
+                $globalSeed = Database::fetchOne(
+                    'SELECT series FROM document_registry WHERE doc_type = :doc_type LIMIT 1',
+                    ['doc_type' => 'global']
+                ) ?? [];
+                $supplierSeries = trim((string) ($globalSeed['series'] ?? ''));
+                self::safeExecute(
+                    'INSERT INTO document_registry (doc_type, series, next_no, start_no, updated_at)
+                     VALUES (:doc_type, :series, :next_no, :start_no, :updated_at)',
+                    [
+                        'doc_type' => 'global_supplier',
+                        'series' => $supplierSeries !== '' ? $supplierSeries : null,
+                        'next_no' => 1,
+                        'start_no' => 1,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ],
+                    'document_registry_seed_global_supplier'
                 );
             }
         }

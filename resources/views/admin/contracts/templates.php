@@ -54,7 +54,7 @@
     </div>
 </div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/save') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="id" value="">
     <div class="grid gap-4 md:grid-cols-2">
@@ -197,6 +197,12 @@
                                 class="text-xs font-semibold text-blue-700 hover:text-blue-800"
                             >
                                 Editeaza
+                            </a>
+                            <a
+                                href="<?= App\Support\Url::to('admin/contract-templates/download-draft?id=' . (int) $template['id']) ?>"
+                                class="ml-3 text-xs font-semibold text-blue-700 hover:text-blue-800"
+                            >
+                                PDF draft
                             </a>
                             <form method="POST" action="<?= App\Support\Url::to('admin/contract-templates/duplicate') ?>" class="inline-block ml-3">
                                 <?= App\Support\Csrf::input() ?>

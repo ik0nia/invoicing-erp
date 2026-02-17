@@ -1,9 +1,17 @@
 <?php
     $title = 'Registru documente';
-    $registry = $registry ?? [];
     $filters = $filters ?? ['doc_type' => ''];
+    $activeTab = (string) ($activeTab ?? ($filters['tab'] ?? 'client'));
+    if (!in_array($activeTab, ['client', 'supplier'], true)) {
+        $activeTab = 'client';
+    }
     $docTypeOptions = $docTypeOptions ?? [];
     $documents = $documents ?? [];
+    $tabLabels = [
+        'client' => 'Clienti',
+        'supplier' => 'Furnizori',
+    ];
+    $activeTabLabel = $tabLabels[$activeTab] ?? 'Clienti';
     $statusLabels = [
         'draft' => 'Ciorna',
         'generated' => 'Generat',
@@ -13,114 +21,29 @@
     ];
 ?>
 
-<div class="flex items-center justify-between">
-    <div>
-        <h1 class="text-xl font-semibold text-slate-900">Registru documente</h1>
-        <p class="mt-1 text-sm text-slate-500">Numerotare secventiala unica pentru toate documentele generate.</p>
+<div class="mt-4">
+    <div class="flex flex-wrap items-center gap-2">
+        <?php foreach ($tabLabels as $tabKey => $tabLabel): ?>
+            <?php
+                $tabUrl = App\Support\Url::to('admin/registru-documente?tab=' . urlencode($tabKey));
+                $isActiveTab = $activeTab === $tabKey;
+            ?>
+            <a
+                href="<?= htmlspecialchars($tabUrl) ?>"
+                class="rounded-full border px-3 py-1.5 text-sm font-semibold <?= $isActiveTab ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' ?>"
+            >
+                <?= htmlspecialchars($tabLabel) ?>
+            </a>
+        <?php endforeach; ?>
     </div>
-</div>
-
-<div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-    <div class="font-semibold">Cum functioneaza</div>
-    <ul class="mt-2 list-disc space-y-1 pl-5">
-        <li>Exista un singur registru global, comun pentru toate documentele.</li>
-        <li><strong>next_no</strong> este urmatorul numar ce va fi alocat.</li>
-        <li><strong>Seteaza start</strong> actualizeaza simultan <strong>start_no</strong> si <strong>next_no</strong>.</li>
-        <li><strong>Reseteaza la start</strong> seteaza <strong>next_no = start_no</strong>.</li>
-    </ul>
-</div>
-
-<?php
-    $series = (string) ($registry['series'] ?? '');
-    $startNo = max(1, (int) ($registry['start_no'] ?? 1));
-    $nextNo = max(1, (int) ($registry['next_no'] ?? 1));
-    $updatedAt = (string) ($registry['updated_at'] ?? '');
-?>
-<div class="mt-6 rounded border border-slate-200 bg-white p-5">
-    <div class="grid gap-4 md:grid-cols-2">
-        <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/save') ?>" class="space-y-3">
-            <?= App\Support\Csrf::input() ?>
-            <div class="text-sm font-semibold text-slate-700">Setari registru global</div>
-            <div class="grid gap-3 sm:grid-cols-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Serie</label>
-                    <input
-                        type="text"
-                        name="series"
-                        value="<?= htmlspecialchars($series) ?>"
-                        maxlength="16"
-                        placeholder="ex: CTR"
-                        class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs"
-                    >
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Start</label>
-                    <input
-                        type="number"
-                        min="1"
-                        name="start_no"
-                        value="<?= $startNo ?>"
-                        class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs"
-                    >
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Urmatorul nr.</label>
-                    <input
-                        type="number"
-                        min="1"
-                        name="next_no"
-                        value="<?= $nextNo ?>"
-                        class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs"
-                    >
-                </div>
-            </div>
-            <button class="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
-                Salveaza
-            </button>
-        </form>
-        <div class="space-y-3">
-            <div class="text-sm font-semibold text-slate-700">Operatii rapide</div>
-            <div class="text-xs text-slate-600">
-                Ultima actualizare: <?= htmlspecialchars($updatedAt !== '' ? $updatedAt : '—') ?>
-            </div>
-            <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/set-start') ?>" class="inline-flex items-end gap-2">
-                <?= App\Support\Csrf::input() ?>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Start nou</label>
-                    <input
-                        type="number"
-                        min="1"
-                        name="start_no"
-                        value="<?= $startNo ?>"
-                        class="mt-1 w-24 rounded border border-slate-300 px-2 py-1.5 text-xs"
-                    >
-                    <input type="hidden" name="series" value="<?= htmlspecialchars($series) ?>">
-                </div>
-                <button class="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100">
-                    Seteaza start
-                </button>
-            </form>
-            <form method="POST" action="<?= App\Support\Url::to('admin/registru-documente/reset-start') ?>">
-                <?= App\Support\Csrf::input() ?>
-                <button
-                    class="rounded border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                    onclick="return confirm('Resetezi numerotarea la start pentru registrul global?')"
-                >
-                    Reseteaza la start
-                </button>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="mt-8">
-    <h2 class="text-lg font-semibold text-slate-900">Documente din registru</h2>
+    <h2 class="mt-4 text-lg font-semibold text-slate-900">Documente din registru - <?= htmlspecialchars($activeTabLabel) ?></h2>
     <p class="mt-1 text-sm text-slate-500">
         Lista afiseaza ultimele 500 documente, cu posibilitate de filtrare dupa tip document.
     </p>
 </div>
 
 <form method="GET" action="<?= App\Support\Url::to('admin/registru-documente') ?>" class="mt-4 rounded border border-slate-200 bg-white p-4">
+    <input type="hidden" name="tab" value="<?= htmlspecialchars($activeTab) ?>">
     <div class="grid gap-4 md:grid-cols-3">
         <div>
             <label class="block text-sm font-medium text-slate-700" for="filter-doc-type">Tip document (doc_type)</label>
@@ -138,7 +61,7 @@
         <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             Filtreaza
         </button>
-        <a href="<?= App\Support\Url::to('admin/registru-documente') ?>" class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <a href="<?= App\Support\Url::to('admin/registru-documente?tab=' . urlencode($activeTab)) ?>" class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Reseteaza
         </a>
     </div>
@@ -161,7 +84,8 @@
                     <th class="px-3 py-2">Titlu</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2">Creat</th>
-                    <th class="px-3 py-2"></th>
+                    <th class="px-3 py-2 text-right">Nesemnat</th>
+                    <th class="px-3 py-2 text-right">Contract cu stampila</th>
                 </tr>
             </thead>
             <tbody>
@@ -188,6 +112,8 @@
                         $companyCui = trim((string) ($document['registry_company_cui'] ?? ''));
                         $statusKey = (string) ($document['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? ($statusKey !== '' ? $statusKey : '—');
+                        $hasSignedContract = trim((string) ($document['signed_upload_path'] ?? '')) !== ''
+                            || trim((string) ($document['signed_file_path'] ?? '')) !== '';
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700">
@@ -201,9 +127,18 @@
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($statusLabel) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($document['created_at'] ?? '—')) ?></td>
                         <td class="px-3 py-2 text-right">
-                            <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0)) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
+                            <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0) . '&kind=generated') ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
                                 Descarca
                             </a>
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            <?php if ($hasSignedContract): ?>
+                                <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0) . '&kind=signed') ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
+                                    Descarca
+                                </a>
+                            <?php else: ?>
+                                <span class="text-xs text-slate-400">—</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

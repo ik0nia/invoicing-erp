@@ -1,6 +1,6 @@
 <?php $title = 'Import factura XML'; ?>
 
-<div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <h1 class="text-xl font-semibold text-slate-900">Import factura XML</h1>
     <p class="mt-2 text-sm text-slate-500">
         Incarca un fisier XML (UBL e-Factura) pentru a crea factura de intrare.

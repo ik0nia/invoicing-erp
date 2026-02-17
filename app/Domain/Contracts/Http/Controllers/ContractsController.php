@@ -45,10 +45,12 @@ class ContractsController
         } else {
             $contracts = Database::fetchAll('SELECT * FROM contracts ORDER BY created_at DESC, id DESC');
         }
+        $companyNamesByCui = $this->resolveCompanyNamesByCuis($contracts);
 
         Response::view('admin/contracts/index', [
             'templates' => $templates,
             'contracts' => $contracts,
+            'companyNamesByCui' => $companyNamesByCui,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
         ]);
     }
@@ -97,12 +99,16 @@ class ContractsController
         $numberService = new DocumentNumberService();
         $number = null;
         $numberWarning = null;
+        $registryScope = $this->resolveRegistryScope($supplierCui, $clientCui, $template);
         try {
-            $number = $numberService->allocateNumber($docType);
+            $number = $numberService->allocateNumber($docType, [
+                'registry_scope' => $registryScope,
+            ]);
         } catch (\Throwable $exception) {
             $numberWarning = 'Contractul a fost creat fara numar de registru pentru doc_type "' . $docType . '".';
             Logger::logWarning('document_number_allocate_failed', [
                 'doc_type' => $docType,
+                'registry_scope' => $registryScope,
                 'error' => $exception->getMessage(),
             ]);
         }
@@ -170,6 +176,7 @@ class ContractsController
         if ($contractId > 0 && isset($number['no'])) {
             Audit::record('contract.number_assigned', 'contract', $contractId, [
                 'doc_type' => $docType,
+                'registry_scope' => $registryScope,
                 'doc_full_no' => (string) ($number['full_no'] ?? ''),
                 'rows_count' => 1,
             ]);
@@ -252,6 +259,10 @@ class ContractsController
         $user = $this->requireContractsRole();
 
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        $kind = strtolower(trim((string) ($_GET['kind'] ?? 'auto')));
+        if (!in_array($kind, ['auto', 'generated', 'signed'], true)) {
+            $kind = 'auto';
+        }
         if (!$id) {
             Response::redirect('/admin/contracts');
         }
@@ -270,18 +281,48 @@ class ContractsController
             }
         }
 
-        $path = (string) ($row['signed_upload_path'] ?? '');
-        if ($path === '') {
-            $path = (string) ($row['signed_file_path'] ?? '');
-        }
-        if ($path === '') {
+        $path = '';
+        if ($kind === 'signed') {
+            $path = (string) ($row['signed_upload_path'] ?? '');
+            if ($path === '') {
+                $path = (string) ($row['signed_file_path'] ?? '');
+            }
+            if ($path === '') {
+                Response::abort(404, 'Contractul semnat nu este disponibil.');
+            }
+        } elseif ($kind === 'generated') {
             $path = (string) ($row['generated_pdf_path'] ?? '');
+            if ($path === '') {
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($row['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+                }
+            }
+        } else {
+            $path = (string) ($row['signed_upload_path'] ?? '');
+            if ($path === '') {
+                $path = (string) ($row['signed_file_path'] ?? '');
+            }
+            if ($path === '') {
+                $path = (string) ($row['generated_pdf_path'] ?? '');
+            }
+            if ($path === '') {
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($row['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+                }
+            }
         }
         if ($path === '') {
-            $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
-        }
-        if ($path === '') {
-            Response::abort(503, 'PDF indisponibil momentan. Verifica configurarea wkhtmltopdf.');
+            Response::abort(503, 'Documentul generat este indisponibil momentan. Verifica configurarea wkhtmltopdf/dompdf.');
         }
         $this->streamFile($path);
     }
@@ -481,5 +522,102 @@ class ContractsController
         $padded = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
 
         return $series !== '' ? ($series . '-' . $padded) : $padded;
+    }
+
+    private function resolveRegistryScope(string $supplierCui, string $clientCui, ?array $template): string
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        $clientCui = preg_replace('/\D+/', '', $clientCui);
+
+        if ($clientCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+        if ($supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        $appliesTo = strtolower(trim((string) ($template['applies_to'] ?? '')));
+        if ($appliesTo === 'supplier') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+    }
+
+    private function resolveCompanyNamesByCuis(array $contracts): array
+    {
+        $cuiSet = [];
+        foreach ($contracts as $contract) {
+            foreach (['supplier_cui', 'client_cui', 'partner_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($contract[$column] ?? ''));
+                if ($cui !== '') {
+                    $cuiSet[$cui] = true;
+                }
+            }
+        }
+
+        if (empty($cuiSet)) {
+            return [];
+        }
+
+        return $this->fetchCompanyNamesByCuis(array_keys($cuiSet));
+    }
+
+    private function fetchCompanyNamesByCuis(array $cuis): array
+    {
+        $normalized = [];
+        foreach ($cuis as $cui) {
+            $value = preg_replace('/\D+/', '', (string) $cui);
+            if ($value !== '') {
+                $normalized[$value] = true;
+            }
+        }
+        $cuis = array_keys($normalized);
+        if (empty($cuis)) {
+            return [];
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach (array_values($cuis) as $index => $cui) {
+            $key = 'c' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = $cui;
+        }
+        $inSql = implode(',', $placeholders);
+
+        $result = [];
+        if (Database::tableExists('partners')) {
+            $partnerRows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM partners
+                 WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($partnerRows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '') {
+                    $result[$cui] = $name;
+                }
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $companyRows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM companies
+                 WHERE cui IN (' . $inSql . ')',
+                $params
+            );
+            foreach ($companyRows as $row) {
+                $cui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+                $name = trim((string) ($row['denumire'] ?? ''));
+                if ($cui !== '' && $name !== '' && !isset($result[$cui])) {
+                    $result[$cui] = $name;
+                }
+            }
+        }
+
+        return $result;
     }
 }

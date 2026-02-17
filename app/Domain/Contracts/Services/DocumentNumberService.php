@@ -8,11 +8,19 @@ use PDOException;
 
 class DocumentNumberService
 {
-    private const GLOBAL_REGISTRY_KEY = 'global';
+    public const REGISTRY_SCOPE_CLIENT = 'client';
+    public const REGISTRY_SCOPE_SUPPLIER = 'supplier';
 
-    public function registryKey(): string
+    private const CLIENT_REGISTRY_KEY = 'global';
+    private const SUPPLIER_REGISTRY_KEY = 'global_supplier';
+
+    public function registryKey(?string $registryScope = null): string
     {
-        return self::GLOBAL_REGISTRY_KEY;
+        $registryScope = $this->normalizeRegistryScope((string) $registryScope);
+
+        return $registryScope === self::REGISTRY_SCOPE_SUPPLIER
+            ? self::SUPPLIER_REGISTRY_KEY
+            : self::CLIENT_REGISTRY_KEY;
     }
 
     public function ensureRegistryRow(string $docType, array $defaults = []): array
@@ -24,7 +32,8 @@ class DocumentNumberService
         if (!Database::tableExists('document_registry')) {
             throw new \RuntimeException('Registrul documentelor nu este disponibil.');
         }
-        $registryDocType = self::GLOBAL_REGISTRY_KEY;
+        $registryScope = $this->normalizeRegistryScope((string) ($defaults['registry_scope'] ?? self::REGISTRY_SCOPE_CLIENT));
+        $registryDocType = $this->registryKey($registryScope);
 
         $startNo = max(1, (int) ($defaults['start_no'] ?? 1));
         $series = $this->normalizeSeries($defaults['series'] ?? null);
@@ -56,6 +65,7 @@ class DocumentNumberService
 
         $row['requested_doc_type'] = $requestedDocType;
         $row['registry_doc_type'] = $registryDocType;
+        $row['registry_scope'] = $registryScope;
 
         return $row;
     }
@@ -69,7 +79,8 @@ class DocumentNumberService
         if (!Database::tableExists('document_registry')) {
             throw new \RuntimeException('Registrul documentelor nu este disponibil.');
         }
-        $registryDocType = self::GLOBAL_REGISTRY_KEY;
+        $registryScope = $this->normalizeRegistryScope((string) ($defaults['registry_scope'] ?? self::REGISTRY_SCOPE_CLIENT));
+        $registryDocType = $this->registryKey($registryScope);
 
         $startNo = max(1, (int) ($defaults['start_no'] ?? 1));
         $defaultSeries = $this->normalizeSeries($defaults['series'] ?? null);
@@ -136,6 +147,7 @@ class DocumentNumberService
                 return [
                     'doc_type' => $requestedDocType,
                     'registry_doc_type' => $registryDocType,
+                    'registry_scope' => $registryScope,
                     'series' => $series,
                     'no' => $currentNo,
                     'full_no' => $fullNo,
@@ -162,6 +174,15 @@ class DocumentNumberService
         $docType = preg_replace('/[^a-zA-Z0-9_.-]/', '', $docType ?? '');
 
         return strtolower((string) $docType);
+    }
+
+    private function normalizeRegistryScope(string $registryScope): string
+    {
+        $registryScope = strtolower(trim($registryScope));
+
+        return $registryScope === self::REGISTRY_SCOPE_SUPPLIER
+            ? self::REGISTRY_SCOPE_SUPPLIER
+            : self::REGISTRY_SCOPE_CLIENT;
     }
 
     private function normalizeSeries(?string $series): string

@@ -14,23 +14,30 @@ use App\Domain\Contracts\Http\Controllers\ContractsController;
 use App\Domain\Contracts\Http\Controllers\ContractTemplatesController;
 use App\Domain\Contracts\Http\Controllers\DocumentRegistryController;
 use App\Domain\Contacts\Http\Controllers\ContactsController;
+use App\Domain\Tools\Http\Controllers\PdfToolsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
 $router->post('/admin/setari/demo-generate', [SettingsController::class, 'generateDemo']);
 $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo']);
-$router->get('/admin/manual', [SettingsController::class, 'manual']);
+$router->get('/admin/utile/prelucrare-pdf', [PdfToolsController::class, 'index']);
+$router->post('/admin/utile/prelucrare-pdf', [PdfToolsController::class, 'process']);
 $router->get('/admin/changelog', [SettingsController::class, 'changelog']);
 $router->get('/admin/audit', [AuditController::class, 'index']);
 $router->get('/admin/audit/view', [AuditController::class, 'show']);
 $router->get('/admin/enrollment-links', [EnrollmentLinksController::class, 'index']);
 $router->get('/admin/inrolari', [EnrollmentLinksController::class, 'pending']);
+$router->get('/admin/fisiere-upa', [EnrollmentLinksController::class, 'resources']);
 $router->post('/admin/enrollment-links/create', [EnrollmentLinksController::class, 'create']);
 $router->post('/admin/enrollment-links/disable', [EnrollmentLinksController::class, 'disable']);
 $router->post('/admin/enrollment-links/regenerate', [EnrollmentLinksController::class, 'regenerate']);
 $router->post('/admin/enrollment-links/lookup', [EnrollmentLinksController::class, 'lookup']);
 $router->get('/admin/enrollment-links/supplier-search', [EnrollmentLinksController::class, 'supplierSearch']);
+$router->get('/admin/enrollment-links/company-search', [EnrollmentLinksController::class, 'companySearch']);
 $router->get('/admin/enrollment-links/supplier-info', [EnrollmentLinksController::class, 'supplierInfo']);
+$router->post('/admin/enrollment-links/resources/upload', [EnrollmentLinksController::class, 'uploadResource']);
+$router->post('/admin/enrollment-links/resources/delete', [EnrollmentLinksController::class, 'deleteResource']);
+$router->get('/admin/enrollment-links/resources/download', [EnrollmentLinksController::class, 'downloadResource']);
 $router->post('/admin/enrollment-links/approve-onboarding', [EnrollmentLinksController::class, 'approveOnboarding']);
 $router->post('/admin/enrollment-links/reset-onboarding', [EnrollmentLinksController::class, 'resetOnboarding']);
 $router->get('/admin/contracts', [ContractsController::class, 'index']);
@@ -48,6 +55,7 @@ $router->get('/admin/contract-templates/edit', [ContractTemplatesController::cla
 $router->post('/admin/contract-templates/update', [ContractTemplatesController::class, 'update']);
 $router->post('/admin/contract-templates/duplicate', [ContractTemplatesController::class, 'duplicate']);
 $router->post('/admin/contract-templates/preview', [ContractTemplatesController::class, 'preview']);
+$router->get('/admin/contract-templates/download-draft', [ContractTemplatesController::class, 'downloadDraftPdf']);
 $router->post('/admin/contract-templates/upload-stamp', [ContractTemplatesController::class, 'uploadStamp']);
 $router->post('/admin/contract-templates/remove-stamp', [ContractTemplatesController::class, 'removeStamp']);
 $router->get('/admin/contract-templates/stamp', [ContractTemplatesController::class, 'stamp']);
@@ -61,6 +69,8 @@ $router->get('/admin/facturi/fisier', [InvoiceController::class, 'showSupplierFi
 $router->get('/admin/facturi/print-situatie', [InvoiceController::class, 'printSituation']);
 $router->get('/admin/facturi/lookup-suppliers', [InvoiceController::class, 'lookupSuppliers']);
 $router->get('/admin/facturi/lookup-clients', [InvoiceController::class, 'lookupClients']);
+$router->get('/admin/facturi/manual/suppliers-search', [InvoiceController::class, 'manualSupplierSearch']);
+$router->get('/admin/facturi/manual/clients-search', [InvoiceController::class, 'manualClientSearch']);
 $router->get('/admin/pachete-confirmate', [InvoiceController::class, 'confirmedPackages']);
 $router->post('/admin/pachete-confirmate/import-saga', [InvoiceController::class, 'importSagaCsv']);
 $router->get('/admin/pachete-confirmate/saga-json', [InvoiceController::class, 'sagaPackageJson']);
@@ -96,6 +106,8 @@ $router->post('/admin/facturi/redenumeste-pachet', [InvoiceController::class, 'r
 $router->post('/admin/facturi/print', [InvoiceController::class, 'printInvoice']);
 $router->post('/admin/facturi/print-storno', [InvoiceController::class, 'printStornoInvoice']);
 $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice']);
+$router->post('/admin/facturi/refacere', [InvoiceController::class, 'rebuildInvoice']);
+$router->post('/admin/facturi/refacere/genereaza', [InvoiceController::class, 'generateAdjustmentInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
 
 $router->get('/admin/incasari', [PaymentsController::class, 'indexIn']);
@@ -134,4 +146,6 @@ $router->post('/admin/companii/openapi', [CompanyController::class, 'lookupOpenA
 $router->get('/admin/asocieri', [AssociationsController::class, 'index']);
 $router->post('/admin/asocieri/salveaza', [AssociationsController::class, 'save']);
 $router->post('/admin/asocieri/comision-default', [AssociationsController::class, 'saveDefaultCommission']);
+$router->post('/admin/asocieri/solicitari/aproba', [AssociationsController::class, 'approveRequest']);
+$router->post('/admin/asocieri/solicitari/refuza', [AssociationsController::class, 'rejectRequest']);
 $router->post('/admin/asocieri/sterge', [AssociationsController::class, 'delete']);

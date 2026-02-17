@@ -2,6 +2,7 @@
 
 namespace App\Domain\Settings\Http\Controllers;
 
+use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
@@ -55,6 +56,10 @@ class SettingsController
             'banca' => (string) $this->settings->get('company.banca', ''),
             'iban' => (string) $this->settings->get('company.iban', ''),
         ];
+        $documentRegistry = [
+            DocumentNumberService::REGISTRY_SCOPE_CLIENT => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_CLIENT),
+            DocumentNumberService::REGISTRY_SCOPE_SUPPLIER => $this->loadDocumentRegistrySettings(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER),
+        ];
 
         Response::view('admin/settings/index', [
             'logoPath' => $logoPath,
@@ -68,6 +73,7 @@ class SettingsController
             'fgoBaseUrl' => $fgoBaseUrl,
             'openApiKey' => $openApiKey,
             'company' => $company,
+            'documentRegistry' => $documentRegistry,
         ]);
     }
 
@@ -185,6 +191,39 @@ class SettingsController
         }
 
         return \App\Support\Url::asset($logoPath);
+    }
+
+    private function loadDocumentRegistrySettings(string $registryScope): array
+    {
+        $settings = [
+            'scope' => $registryScope,
+            'series' => '',
+            'start_no' => 1,
+            'next_no' => 1,
+            'updated_at' => '',
+            'available' => false,
+        ];
+        if (!Database::tableExists('document_registry')) {
+            return $settings;
+        }
+
+        try {
+            $numberService = new DocumentNumberService();
+            $row = $numberService->ensureRegistryRow('contract', [
+                'registry_scope' => $registryScope,
+            ]);
+            $startNo = max(1, (int) ($row['start_no'] ?? 1));
+            $nextNo = max($startNo, (int) ($row['next_no'] ?? $startNo));
+            $settings['series'] = trim((string) ($row['series'] ?? ''));
+            $settings['start_no'] = $startNo;
+            $settings['next_no'] = $nextNo;
+            $settings['updated_at'] = (string) ($row['updated_at'] ?? '');
+            $settings['available'] = true;
+        } catch (\Throwable $exception) {
+            $settings['available'] = false;
+        }
+
+        return $settings;
     }
 
     private function storeBrandingLogoUpload(array $file, string $baseName): ?string
@@ -656,16 +695,6 @@ class SettingsController
                 @unlink($item);
             }
         }
-    }
-
-    public function manual(): void
-    {
-        Auth::requireAdmin();
-
-        Response::view('admin/manual', [
-            'version' => self::APP_VERSION,
-            'releases' => $this->readChangelog(),
-        ]);
     }
 
     public function changelog(): void

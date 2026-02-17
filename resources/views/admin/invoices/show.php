@@ -1,6 +1,13 @@
 <?php
     $title = 'Factura ' . htmlspecialchars($invoice->invoice_number);
     $isPlatform = $isPlatform ?? false;
+    $canRefacereInvoice = !empty($canRefacereInvoice);
+    $refacerePackages = is_array($refacerePackages ?? null) ? $refacerePackages : [];
+    $invoiceAdjustments = is_array($invoiceAdjustments ?? null) ? $invoiceAdjustments : [];
+    $canShowRefacereAction = $canRefacereInvoice
+        && !empty($isConfirmed)
+        && !empty($invoice->fgo_number)
+        && empty($invoice->fgo_storno_number);
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -740,9 +747,266 @@
                                 </button>
                             </form>
                         <?php endif; ?>
+                        <?php if (!empty($canShowRefacereAction)): ?>
+                            <button
+                                type="button"
+                                data-refacere-toggle
+                                class="inline-flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                            >
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M4 4h16v5H4zM4 12h16v8H4z" />
+                                    <path d="M8 8h.01M8 16h.01M12 16h6" />
+                                </svg>
+                                Refacere factura
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($canShowRefacereAction)): ?>
+        <div id="invoice-refacere" class="mt-6 rounded-lg border border-blue-200 bg-blue-50/60 p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 class="text-base font-semibold text-blue-900">Refacere factura</h3>
+                    <p class="mt-1 text-xs text-blue-800/90">
+                        Ajustezi cantitatile pe pachetele active. Sistemul creeaza automat pachete storno (cantitati cu minus)
+                        si pachete noi (cantitatile ramase), apoi poti emite in FGO factura de refacere.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    data-refacere-toggle
+                    class="rounded border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                    Deschide editor
+                </button>
+            </div>
+
+            <div class="mt-4 hidden" data-refacere-panel>
+                <?php if (empty($refacerePackages)): ?>
+                    <div class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Nu exista pachete active eligibile pentru refacere.
+                    </div>
+                <?php else: ?>
+                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/refacere') ?>" data-refacere-form>
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+
+                        <div class="space-y-4">
+                            <?php foreach ($refacerePackages as $package): ?>
+                                <?php
+                                    $packageId = (int) ($package['package_id'] ?? 0);
+                                    $packageLabel = (string) ($package['label'] ?? ('Pachet #' . $packageId));
+                                    $packageTotalVat = (float) ($package['total_vat'] ?? 0.0);
+                                    $packageLines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
+                                ?>
+                                <div
+                                    class="rounded-lg border border-blue-100 bg-white p-4 shadow-sm"
+                                    data-refacere-package
+                                    data-package-id="<?= $packageId ?>"
+                                    data-package-old-total="<?= htmlspecialchars(number_format($packageTotalVat, 2, '.', '')) ?>"
+                                >
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div class="text-sm font-semibold text-slate-900"><?= htmlspecialchars($packageLabel) ?></div>
+                                            <div class="text-xs text-slate-600">
+                                                Total curent: <strong><?= number_format($packageTotalVat, 2, '.', ' ') ?> RON</strong>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                            data-refacere-clear-package
+                                            data-package-id="<?= $packageId ?>"
+                                        >
+                                            Renunta la pachet
+                                        </button>
+                                    </div>
+
+                                    <div class="mt-3 overflow-x-auto rounded border border-slate-200">
+                                        <table class="min-w-full text-left text-xs">
+                                            <thead class="bg-slate-50 text-slate-600">
+                                                <tr>
+                                                    <th class="px-2 py-2">Produs</th>
+                                                    <th class="px-2 py-2">Cant. initiala</th>
+                                                    <th class="px-2 py-2">Cant. noua</th>
+                                                    <th class="px-2 py-2">U.M.</th>
+                                                    <th class="px-2 py-2">Valoare curenta</th>
+                                                    <th class="px-2 py-2">Valoare noua</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($packageLines as $line): ?>
+                                                    <?php
+                                                        $lineId = (int) ($line['line_id'] ?? 0);
+                                                        $lineName = (string) ($line['product_name'] ?? '');
+                                                        $lineQty = round((float) ($line['quantity'] ?? 0.0), 3);
+                                                        $lineUnit = (string) ($line['unit_code'] ?? '');
+                                                        $lineUnitPrice = (float) ($line['unit_price'] ?? 0.0);
+                                                        $lineTax = (float) ($line['tax_percent'] ?? 0.0);
+                                                        $lineOldTotalVat = round($lineQty * $lineUnitPrice * (1 + ($lineTax / 100)), 2);
+                                                    ?>
+                                                    <tr class="border-t border-slate-100">
+                                                        <td class="px-2 py-2 text-slate-800">
+                                                            <?= htmlspecialchars($lineName) ?>
+                                                        </td>
+                                                        <td class="px-2 py-2 text-slate-700">
+                                                            <?= number_format($lineQty, 3, '.', ' ') ?>
+                                                        </td>
+                                                        <td class="px-2 py-2">
+                                                            <input
+                                                                type="number"
+                                                                name="adjust_qty[<?= $packageId ?>][<?= $lineId ?>]"
+                                                                value="<?= htmlspecialchars(number_format($lineQty, 3, '.', '')) ?>"
+                                                                min="0"
+                                                                max="<?= htmlspecialchars(number_format($lineQty, 3, '.', '')) ?>"
+                                                                step="0.001"
+                                                                class="w-28 rounded border border-slate-300 px-2 py-1 text-xs"
+                                                                data-refacere-qty
+                                                                data-package-id="<?= $packageId ?>"
+                                                                data-line-id="<?= $lineId ?>"
+                                                                data-old-qty="<?= htmlspecialchars(number_format($lineQty, 3, '.', '')) ?>"
+                                                                data-unit-price="<?= htmlspecialchars(number_format($lineUnitPrice, 4, '.', '')) ?>"
+                                                                data-tax-percent="<?= htmlspecialchars(number_format($lineTax, 2, '.', '')) ?>"
+                                                            >
+                                                        </td>
+                                                        <td class="px-2 py-2 text-slate-700"><?= htmlspecialchars($lineUnit) ?></td>
+                                                        <td class="px-2 py-2 text-slate-700"><?= number_format($lineOldTotalVat, 2, '.', ' ') ?> RON</td>
+                                                        <td class="px-2 py-2 text-slate-700" data-refacere-line-new-total data-package-id="<?= $packageId ?>" data-line-id="<?= $lineId ?>">
+                                                            <?= number_format($lineOldTotalVat, 2, '.', ' ') ?> RON
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div class="mt-2 text-xs text-slate-700">
+                                        Total nou pachet:
+                                        <strong data-refacere-package-new-total data-package-id="<?= $packageId ?>">
+                                            <?= number_format($packageTotalVat, 2, '.', ' ') ?> RON
+                                        </strong>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="mt-4 rounded border border-blue-200 bg-white p-4 text-sm text-slate-800">
+                            <div class="grid gap-2 md:grid-cols-3">
+                                <div>
+                                    Valoare pachete storno:
+                                    <strong data-refacere-summary-storno>0.00 RON</strong>
+                                </div>
+                                <div>
+                                    Valoare pachete refacturate:
+                                    <strong data-refacere-summary-replacement>0.00 RON</strong>
+                                </div>
+                                <div>
+                                    Scadere neta total factura:
+                                    <strong class="text-rose-700" data-refacere-summary-decrease>0.00 RON</strong>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-slate-600">
+                                Storno-ul pentru furnizor este valoarea pachetelor storno; pe factura de refacere FGO se emit impreuna liniile storno si liniile noi.
+                            </p>
+                        </div>
+
+                        <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+                            <button
+                                type="submit"
+                                class="rounded border border-blue-700 bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                data-refacere-submit
+                                disabled
+                            >
+                                Confirma modificarea
+                            </button>
+                        </div>
+                    </form>
+                <?php endif; ?>
+
+                <?php if (!empty($invoiceAdjustments)): ?>
+                    <div class="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                        <h4 class="text-sm font-semibold text-slate-900">Refaceri salvate</h4>
+                        <div class="mt-3 space-y-3">
+                            <?php foreach ($invoiceAdjustments as $adjustment): ?>
+                                <?php
+                                    $adjustmentId = (int) ($adjustment['id'] ?? 0);
+                                    $createdAtRaw = (string) ($adjustment['created_at'] ?? '');
+                                    $createdAtTs = $createdAtRaw !== '' ? strtotime($createdAtRaw) : false;
+                                    $createdAtLabel = $createdAtTs ? date('d.m.Y H:i', $createdAtTs) : ($createdAtRaw !== '' ? $createdAtRaw : '—');
+                                    $statusKey = (string) ($adjustment['status'] ?? 'applied');
+                                    $statusLabel = $statusKey === 'fgo_generated' ? 'Emisa in FGO' : 'Aplicata';
+                                    $stornoValue = (float) ($adjustment['storno_total_with_vat'] ?? 0.0);
+                                    $targetValue = (float) ($adjustment['target_total_with_vat'] ?? 0.0);
+                                    $decreaseValue = (float) ($adjustment['decrease_total_with_vat'] ?? 0.0);
+                                ?>
+                                <div class="rounded border border-slate-200 bg-slate-50 p-3">
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div class="text-sm font-semibold text-slate-900">
+                                                Refacere #<?= $adjustmentId ?> · <?= htmlspecialchars($createdAtLabel) ?>
+                                            </div>
+                                            <div class="mt-1 text-xs text-slate-600">
+                                                Pachete modificate: <?= (int) ($adjustment['package_changes'] ?? 0) ?> ·
+                                                Storno: <?= number_format($stornoValue, 2, '.', ' ') ?> RON ·
+                                                Scadere neta: <?= number_format($decreaseValue, 2, '.', ' ') ?> RON ·
+                                                Total nou factura: <?= number_format($targetValue, 2, '.', ' ') ?> RON
+                                            </div>
+                                            <div class="mt-1 text-xs">
+                                                <span class="inline-flex rounded-full px-2 py-0.5 font-semibold <?= $statusKey === 'fgo_generated' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' ?>">
+                                                    <?= htmlspecialchars($statusLabel) ?>
+                                                </span>
+                                                <?php if (!empty($adjustment['fgo_number'])): ?>
+                                                    <span class="ml-2 text-slate-600">
+                                                        Factura: <?= htmlspecialchars(trim((string) ($adjustment['fgo_series'] ?? '') . ' ' . (string) ($adjustment['fgo_number'] ?? ''))) ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <?php if (!empty($adjustment['fgo_link'])): ?>
+                                                <a
+                                                    href="<?= htmlspecialchars((string) $adjustment['fgo_link']) ?>"
+                                                    target="_blank"
+                                                    class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                    Deschide factura FGO
+                                                </a>
+                                            <?php endif; ?>
+                                            <?php if (empty($adjustment['fgo_number'])): ?>
+                                                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/refacere/genereaza') ?>" class="flex flex-wrap items-center gap-2">
+                                                    <?= App\Support\Csrf::input() ?>
+                                                    <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                                    <input type="hidden" name="adjustment_id" value="<?= $adjustmentId ?>">
+                                                    <?php if (!empty($fgoSeriesOptions)): ?>
+                                                        <select name="fgo_series" class="rounded border border-slate-300 px-2 py-1 text-xs">
+                                                            <option value="">Serie FGO</option>
+                                                            <?php foreach ($fgoSeriesOptions as $series): ?>
+                                                                <option value="<?= htmlspecialchars($series) ?>" <?= ($fgoSeriesSelected ?? '') === $series ? 'selected' : '' ?>>
+                                                                    <?= htmlspecialchars($series) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    <?php endif; ?>
+                                                    <button
+                                                        class="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                                                        onclick="return confirm('Generezi factura FGO pentru refacerea selectata?')"
+                                                    >
+                                                        Genereaza factura FGO refacere
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
     <?php endif; ?>
 
@@ -1090,6 +1354,149 @@
         if (splitOverlay) {
             splitOverlay.addEventListener('click', closeSplit);
         }
+
+        const refacerePanel = document.querySelector('[data-refacere-panel]');
+        const refacereToggles = Array.from(document.querySelectorAll('[data-refacere-toggle]'));
+        const refacereForm = document.querySelector('[data-refacere-form]');
+        const refacereQtyInputs = Array.from(document.querySelectorAll('[data-refacere-qty]'));
+        const refacereClearButtons = Array.from(document.querySelectorAll('[data-refacere-clear-package]'));
+        const refacereSubmit = document.querySelector('[data-refacere-submit]');
+        const refacereSummaryStorno = document.querySelector('[data-refacere-summary-storno]');
+        const refacereSummaryReplacement = document.querySelector('[data-refacere-summary-replacement]');
+        const refacereSummaryDecrease = document.querySelector('[data-refacere-summary-decrease]');
+        const toNumber = (value) => {
+            const normalized = String(value || '').trim().replace(',', '.');
+            const parsed = Number.parseFloat(normalized);
+            return Number.isFinite(parsed) ? parsed : NaN;
+        };
+        const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+        const formatRon = (value) => `${round2(value).toFixed(2)} RON`;
+        const toggleRefacerePanel = (forceOpen = null) => {
+            if (!refacerePanel) {
+                return;
+            }
+            const shouldOpen = forceOpen === null
+                ? refacerePanel.classList.contains('hidden')
+                : !!forceOpen;
+            refacerePanel.classList.toggle('hidden', !shouldOpen);
+        };
+
+        refacereToggles.forEach((button) => {
+            button.addEventListener('click', () => toggleRefacerePanel());
+        });
+
+        const recalcRefacere = () => {
+            if (refacereQtyInputs.length === 0) {
+                return;
+            }
+
+            const packageTotalsOld = {};
+            const packageTotalsNew = {};
+            const packageChanged = {};
+            let hasInvalid = false;
+
+            refacereQtyInputs.forEach((input) => {
+                const packageId = String(input.dataset.packageId || '');
+                const lineId = String(input.dataset.lineId || '');
+                const oldQty = toNumber(input.dataset.oldQty || '0');
+                const unitPrice = toNumber(input.dataset.unitPrice || '0');
+                const taxPercent = toNumber(input.dataset.taxPercent || '0');
+                let newQty = toNumber(input.value);
+
+                if (!Number.isFinite(newQty) || !Number.isFinite(oldQty)) {
+                    hasInvalid = true;
+                    input.classList.add('border-rose-300', 'ring-rose-200');
+                    return;
+                }
+                if (newQty < 0) {
+                    newQty = 0;
+                    input.value = '0';
+                }
+                if (newQty > oldQty + 0.0001) {
+                    hasInvalid = true;
+                    input.classList.add('border-rose-300', 'ring-rose-200');
+                } else {
+                    input.classList.remove('border-rose-300', 'ring-rose-200');
+                }
+
+                const oldLineVat = round2(oldQty * unitPrice * (1 + (taxPercent / 100)));
+                const newLineVat = round2(newQty * unitPrice * (1 + (taxPercent / 100)));
+                packageTotalsOld[packageId] = (packageTotalsOld[packageId] || 0) + oldLineVat;
+                packageTotalsNew[packageId] = (packageTotalsNew[packageId] || 0) + newLineVat;
+                if (Math.abs(newQty - oldQty) > 0.0005) {
+                    packageChanged[packageId] = true;
+                }
+
+                const lineTotalNode = document.querySelector(`[data-refacere-line-new-total][data-package-id="${packageId}"][data-line-id="${lineId}"]`);
+                if (lineTotalNode) {
+                    lineTotalNode.textContent = formatRon(newLineVat);
+                }
+            });
+
+            let stornoTotal = 0;
+            let replacementTotal = 0;
+            let changed = false;
+
+            Object.keys(packageTotalsOld).forEach((packageId) => {
+                const oldTotal = round2(packageTotalsOld[packageId] || 0);
+                const newTotal = round2(packageTotalsNew[packageId] || 0);
+                const packageNewNode = document.querySelector(`[data-refacere-package-new-total][data-package-id="${packageId}"]`);
+                if (packageNewNode) {
+                    packageNewNode.textContent = formatRon(newTotal);
+                }
+
+                if (packageChanged[packageId]) {
+                    changed = true;
+                    stornoTotal += oldTotal;
+                    replacementTotal += newTotal;
+                }
+            });
+
+            const decreaseTotal = round2(stornoTotal - replacementTotal);
+            if (refacereSummaryStorno) {
+                refacereSummaryStorno.textContent = formatRon(stornoTotal);
+            }
+            if (refacereSummaryReplacement) {
+                refacereSummaryReplacement.textContent = formatRon(replacementTotal);
+            }
+            if (refacereSummaryDecrease) {
+                refacereSummaryDecrease.textContent = formatRon(decreaseTotal);
+            }
+            if (refacereSubmit) {
+                refacereSubmit.disabled = !changed || hasInvalid || decreaseTotal <= 0.0;
+            }
+        };
+
+        refacereQtyInputs.forEach((input) => {
+            input.addEventListener('input', recalcRefacere);
+            input.addEventListener('blur', recalcRefacere);
+        });
+
+        refacereClearButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const packageId = String(button.dataset.packageId || '');
+                refacereQtyInputs.forEach((input) => {
+                    if (String(input.dataset.packageId || '') === packageId) {
+                        input.value = '0';
+                    }
+                });
+                recalcRefacere();
+            });
+        });
+
+        if (refacereForm) {
+            refacereForm.addEventListener('submit', (event) => {
+                recalcRefacere();
+                if (refacereSubmit && refacereSubmit.disabled) {
+                    event.preventDefault();
+                }
+            });
+        }
+
+        if (window.location.hash === '#invoice-refacere') {
+            toggleRefacerePanel(true);
+        }
+        recalcRefacere();
 
         const isLocked = <?= !empty($isConfirmed) ? 'true' : 'false' ?>;
         if (isLocked) {

@@ -106,18 +106,28 @@ class ContractPdfService
         if ($hasWkhtmltopdf && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, $contractId)) {
             $generator = 'wkhtmltopdf';
         }
-        $hasDompdf = $this->isDompdfAvailable();
-        if ($generator === '' && $hasDompdf && $this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
-            $generator = 'dompdf';
+        $dompdfStatus = $this->dompdfAvailability($contractId, false);
+        $hasDompdf = (bool) ($dompdfStatus['available'] ?? false);
+        $dompdfTried = false;
+        if ($generator === '' && $hasDompdf) {
+            $dompdfTried = true;
+            if ($this->generateWithDompdf($html, $pdfAbsolute, $contractId)) {
+                $generator = 'dompdf';
+            }
         }
 
         if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
             @unlink($pdfAbsolute);
             $this->storeHtmlFallback($contractId, $html);
+            if ($dompdfTried && $generator === '' && ($dompdfStatus['reason'] ?? '') === 'ready') {
+                $dompdfStatus['reason'] = 'generation_failed';
+            }
             Logger::logWarning('contract_pdf_tool_missing', [
                 'contract_id' => $contractId,
                 'has_wkhtmltopdf' => $hasWkhtmltopdf,
                 'has_dompdf' => $hasDompdf,
+                'dompdf_reason' => (string) ($dompdfStatus['reason'] ?? ''),
+                'dompdf_missing_extensions' => (array) ($dompdfStatus['missing_extensions'] ?? []),
             ]);
             return '';
         }
@@ -145,6 +155,63 @@ class ContractPdfService
         return $relative;
     }
 
+    public function generatePdfBinaryFromHtml(string $html, string $filenamePrefix = 'document'): string
+    {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $outputDir = $basePath . '/storage/cache/pdf';
+        if (!is_dir($outputDir)) {
+            @mkdir($outputDir, 0775, true);
+        }
+        if (!is_dir($outputDir) || !is_writable($outputDir)) {
+            return '';
+        }
+
+        $safePrefix = strtolower(trim(preg_replace('/[^a-zA-Z0-9_-]+/', '-', $filenamePrefix), '-'));
+        if ($safePrefix === '') {
+            $safePrefix = 'document';
+        }
+        $pdfName = $safePrefix . '-' . bin2hex(random_bytes(8)) . '.pdf';
+        $pdfAbsolute = $outputDir . '/' . $pdfName;
+
+        $generator = '';
+        $binary = $this->resolveWkhtmltopdfPath();
+        $hasWkhtmltopdf = $binary !== '';
+        if ($hasWkhtmltopdf && $this->generateWithWkhtmltopdf($binary, $html, $pdfAbsolute, 0)) {
+            $generator = 'wkhtmltopdf';
+        }
+
+        $dompdfStatus = $this->dompdfAvailability(0, false);
+        $hasDompdf = (bool) ($dompdfStatus['available'] ?? false);
+        if ($generator === '' && $hasDompdf && $this->generateWithDompdf($html, $pdfAbsolute, 0)) {
+            $generator = 'dompdf';
+        }
+
+        if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
+            @unlink($pdfAbsolute);
+            Logger::logWarning('template_pdf_tool_missing', [
+                'has_wkhtmltopdf' => $hasWkhtmltopdf,
+                'has_dompdf' => $hasDompdf,
+                'dompdf_reason' => (string) ($dompdfStatus['reason'] ?? ''),
+                'dompdf_missing_extensions' => (array) ($dompdfStatus['missing_extensions'] ?? []),
+            ]);
+
+            return '';
+        }
+
+        $binaryPdf = @file_get_contents($pdfAbsolute);
+        @unlink($pdfAbsolute);
+        if (!is_string($binaryPdf) || $binaryPdf === '') {
+            return '';
+        }
+
+        return $binaryPdf;
+    }
+
     private function generateWithWkhtmltopdf(string $binary, string $html, string $pdfAbsolute, int $contractId): bool
     {
         $tmpHtml = tempnam(sys_get_temp_dir(), 'ctr_pdf_');
@@ -159,7 +226,7 @@ class ContractPdfService
 
         $command = escapeshellarg($binary)
             . ' --quiet'
-            . ' --footer-center ' . escapeshellarg('[page]/[toPage] pagini')
+            . ' --footer-center ' . escapeshellarg('[page]/[toPage]')
             . ' --footer-font-size ' . escapeshellarg('9')
             . ' --footer-spacing ' . escapeshellarg('4')
             . ' --margin-bottom ' . escapeshellarg('22mm')
@@ -187,39 +254,13 @@ class ContractPdfService
 
     private function generateWithDompdf(string $html, string $pdfAbsolute, int $contractId): bool
     {
-        if (!$this->ensureDompdfLoaded()) {
+        $dompdfStatus = $this->dompdfAvailability($contractId, true);
+        if (empty($dompdfStatus['available'])) {
             return false;
         }
-        $missingExtensions = $this->missingDompdfExtensions();
-        if (!empty($missingExtensions)) {
-            Logger::logWarning('dompdf_extensions_missing', [
-                'contract_id' => $contractId,
-                'missing' => $missingExtensions,
-            ]);
-            return false;
-        }
-
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $tempDir = $basePath . '/storage/cache/dompdf/tmp';
         $fontDir = $basePath . '/storage/cache/dompdf/fonts';
-        if (!is_dir($tempDir)) {
-            @mkdir($tempDir, 0775, true);
-        }
-        if (!is_dir($fontDir)) {
-            @mkdir($fontDir, 0775, true);
-        }
-        if (!is_dir($tempDir) || !is_writable($tempDir) || !is_dir($fontDir) || !is_writable($fontDir)) {
-            Logger::logWarning('dompdf_storage_not_writable', [
-                'contract_id' => $contractId,
-                'temp_dir' => $tempDir,
-                'font_dir' => $fontDir,
-                'temp_exists' => is_dir($tempDir),
-                'font_exists' => is_dir($fontDir),
-                'temp_writable' => is_writable($tempDir),
-                'font_writable' => is_writable($fontDir),
-            ]);
-            return false;
-        }
 
         try {
             $options = new \Dompdf\Options();
@@ -238,7 +279,7 @@ class ContractPdfService
 
             $canvas = $dompdf->getCanvas();
             if ($canvas !== null) {
-                $footerText = '{PAGE_NUM}/{PAGE_COUNT} pagini';
+                $footerText = '{PAGE_NUM}/{PAGE_COUNT}';
                 $fontSize = 9.0;
                 $fontMetrics = $dompdf->getFontMetrics();
                 $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
@@ -300,36 +341,136 @@ class ContractPdfService
 
     private function isDompdfAvailable(): bool
     {
-        return $this->resolveDompdfAutoloadPath() !== '';
+        $status = $this->dompdfAvailability(0, false);
+
+        return !empty($status['available']);
     }
 
-    private function ensureDompdfLoaded(): bool
+    private function dompdfAvailability(int $contractId = 0, bool $logFailures = false): array
     {
-        $autoloadPath = $this->resolveDompdfAutoloadPath();
-        if ($autoloadPath === '') {
-            $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
-            Logger::logWarning('dompdf_autoload_missing', [
-                'checked' => $this->dompdfAutoloadCandidates($basePath),
-            ]);
-            return false;
+        if (!$this->ensureDompdfLoaded($logFailures)) {
+            return [
+                'available' => false,
+                'reason' => 'autoload_or_class_missing',
+                'missing_extensions' => [],
+            ];
         }
-        if (!class_exists(\Dompdf\Dompdf::class, false)) {
-            $loaded = @include_once $autoloadPath;
-            if ($loaded === false && !class_exists(\Dompdf\Dompdf::class, false)) {
-                Logger::logWarning('dompdf_autoload_failed', [
-                    'autoload_path' => $autoloadPath,
+
+        $missingExtensions = $this->missingDompdfExtensions();
+        if (!empty($missingExtensions)) {
+            if ($logFailures) {
+                Logger::logWarning('dompdf_extensions_missing', [
+                    'contract_id' => $contractId > 0 ? $contractId : null,
+                    'missing' => $missingExtensions,
                 ]);
-                return false;
+            }
+
+            return [
+                'available' => false,
+                'reason' => 'extensions_missing',
+                'missing_extensions' => $missingExtensions,
+            ];
+        }
+
+        if (!$this->ensureDompdfStorageReady($contractId, $logFailures)) {
+            return [
+                'available' => false,
+                'reason' => 'storage_not_writable',
+                'missing_extensions' => [],
+            ];
+        }
+
+        return [
+            'available' => true,
+            'reason' => 'ready',
+            'missing_extensions' => [],
+        ];
+    }
+
+    private function ensureDompdfLoaded(bool $logFailures = true): bool
+    {
+        if ($this->dompdfClassExists()) {
+            return true;
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $candidates = $this->dompdfAutoloadCandidates($basePath);
+        $autoloadPath = $this->resolveDompdfAutoloadPath();
+        $attemptedPaths = [];
+        $failedIncludes = [];
+
+        if ($autoloadPath !== '') {
+            $attemptedPaths[] = $autoloadPath;
+            $loaded = @include_once $autoloadPath;
+            if ($loaded === false && !$this->dompdfClassExists()) {
+                $failedIncludes[] = $autoloadPath;
+            }
+            if ($this->dompdfClassExists()) {
+                $this->dompdfAutoloadPath = $autoloadPath;
+                return true;
             }
         }
-        if (!class_exists(\Dompdf\Dompdf::class, false)) {
-            Logger::logWarning('dompdf_class_missing', [
-                'autoload_path' => $autoloadPath,
+
+        if (!$this->dompdfClassExists()) {
+            foreach ($candidates as $candidate) {
+                if ($candidate === $autoloadPath) {
+                    continue;
+                }
+                if (!is_file($candidate) || !is_readable($candidate)) {
+                    continue;
+                }
+
+                $attemptedPaths[] = $candidate;
+                $loaded = @include_once $candidate;
+                if ($loaded === false && !$this->dompdfClassExists()) {
+                    $failedIncludes[] = $candidate;
+                    continue;
+                }
+
+                if ($this->dompdfClassExists()) {
+                    $this->dompdfAutoloadPath = $candidate;
+                    break;
+                }
+            }
+        }
+
+        if ($this->dompdfClassExists()) {
+            return true;
+        }
+
+        if (!$logFailures) {
+            return false;
+        }
+
+        if (empty($attemptedPaths)) {
+            Logger::logWarning('dompdf_autoload_missing', [
+                'checked' => $candidates,
             ]);
             return false;
         }
 
-        return true;
+        if (!empty($failedIncludes)) {
+            Logger::logWarning('dompdf_autoload_failed', [
+                'autoload_path' => $failedIncludes[0],
+                'checked' => $failedIncludes,
+            ]);
+        }
+
+        Logger::logWarning('dompdf_class_missing', [
+            'autoload_path' => $autoloadPath !== '' ? $autoloadPath : ($attemptedPaths[0] ?? ''),
+            'checked' => $attemptedPaths,
+        ]);
+
+        return false;
+    }
+
+    private function dompdfClassExists(): bool
+    {
+        if (class_exists(\Dompdf\Dompdf::class, false)) {
+            return true;
+        }
+
+        return class_exists(\Dompdf\Dompdf::class);
     }
 
     private function resolveDompdfAutoloadPath(): string
@@ -373,6 +514,35 @@ class ContractPdfService
         }
 
         return $missing;
+    }
+
+    private function ensureDompdfStorageReady(int $contractId = 0, bool $logFailures = true): bool
+    {
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $tempDir = $basePath . '/storage/cache/dompdf/tmp';
+        $fontDir = $basePath . '/storage/cache/dompdf/fonts';
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0775, true);
+        }
+        if (!is_dir($fontDir)) {
+            @mkdir($fontDir, 0775, true);
+        }
+        $ready = is_dir($tempDir) && is_writable($tempDir) && is_dir($fontDir) && is_writable($fontDir);
+        if ($ready || !$logFailures) {
+            return $ready;
+        }
+
+        Logger::logWarning('dompdf_storage_not_writable', [
+            'contract_id' => $contractId > 0 ? $contractId : null,
+            'temp_dir' => $tempDir,
+            'font_dir' => $fontDir,
+            'temp_exists' => is_dir($tempDir),
+            'font_exists' => is_dir($fontDir),
+            'temp_writable' => is_writable($tempDir),
+            'font_writable' => is_writable($fontDir),
+        ]);
+
+        return false;
     }
 
     private function measureTextWidth(object $fontMetrics, string $text, $font, float $fontSize): float
@@ -459,7 +629,7 @@ class ContractPdfService
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         @page {
-            margin: 28mm 14mm 18mm 14mm;
+            margin: 42mm 14mm 18mm 14mm;
         }
         body {
             margin: 0;
@@ -468,75 +638,70 @@ class ContractPdfService
             font-size: 12px;
             line-height: 1.45;
         }
-        table.print-layout {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        table.print-layout thead {
-            display: table-header-group;
-        }
-        table.print-layout tbody {
-            display: table-row-group;
-        }
-        .print-header {
+        .erp-pdf-header {
+            position: fixed !important;
+            top: -34mm;
+            left: 0;
+            right: 0;
+            z-index: 10;
             border-bottom: 1px solid #cbd5e1;
             padding: 0 0 10px 0;
-            margin-bottom: 12px;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
-        .print-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+        .erp-pdf-header-row {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
             gap: 18px;
         }
-        .print-logo img {
+        .erp-pdf-logo,
+        .erp-pdf-logo-fallback,
+        .erp-pdf-company {
+            display: table-cell;
+            vertical-align: top;
+        }
+        .erp-pdf-logo,
+        .erp-pdf-logo-fallback {
+            width: 45%;
+        }
+        .erp-pdf-logo img {
             display: block;
             max-height: 60px;
             width: auto;
             max-width: 260px;
         }
-        .print-logo-fallback {
+        .erp-pdf-logo-fallback {
             font-size: 20px;
             font-weight: 700;
             color: #1d4ed8;
             letter-spacing: 0.3px;
         }
-        .print-company {
+        .erp-pdf-company {
             text-align: right;
             font-size: 11px;
             line-height: 1.4;
             color: #334155;
             max-width: 420px;
         }
-        .print-company .name {
+        .erp-pdf-company .erp-pdf-company-name {
             font-size: 13px;
             font-weight: 700;
             color: #0f172a;
             margin-bottom: 2px;
         }
-        .print-content {
+        .erp-pdf-content {
             width: 100%;
+        }
+        .erp-pdf-content > *:first-child {
+            margin-top: 0;
         }
     </style>
     ' . $styleBlocks . '
 </head>
 <body>
-    <table class="print-layout">
-        <thead>
-            <tr>
-                <td>
-                    ' . $headerHtml . '
-                </td>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>
-                    <div class="print-content">' . $bodyHtml . '</div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+    ' . $headerHtml . '
+    <div class="erp-pdf-content">' . $bodyHtml . '</div>
 </body>
 </html>';
     }
@@ -588,17 +753,17 @@ class ContractPdfService
             }
             $lines[] = implode(' | ', $contact);
         }
-        $companyHtml = '<div class="print-company"><div class="name">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</div>';
+        $companyHtml = '<div class="erp-pdf-company"><div class="erp-pdf-company-name">' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '</div>';
         foreach ($lines as $line) {
             $companyHtml .= '<div>' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         $companyHtml .= '</div>';
 
         $logoHtml = $logoDataUri !== ''
-            ? '<div class="print-logo"><img src="' . htmlspecialchars($logoDataUri, ENT_QUOTES, 'UTF-8') . '" alt="Logo"></div>'
-            : '<div class="print-logo-fallback">ERP Platforma</div>';
+            ? '<div class="erp-pdf-logo"><img src="' . htmlspecialchars($logoDataUri, ENT_QUOTES, 'UTF-8') . '" alt="Logo"></div>'
+            : '<div class="erp-pdf-logo-fallback">ERP Platforma</div>';
 
-        return '<div class="print-header"><div class="print-header-row">' . $logoHtml . $companyHtml . '</div></div>';
+        return '<div class="erp-pdf-header"><div class="erp-pdf-header-row">' . $logoHtml . $companyHtml . '</div></div>';
     }
 
     private function resolveLogoDataUri(string $logoPath): string

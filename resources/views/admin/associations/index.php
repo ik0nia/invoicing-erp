@@ -1,6 +1,7 @@
 <?php
     $title = 'Asocieri clienti - furnizori';
     $canDeleteAssociations = $canDeleteAssociations ?? false;
+    $pendingAssociationRequests = $pendingAssociationRequests ?? [];
 ?>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -16,55 +17,74 @@
     </div>
 <?php endif; ?>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/comision-default') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-    <?= App\Support\Csrf::input() ?>
-
-    <div class="flex flex-wrap items-center justify-between gap-3">
+<div class="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+    <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-            <div class="text-sm font-semibold text-slate-700">Comision default furnizor</div>
-            <p class="mt-1 text-xs text-slate-500">Seteaza procentul care se completeaza automat la asocieri.</p>
-        </div>
-        <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-            Salveaza comision
-        </button>
-    </div>
-
-    <div class="mt-4 grid gap-4 md:grid-cols-3">
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="default_supplier_select">Furnizor</label>
-            <select
-                id="default_supplier_select"
-                name="supplier_cui"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
-            >
-                <option value="">Alege furnizor</option>
-                <?php foreach ($partners as $partner): ?>
-                    <option
-                        value="<?= htmlspecialchars($partner->cui) ?>"
-                        data-default-commission="<?= htmlspecialchars(number_format((float) ($partner->default_commission ?? 0), 2, '.', '')) ?>"
-                    >
-                        <?= htmlspecialchars($partner->denumire) ?> (<?= htmlspecialchars($partner->cui) ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="default_commission">Comision default (%)</label>
-            <input
-                id="default_commission"
-                name="default_commission"
-                type="number"
-                step="0.01"
-                value=""
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
-            >
+            <div class="text-sm font-semibold text-amber-900">Solicitari asociere client</div>
+            <p class="mt-1 text-xs text-amber-800">
+                Cereri generate din pagina de adaugare partener atunci cand clientul exista deja la alt furnizor.
+            </p>
         </div>
     </div>
-</form>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/salveaza') ?>" class="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <?php if (empty($pendingAssociationRequests)): ?>
+        <div class="mt-4 rounded border border-amber-200 bg-white px-4 py-3 text-sm text-amber-800">
+            Nu exista solicitari in asteptare.
+        </div>
+    <?php else: ?>
+        <div class="mt-4 overflow-x-auto rounded border border-amber-200 bg-white">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-amber-100 text-amber-900">
+                    <tr>
+                        <th class="px-4 py-3">Solicitat la</th>
+                        <th class="px-4 py-3">Furnizor</th>
+                        <th class="px-4 py-3">Client</th>
+                        <th class="px-4 py-3">Comision implicit</th>
+                        <th class="px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($pendingAssociationRequests as $request): ?>
+                        <tr class="border-t border-amber-100">
+                            <td class="px-4 py-3 text-slate-700"><?= htmlspecialchars((string) ($request['requested_at'] ?? $request['created_at'] ?? '')) ?></td>
+                            <td class="px-4 py-3 text-slate-800">
+                                <?= htmlspecialchars((string) ($request['supplier_name'] ?? $request['supplier_cui'] ?? '')) ?>
+                                <div class="text-xs text-slate-500"><?= htmlspecialchars((string) ($request['supplier_cui'] ?? '')) ?></div>
+                            </td>
+                            <td class="px-4 py-3 text-slate-800">
+                                <?= htmlspecialchars((string) ($request['client_name'] ?? $request['client_cui'] ?? '')) ?>
+                                <div class="text-xs text-slate-500"><?= htmlspecialchars((string) ($request['client_cui'] ?? '')) ?></div>
+                            </td>
+                            <td class="px-4 py-3 text-slate-700">
+                                <?= number_format((float) ($request['commission_percent'] ?? 0), 2, '.', ' ') ?>%
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex justify-end gap-2">
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/solicitari/aproba') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) ($request['id'] ?? 0) ?>">
+                                        <button class="rounded border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
+                                            Aproba
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/asocieri/solicitari/refuza') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="id" value="<?= (int) ($request['id'] ?? 0) ?>">
+                                        <button class="rounded border border-rose-600 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+                                            Refuza
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</div>
+
+<form method="POST" action="<?= App\Support\Url::to('admin/asocieri/salveaza') ?>" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
 
     <div class="grid gap-4 md:grid-cols-3">
@@ -161,7 +181,7 @@
     </table>
 </div>
 
-<div class="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+<div class="mt-8 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <div>
         <h2 class="text-lg font-semibold text-slate-900">Contacte relatie</h2>
         <p class="mt-1 text-sm text-slate-600">Contacte asociate relatiei furnizor-client.</p>
@@ -263,8 +283,6 @@
     (function () {
         const supplierSelect = document.getElementById('supplier_cui');
         const commissionInput = document.getElementById('commission');
-        const defaultSupplierSelect = document.getElementById('default_supplier_select');
-        const defaultCommissionInput = document.getElementById('default_commission');
 
         const readDefaultCommission = (select) => {
             if (!select) {
@@ -272,14 +290,6 @@
             }
             const option = select.selectedOptions[0];
             return option ? (option.dataset.defaultCommission || '') : '';
-        };
-
-        const updateDefaultForm = () => {
-            if (!defaultSupplierSelect || !defaultCommissionInput) {
-                return;
-            }
-            const value = readDefaultCommission(defaultSupplierSelect);
-            defaultCommissionInput.value = value;
         };
 
         const updateAssociationCommission = () => {
@@ -291,11 +301,6 @@
                 commissionInput.value = value;
             }
         };
-
-        if (defaultSupplierSelect) {
-            defaultSupplierSelect.addEventListener('change', updateDefaultForm);
-            updateDefaultForm();
-        }
 
         if (supplierSelect && commissionInput) {
             supplierSelect.addEventListener('change', updateAssociationCommission);

@@ -8,7 +8,7 @@ use App\Support\Url;
 class ContractTemplateVariables
 {
     private const STAMP_UPLOAD_SUBDIR = 'contract_templates/stamps';
-    private const STAMP_INLINE_MAX_BYTES = 204800;
+    private const STAMP_INLINE_MAX_BYTES = 5242880;
     private const STAMP_ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
 
     public function listPlaceholders(): array
@@ -55,6 +55,8 @@ class ContractTemplateVariables
             ['key' => 'relation.supplier_cui', 'label' => 'Relatie - CUI furnizor'],
             ['key' => 'relation.client_cui', 'label' => 'Relatie - CUI client'],
             ['key' => 'relation.invoice_inbox_email', 'label' => 'Email inbox facturi (relatie)'],
+            ['key' => 'relation.commission_percent', 'label' => 'Relatie - comision (%)'],
+            ['key' => 'relation.commission_percent_text', 'label' => 'Relatie - comision text (1-15)'],
             ['key' => 'contract.title', 'label' => 'Titlu contract'],
             ['key' => 'contract.created_at', 'label' => 'Data creare contract'],
             ['key' => 'contract.date', 'label' => 'Data contract'],
@@ -170,6 +172,18 @@ class ContractTemplateVariables
         $vars['relation.supplier_cui'] = $supplierCui ?? '';
         $vars['relation.client_cui'] = $clientCui ?? '';
         $vars['relation.invoice_inbox_email'] = $this->fetchRelationEmail($supplierCui, $clientCui);
+        $relationSupplierCui = $this->normalizeCui($supplierCui);
+        $relationClientCui = $this->normalizeCui($clientCui);
+        if ($relationSupplierCui === '' && $relationClientCui === '') {
+            $relationSupplierCui = $this->normalizeCui($partnerCui);
+        }
+        $relationCommissionPercent = $this->resolveRelationCommissionPercent(
+            $relationSupplierCui,
+            $relationClientCui,
+            $this->normalizeCui($partnerCui)
+        );
+        $vars['relation.commission_percent'] = $this->formatCommissionPercent($relationCommissionPercent);
+        $vars['relation.commission_percent_text'] = $this->commissionPercentText($relationCommissionPercent);
         $vars['contacts.table'] = $this->buildContactsTableVariable($partnerCui, $supplierCui, $clientCui);
         $stampVars = $this->resolveStampVariables(
             isset($contractContext['template_id']) ? (int) $contractContext['template_id'] : 0,
@@ -474,18 +488,18 @@ class ContractTemplateVariables
             return ['image' => '', 'url' => ''];
         }
 
-        $renderContext = strtolower($renderContext);
-        if ($renderContext === 'public') {
-            $dataUri = $this->resolveStampDataUri($path, self::STAMP_INLINE_MAX_BYTES);
-            if ($dataUri === '') {
-                return ['image' => '', 'url' => ''];
-            }
-
+        $dataUri = $this->resolveStampDataUri($path, self::STAMP_INLINE_MAX_BYTES);
+        if ($dataUri !== '') {
             $escaped = htmlspecialchars($dataUri, ENT_QUOTES, 'UTF-8');
             return [
                 'image' => '<img src="' . $escaped . '" style="max-width:200px;max-height:120px;" alt="Stampila" />',
                 'url' => $dataUri,
             ];
+        }
+
+        $renderContext = strtolower($renderContext);
+        if ($renderContext === 'public') {
+            return ['image' => '', 'url' => ''];
         }
 
         $url = $this->buildStampProtectedUrl($templateId, (string) ($stamp['stamp_image_meta'] ?? ''), $path);
@@ -792,6 +806,213 @@ class ContractTemplateVariables
         }
 
         return 'NULL AS ' . $column;
+    }
+
+    private function resolveRelationCommissionPercent(string $supplierCui, string $clientCui, string $partnerCui = ''): ?float
+    {
+        if ($supplierCui !== '' && $clientCui !== '' && Database::tableExists('commissions')) {
+            $row = Database::fetchOne(
+                'SELECT commission
+                 FROM commissions
+                 WHERE supplier_cui = :supplier
+                   AND client_cui = :client
+                 LIMIT 1',
+                [
+                    'supplier' => $supplierCui,
+                    'client' => $clientCui,
+                ]
+            );
+            if ($row && isset($row['commission']) && $row['commission'] !== null && is_numeric((string) $row['commission'])) {
+                return (float) $row['commission'];
+            }
+        }
+
+        $linkCommission = $this->fetchEnrollmentLinkCommissionPercent($supplierCui, $clientCui, $partnerCui);
+        if ($linkCommission !== null) {
+            return $linkCommission;
+        }
+
+        if (
+            $supplierCui !== ''
+            && Database::tableExists('partners')
+            && Database::columnExists('partners', 'default_commission')
+        ) {
+            $row = Database::fetchOne(
+                'SELECT default_commission
+                 FROM partners
+                 WHERE cui = :supplier
+                 LIMIT 1',
+                ['supplier' => $supplierCui]
+            );
+            if ($row && isset($row['default_commission']) && $row['default_commission'] !== null && is_numeric((string) $row['default_commission'])) {
+                return (float) $row['default_commission'];
+            }
+        }
+
+        return null;
+    }
+
+    private function formatCommissionPercent(?float $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $roundedInt = (int) round($value);
+        if (abs($value - $roundedInt) < 0.0001) {
+            return (string) $roundedInt;
+        }
+
+        $formatted = number_format($value, 2, '.', '');
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+
+        return $formatted;
+    }
+
+    private function commissionPercentText(?float $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $roundedInt = (int) round($value);
+        if (abs($value - $roundedInt) >= 0.0001) {
+            return '';
+        }
+
+        $map = [
+            1 => 'un',
+            2 => 'două',
+            3 => 'trei',
+            4 => 'patru',
+            5 => 'cinci',
+            6 => 'șase',
+            7 => 'șapte',
+            8 => 'opt',
+            9 => 'nouă',
+            10 => 'zece',
+            11 => 'unsprezece',
+            12 => 'douăsprezece',
+            13 => 'treisprezece',
+            14 => 'paisprezece',
+            15 => 'cincisprezece',
+        ];
+
+        return $map[$roundedInt] ?? '';
+    }
+
+    private function fetchEnrollmentLinkCommissionPercent(string $supplierCui, string $clientCui, string $partnerCui): ?float
+    {
+        if (
+            !Database::tableExists('enrollment_links')
+            || !Database::columnExists('enrollment_links', 'commission_percent')
+        ) {
+            return null;
+        }
+
+        $supplierCui = $this->normalizeCui($supplierCui);
+        $clientCui = $this->normalizeCui($clientCui);
+        $partnerCui = $this->normalizeCui($partnerCui);
+
+        $hasRelationSupplier = Database::columnExists('enrollment_links', 'relation_supplier_cui');
+        $hasRelationClient = Database::columnExists('enrollment_links', 'relation_client_cui');
+        $hasSupplier = Database::columnExists('enrollment_links', 'supplier_cui');
+        $hasPartner = Database::columnExists('enrollment_links', 'partner_cui');
+        $hasPrefillJson = Database::columnExists('enrollment_links', 'prefill_json');
+        $hasType = Database::columnExists('enrollment_links', 'type');
+
+        if ($supplierCui !== '' && $clientCui !== '') {
+            if ($hasRelationSupplier && $hasRelationClient) {
+                $row = Database::fetchOne(
+                    'SELECT commission_percent
+                     FROM enrollment_links
+                     WHERE relation_supplier_cui = :supplier
+                       AND relation_client_cui = :client
+                       AND commission_percent IS NOT NULL
+                     ORDER BY id DESC
+                     LIMIT 1',
+                    [
+                        'supplier' => $supplierCui,
+                        'client' => $clientCui,
+                    ]
+                );
+                if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
+                    return (float) $row['commission_percent'];
+                }
+            }
+
+            if ($hasSupplier && $hasPartner) {
+                $row = Database::fetchOne(
+                    'SELECT commission_percent
+                     FROM enrollment_links
+                     WHERE supplier_cui = :supplier
+                       AND partner_cui = :client
+                       AND commission_percent IS NOT NULL
+                     ORDER BY id DESC
+                     LIMIT 1',
+                    [
+                        'supplier' => $supplierCui,
+                        'client' => $clientCui,
+                    ]
+                );
+                if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
+                    return (float) $row['commission_percent'];
+                }
+            }
+        }
+
+        $supplierForLookup = $supplierCui !== '' ? $supplierCui : $partnerCui;
+        if ($supplierForLookup !== '') {
+            if ($hasType && ($hasPartner || $hasSupplier || $hasPrefillJson)) {
+                $supplierConditions = [];
+                $params = [
+                    'type' => 'supplier',
+                    'supplier' => $supplierForLookup,
+                ];
+                if ($hasPartner) {
+                    $supplierConditions[] = 'partner_cui = :supplier';
+                }
+                if ($hasSupplier) {
+                    $supplierConditions[] = 'supplier_cui = :supplier';
+                }
+                if ($hasPrefillJson) {
+                    $supplierConditions[] = 'prefill_json LIKE :prefill_cui_json';
+                    $params['prefill_cui_json'] = '%"cui":"' . $supplierForLookup . '"%';
+                }
+                if (!empty($supplierConditions)) {
+                    $row = Database::fetchOne(
+                        'SELECT commission_percent
+                         FROM enrollment_links
+                         WHERE type = :type
+                           AND (' . implode(' OR ', $supplierConditions) . ')
+                           AND commission_percent IS NOT NULL
+                         ORDER BY id DESC
+                         LIMIT 1',
+                        $params
+                    );
+                    if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
+                        return (float) $row['commission_percent'];
+                    }
+                }
+            }
+
+            if ($hasRelationSupplier) {
+                $row = Database::fetchOne(
+                    'SELECT commission_percent
+                     FROM enrollment_links
+                     WHERE relation_supplier_cui = :supplier
+                       AND commission_percent IS NOT NULL
+                     ORDER BY id DESC
+                     LIMIT 1',
+                    ['supplier' => $supplierForLookup]
+                );
+                if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
+                    return (float) $row['commission_percent'];
+                }
+            }
+        }
+
+        return null;
     }
 
     private function fetchRelationEmail(?string $supplierCui, ?string $clientCui): string

@@ -26,6 +26,7 @@ $isSuperAdmin = $user?->isSuperAdmin() ?? false;
 $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
 $isOperator = $user?->isOperator() ?? false;
+$isAdminRole = $user?->hasRole('admin') ?? false;
 $isInternalStaff = $user?->hasRole(['super_admin', 'admin', 'contabil', 'operator']) ?? false;
 $canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
 $userFirstName = '';
@@ -43,16 +44,6 @@ if ($base !== '' && str_starts_with($currentPath, $base)) {
 }
 
 $menuSections = [];
-
-if ($isPlatformUser || $isSupplierUser) {
-    $menuSections['General'] = [
-        [
-            'label' => 'Dashboard',
-            'path' => '/admin/dashboard',
-            'active' => str_starts_with($currentPath, '/admin/dashboard'),
-        ],
-    ];
-}
 
 $menuSections['Facturare'] = [
     [
@@ -73,7 +64,7 @@ if ($isPlatformUser && $canAccessSaga) {
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
     $menuSections['Inrolare'] = [
         [
-            'label' => 'Link-uri publice',
+            'label' => 'Adauga partener',
             'path' => '/admin/enrollment-links',
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
         ],
@@ -94,15 +85,10 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'path' => '/admin/contracts',
             'active' => str_starts_with($currentPath, '/admin/contracts'),
         ],
-        [
-            'label' => 'Contacte',
-            'path' => '/admin/companii',
-            'active' => str_starts_with($currentPath, '/admin/companii') || str_starts_with($currentPath, '/admin/asocieri'),
-        ],
     ];
 }
 
-if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
+if ($isSuperAdmin || $isAdminRole) {
     $menuSections['Documente'][] = [
         'label' => 'Modele de contract',
         'path' => '/admin/contract-templates',
@@ -110,6 +96,11 @@ if ($isSuperAdmin || ($user?->hasRole('admin') ?? false)) {
     ];
 }
 if ($isInternalStaff) {
+    $menuSections['Documente'][] = [
+        'label' => 'Fisiere UPA',
+        'path' => '/admin/fisiere-upa',
+        'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
+    ];
     $menuSections['Documente'][] = [
         'label' => 'Registru documente',
         'path' => '/admin/registru-documente',
@@ -163,42 +154,35 @@ if ($isPlatformUser) {
         ],
     ];
 
-    $settingsItems = [];
+    $adminItems = [];
     if ($isSuperAdmin) {
-        $settingsItems[] = [
+        $adminItems[] = [
             'label' => 'Setari',
             'path' => '/admin/setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ];
     }
-    $settingsItems[] = [
-        'label' => 'Manual',
-        'path' => '/admin/manual',
-        'active' => str_starts_with($currentPath, '/admin/manual'),
+    $adminItems[] = [
+        'label' => 'Utilizatori',
+        'path' => '/admin/utilizatori',
+        'active' => str_starts_with($currentPath, '/admin/utilizatori'),
     ];
-    $settingsItems[] = [
-        'label' => 'Changelog',
-        'path' => '/admin/changelog',
-        'active' => str_starts_with($currentPath, '/admin/changelog'),
+    $adminItems[] = [
+        'label' => 'Audit Log',
+        'path' => '/admin/audit',
+        'active' => str_starts_with($currentPath, '/admin/audit'),
     ];
-    if (!empty($settingsItems)) {
-        $menuSections['Setari'] = $settingsItems;
-    }
-}
+    $menuSections['Administrare'] = $adminItems;
 
-if ($isPlatformUser) {
-    $menuSections['Administrare'] = [
-        [
-            'label' => 'Utilizatori',
-            'path' => '/admin/utilizatori',
-            'active' => str_starts_with($currentPath, '/admin/utilizatori'),
-        ],
-        [
-            'label' => 'Audit Log',
-            'path' => '/admin/audit',
-            'active' => str_starts_with($currentPath, '/admin/audit'),
-        ],
-    ];
+    if ($isSuperAdmin || $isAdminRole) {
+        $menuSections['Utile'] = [
+            [
+                'label' => 'Prelucrare PDF aviz',
+                'path' => '/admin/utile/prelucrare-pdf',
+                'active' => str_starts_with($currentPath, '/admin/utile/prelucrare-pdf'),
+            ],
+        ];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -228,6 +212,9 @@ if ($isPlatformUser) {
         .dark-mode .bg-slate-200 { background-color: #1f2937 !important; }
         .dark-mode .bg-blue-50 { background-color: #0f172a !important; }
         .dark-mode .bg-blue-100 { background-color: #1e293b !important; }
+        .dark-mode .bg-slate-50\/50 { background-color: #0f172a !important; }
+        .dark-mode .bg-slate-50\/70 { background-color: #0f172a !important; }
+        .dark-mode .bg-blue-50\/50 { background-color: #0b1f33 !important; }
         .dark-mode .border-slate-200 { border-color: #1f2937 !important; }
         .dark-mode .border-slate-300 { border-color: #374151 !important; }
         .dark-mode .border-slate-100 { border-color: #1f2937 !important; }
@@ -361,6 +348,20 @@ if ($isPlatformUser) {
                         >
                             ☰
                         </button>
+                        <?php if ($isPlatformUser): ?>
+                            <a
+                                href="<?= App\Support\Url::to('admin/changelog') ?>"
+                                class="inline-flex items-center justify-center rounded border px-3 py-2 text-sm <?= str_starts_with($currentPath, '/admin/changelog') ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:bg-slate-50' ?>"
+                                title="Changelog"
+                                aria-label="Changelog"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 12a9 9 0 1 0 9-9" />
+                                    <path d="M3 3v6h6" />
+                                    <path d="M12 7v5l3 3" />
+                                </svg>
+                            </a>
+                        <?php endif; ?>
                     </div>
                     <div class="flex items-center gap-3">
                         <label class="relative inline-flex items-center gap-2 text-sm text-slate-600">
