@@ -255,9 +255,29 @@ class DocumentRegistryController
             $params['doc_type'] = $docType;
         }
         $whereSql = $where ? (' WHERE ' . implode(' AND ', $where)) : '';
+        $selectColumns = [
+            'id',
+            'title',
+            'doc_type',
+            'contract_date',
+            'doc_no',
+            'doc_series',
+            'doc_full_no',
+            'status',
+            'partner_cui',
+            'supplier_cui',
+            'client_cui',
+            'created_at',
+        ];
+        $selectColumns[] = Database::columnExists('contracts', 'signed_upload_path')
+            ? 'signed_upload_path'
+            : 'NULL AS signed_upload_path';
+        $selectColumns[] = Database::columnExists('contracts', 'signed_file_path')
+            ? 'signed_file_path'
+            : 'NULL AS signed_file_path';
 
         $documents = Database::fetchAll(
-            'SELECT id, title, doc_type, contract_date, doc_no, doc_series, doc_full_no, status, partner_cui, supplier_cui, client_cui, created_at
+            'SELECT ' . implode(', ', $selectColumns) . '
              FROM contracts'
             . $whereSql .
             ' ORDER BY created_at DESC, id DESC LIMIT 500',

@@ -85,7 +85,7 @@
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2">Creat</th>
                     <th class="px-3 py-2 text-right">Nesemnat</th>
-                    <th class="px-3 py-2 text-right">Contract</th>
+                    <th class="px-3 py-2 text-right">Contract cu stampila</th>
                 </tr>
             </thead>
             <tbody>
@@ -112,6 +112,8 @@
                         $companyCui = trim((string) ($document['registry_company_cui'] ?? ''));
                         $statusKey = (string) ($document['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? ($statusKey !== '' ? $statusKey : '—');
+                        $hasSignedContract = trim((string) ($document['signed_upload_path'] ?? '')) !== ''
+                            || trim((string) ($document['signed_file_path'] ?? '')) !== '';
                     ?>
                     <tr class="border-t border-slate-100">
                         <td class="px-3 py-2 text-slate-700">
@@ -130,9 +132,13 @@
                             </a>
                         </td>
                         <td class="px-3 py-2 text-right">
-                            <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0)) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
-                                Descarca
-                            </a>
+                            <?php if ($hasSignedContract): ?>
+                                <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0) . '&kind=signed') ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
+                                    Descarca
+                                </a>
+                            <?php else: ?>
+                                <span class="text-xs text-slate-400">—</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
