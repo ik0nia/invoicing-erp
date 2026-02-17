@@ -15,394 +15,595 @@ class PdfRewriteService
             return '';
         }
 
-        $chunks = [];
-        foreach ($this->collectStreamPayloads($binary) as $payload) {
-            foreach ($this->decodeStreamPayload($payload) as $decodedStream) {
-                $textChunk = trim($this->extractTextOperators($decodedStream));
-                if ($textChunk !== '') {
-                    $chunks[] = $textChunk;
+        $decodedStreams = $this->collectDecodedStreams($binary);
+        if (empty($decodedStreams)) {
+            return '';
+        }
+
+        $cmapCandidates = $this->extractCMapCandidates($decodedStreams);
+        $lines = [];
+        foreach ($decodedStreams as $stream) {
+            if (strpos($stream, 'BT') === false || strpos($stream, 'ET') === false) {
+                continue;
+            }
+            foreach ($this->extractTextLinesFromContentStream($stream, $cmapCandidates) as $line) {
+                if ($line !== '') {
+                    $lines[] = $line;
                 }
             }
         }
 
-        $extracted = trim(implode("\n", $chunks));
-        if ($extracted === '') {
-            $extracted = $this->fallbackExtractLiteralStrings($binary);
+        $text = $this->normalizeExtractedText(implode("\n", $lines));
+        if ($text === '') {
+            $text = $this->fallbackExtractLiteralStrings($binary);
         }
 
-        return $this->normalizeExtractedText($extracted);
+        return $this->normalizeExtractedText($text);
     }
 
-    public function rewriteSupplierData(
-        string $sourceText,
-        array $company,
-        string $seriesFrom = 'A-MVN',
-        string $seriesTo = 'A-DEON'
-    ): array {
-        $company = $this->normalizeCompany($company);
+    public function parseAvizData(string $sourceText): array
+    {
         $text = $this->normalizeExtractedText($sourceText);
-        $changes = [];
+        $lines = $this->splitNonEmptyLines($text);
 
-        $seriesFrom = trim($seriesFrom);
-        $seriesTo = trim($seriesTo);
-        if ($seriesFrom !== '' && $seriesTo !== '' && $seriesFrom !== $seriesTo) {
-            $replaceCount = 0;
-            $text = str_replace($seriesFrom, $seriesTo, $text, $replaceCount);
-            if ($replaceCount > 0) {
-                $changes[] = 'Prefix "' . $seriesFrom . '" inlocuit cu "' . $seriesTo . '" (' . $replaceCount . ' aparitii).';
-            }
+        $documentNo = $this->extractDocumentNumber($text);
+        $issueDate = $this->extractDateByLabel($text, 'Data emitere');
+        $dueDate = $this->extractDateByLabel($text, 'Data scadenta');
+
+        $clientLines = $this->extractClientLines($lines);
+        $client = $this->parseClient($clientLines);
+
+        $mainItem = $this->parseMainItem($text, $lines);
+        $totals = $this->parseTotals($text, $lines, $mainItem);
+
+        if ($mainItem['name'] === '') {
+            $mainItem['name'] = 'Produse conform avizului sursa';
+        }
+        if ($mainItem['unit'] === '') {
+            $mainItem['unit'] = 'BUC';
+        }
+        if ($mainItem['quantity'] <= 0) {
+            $mainItem['quantity'] = 1.0;
+        }
+        if ($mainItem['total_without_vat'] <= 0 && $totals['without_vat'] > 0) {
+            $mainItem['total_without_vat'] = $totals['without_vat'];
+        }
+        if ($mainItem['total_with_vat'] <= 0 && $totals['with_vat'] > 0) {
+            $mainItem['total_with_vat'] = $totals['with_vat'];
+        }
+        if ($mainItem['unit_price'] <= 0 && $mainItem['quantity'] > 0 && $mainItem['total_without_vat'] > 0) {
+            $mainItem['unit_price'] = round($mainItem['total_without_vat'] / $mainItem['quantity'], 2);
+        }
+        if ($mainItem['vat_value'] <= 0 && $totals['vat'] > 0) {
+            $mainItem['vat_value'] = $totals['vat'];
+        }
+        if ($mainItem['vat_percent'] <= 0) {
+            $mainItem['vat_percent'] = $totals['vat_percent'] > 0 ? $totals['vat_percent'] : 21.0;
         }
 
-        $lines = preg_split('/\n/u', $text) ?: [];
-        $result = [];
-        $inSupplierSection = false;
-        $skipAddressContinuation = false;
-        $nameReplaced = false;
-        $cuiReplaced = false;
-        $regComReplaced = false;
-        $addressReplaced = false;
-        $countyReplaced = false;
-        $countryReplaced = false;
-        $emailReplaced = false;
-        $phoneReplaced = false;
-        $bankReplaced = false;
-        $ibanReplaced = false;
-
-        foreach ($lines as $line) {
-            $trimmed = trim($line);
-            if ($trimmed === '') {
-                $result[] = '';
-                continue;
-            }
-
-            if (preg_match('/^Furnizor\b/i', $trimmed) === 1) {
-                $inSupplierSection = true;
-                $skipAddressContinuation = false;
-                $result[] = 'Furnizor';
-                continue;
-            }
-
-            if (preg_match('/^Client\b/i', $trimmed) === 1) {
-                $inSupplierSection = false;
-                $skipAddressContinuation = false;
-                $result[] = 'Client';
-                continue;
-            }
-
-            if (!$inSupplierSection) {
-                $result[] = $trimmed;
-                continue;
-            }
-
-            if ($skipAddressContinuation) {
-                if ($this->isSupplierLabelLine($trimmed)) {
-                    $skipAddressContinuation = false;
-                } else {
-                    continue;
-                }
-            }
-
-            if (!$nameReplaced && $company['denumire'] !== '' && $this->isSupplierNameLine($trimmed)) {
-                $result[] = $company['denumire'];
-                $nameReplaced = true;
-                $changes[] = 'Denumirea furnizorului a fost inlocuita.';
-                continue;
-            }
-
-            if (!$cuiReplaced && stripos($trimmed, 'CUI') !== false && $company['cui'] !== '') {
-                $result[] = 'CUI: ' . $company['cui'];
-                $cuiReplaced = true;
-                $changes[] = 'CUI furnizor inlocuit din Setari.';
-                continue;
-            }
-
-            if (!$regComReplaced && preg_match('/Reg\.\s*Com/i', $trimmed) === 1 && $company['nr_reg_comertului'] !== '') {
-                $result[] = 'Reg. Com.: ' . $company['nr_reg_comertului'];
-                $regComReplaced = true;
-                $changes[] = 'Nr. Reg. Comertului inlocuit din Setari.';
-                continue;
-            }
-
-            if (!$addressReplaced && preg_match('/^Adresa\b/i', $trimmed) === 1 && $company['adresa'] !== '') {
-                $result[] = 'Adresa: ' . $this->buildCompanyAddress($company);
-                $addressReplaced = true;
-                $skipAddressContinuation = true;
-                $changes[] = 'Adresa furnizorului inlocuita din Setari.';
-                continue;
-            }
-
-            if (!$countyReplaced && preg_match('/^Judet\b/i', $trimmed) === 1 && $company['judet'] !== '') {
-                $result[] = 'Judet: ' . $company['judet'];
-                $countyReplaced = true;
-                $changes[] = 'Judet furnizor inlocuit din Setari.';
-                continue;
-            }
-
-            if (!$countryReplaced && preg_match('/^Tara\b/i', $trimmed) === 1 && $company['tara'] !== '') {
-                $result[] = 'Tara: ' . $company['tara'];
-                $countryReplaced = true;
-                $changes[] = 'Tara furnizor inlocuita din Setari.';
-                continue;
-            }
-
-            if (!$emailReplaced && preg_match('/^Email\b/i', $trimmed) === 1 && $company['email'] !== '') {
-                $result[] = 'Email: ' . $company['email'];
-                $emailReplaced = true;
-                $changes[] = 'Email furnizor inlocuit din Setari.';
-                continue;
-            }
-
-            if (!$phoneReplaced && preg_match('/^Telefon\b/i', $trimmed) === 1 && $company['telefon'] !== '') {
-                $result[] = 'Telefon: ' . $company['telefon'];
-                $phoneReplaced = true;
-                $changes[] = 'Telefon furnizor inlocuit din Setari.';
-                continue;
-            }
-
-            if ($this->looksLikeIban($trimmed)) {
-                if ($company['iban'] !== '' && !$ibanReplaced) {
-                    $result[] = $company['iban'];
-                    $ibanReplaced = true;
-                    $changes[] = 'IBAN furnizor inlocuit din Setari.';
-                }
-                continue;
-            }
-
-            if ($this->looksLikeBankLine($trimmed)) {
-                if ($company['banca'] !== '' && !$bankReplaced) {
-                    $result[] = $company['banca'];
-                    $bankReplaced = true;
-                    $changes[] = 'Banca furnizor inlocuita din Setari.';
-                }
-                continue;
-            }
-
-            if (stripos($trimmed, 'mivinia') !== false && $company['denumire'] !== '') {
-                $result[] = $company['denumire'];
-                if (!$nameReplaced) {
-                    $changes[] = 'Denumirea furnizorului a fost inlocuita.';
-                }
-                $nameReplaced = true;
-                continue;
-            }
-
-            $result[] = $trimmed;
-        }
-
-        $finalText = $this->normalizeExtractedText(implode("\n", $result));
+        $items = [$mainItem];
 
         return [
-            'text' => $finalText,
-            'changes' => array_values(array_unique($changes)),
+            'document_number' => $documentNo,
+            'issue_date' => $issueDate,
+            'due_date' => $dueDate,
+            'client' => $client,
+            'items' => $items,
+            'total_without_vat' => $totals['without_vat'],
+            'total_vat' => $totals['vat'],
+            'total_with_vat' => $totals['with_vat'],
+            'vat_percent' => $totals['vat_percent'] > 0 ? $totals['vat_percent'] : $mainItem['vat_percent'],
+            'source_text' => $text,
         ];
     }
 
-    public function buildPrintableHtml(string $rewrittenText, array $company, array $meta = []): string
+    public function buildAvizHtml(array $aviz, array $company, array $meta = []): string
     {
         $company = $this->normalizeCompany($company);
-        $rewrittenText = $this->normalizeExtractedText($rewrittenText);
+        $client = is_array($aviz['client'] ?? null) ? $aviz['client'] : [];
+        $items = is_array($aviz['items'] ?? null) ? $aviz['items'] : [];
+
         $sourceName = trim((string) ($meta['source_name'] ?? 'document.pdf'));
-        $seriesFrom = trim((string) ($meta['series_from'] ?? 'A-MVN'));
-        $seriesTo = trim((string) ($meta['series_to'] ?? 'A-DEON'));
-        $changes = $meta['changes'] ?? [];
-        if (!is_array($changes)) {
-            $changes = [];
+        $changes = is_array($meta['changes'] ?? null) ? $meta['changes'] : [];
+
+        $documentNo = trim((string) ($aviz['document_number'] ?? 'A-DEON'));
+        $issueDate = trim((string) ($aviz['issue_date'] ?? ''));
+        $dueDate = trim((string) ($aviz['due_date'] ?? ''));
+
+        $totalWithoutVat = (float) ($aviz['total_without_vat'] ?? 0);
+        $totalVat = (float) ($aviz['total_vat'] ?? 0);
+        $totalWithVat = (float) ($aviz['total_with_vat'] ?? 0);
+
+        if ($totalWithoutVat <= 0 || $totalWithVat <= 0) {
+            $sumWithout = 0.0;
+            $sumWith = 0.0;
+            foreach ($items as $row) {
+                $sumWithout += (float) ($row['total_without_vat'] ?? 0);
+                $sumWith += (float) ($row['total_with_vat'] ?? 0);
+            }
+            if ($totalWithoutVat <= 0) {
+                $totalWithoutVat = $sumWithout;
+            }
+            if ($totalWithVat <= 0) {
+                $totalWithVat = $sumWith;
+            }
+            if ($totalVat <= 0 && $totalWithVat > 0 && $totalWithoutVat > 0) {
+                $totalVat = round($totalWithVat - $totalWithoutVat, 2);
+            }
+        }
+
+        $clientAddress = [];
+        if (($client['adresa'] ?? '') !== '') {
+            $clientAddress[] = (string) $client['adresa'];
+        }
+        if (($client['localitate'] ?? '') !== '') {
+            $clientAddress[] = 'Localitate: ' . (string) $client['localitate'];
+        }
+        $clientAddressDisplay = implode(', ', $clientAddress);
+
+        $companyAddress = [];
+        if ($company['adresa'] !== '') {
+            $companyAddress[] = $company['adresa'];
+        }
+        if ($company['localitate'] !== '') {
+            $companyAddress[] = 'Localitate: ' . $company['localitate'];
+        }
+        $companyAddressDisplay = implode(', ', $companyAddress);
+
+        $itemRows = '';
+        if (!empty($items)) {
+            $index = 1;
+            foreach ($items as $row) {
+                $itemRows .= '<tr>'
+                    . '<td>' . $index . '</td>'
+                    . '<td>' . htmlspecialchars((string) ($row['name'] ?? ''), ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . htmlspecialchars((string) ($row['unit'] ?? 'BUC'), ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td class="num">' . $this->formatNumber((float) ($row['quantity'] ?? 0), 2) . '</td>'
+                    . '<td class="num">' . $this->formatNumber((float) ($row['unit_price'] ?? 0), 2) . '</td>'
+                    . '<td class="num">' . $this->formatNumber((float) ($row['total_without_vat'] ?? 0), 2) . '</td>'
+                    . '<td class="num">' . $this->formatNumber((float) ($row['vat_percent'] ?? 0), 2) . '%</td>'
+                    . '<td class="num">' . $this->formatNumber((float) ($row['total_with_vat'] ?? 0), 2) . '</td>'
+                    . '</tr>';
+                $index++;
+            }
+        } else {
+            $itemRows = '<tr><td colspan="8">Nu au fost identificate linii de produse in PDF-ul sursa.</td></tr>';
         }
 
         $changesHtml = '';
         if (!empty($changes)) {
-            $rows = [];
+            $parts = [];
             foreach ($changes as $change) {
-                $rows[] = '<li>' . htmlspecialchars((string) $change, ENT_QUOTES, 'UTF-8') . '</li>';
+                $parts[] = '<li>' . htmlspecialchars((string) $change, ENT_QUOTES, 'UTF-8') . '</li>';
             }
-            $changesHtml = '<div class="box"><h3>Modificari aplicate</h3><ul>' . implode('', $rows) . '</ul></div>';
-        }
-
-        $companyRows = [
-            'Denumire' => $company['denumire'],
-            'CUI' => $company['cui'],
-            'Reg. Com.' => $company['nr_reg_comertului'],
-            'Adresa' => $this->buildCompanyAddress($company),
-            'Email' => $company['email'],
-            'Telefon' => $company['telefon'],
-            'Banca' => $company['banca'],
-            'IBAN' => $company['iban'],
-        ];
-
-        $companyTableRows = '';
-        foreach ($companyRows as $label => $value) {
-            $companyTableRows .= '<tr>'
-                . '<td class="label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</td>'
-                . '<td>' . htmlspecialchars($value !== '' ? $value : '-', ENT_QUOTES, 'UTF-8') . '</td>'
-                . '</tr>';
+            $changesHtml = '<div class="box"><strong>Modificari aplicate:</strong><ul>' . implode('', $parts) . '</ul></div>';
         }
 
         return '<!doctype html>'
             . '<html lang="ro"><head><meta charset="utf-8">'
             . '<style>'
-            . 'body{font-family:DejaVu Sans,Arial,sans-serif;font-size:12px;color:#0f172a;margin:20px;}'
-            . 'h1{font-size:20px;margin:0 0 8px 0;}'
-            . 'h2{font-size:14px;margin:16px 0 8px 0;}'
-            . 'h3{font-size:13px;margin:0 0 6px 0;}'
-            . '.muted{color:#334155;font-size:11px;}'
+            . 'body{font-family:DejaVu Sans,Arial,sans-serif;font-size:11px;color:#111827;margin:20px;}'
+            . 'h1{font-size:20px;margin:0;}'
+            . '.top{display:flex;justify-content:space-between;gap:20px;}'
+            . '.meta{font-size:11px;color:#334155;margin-top:4px;}'
             . '.box{border:1px solid #cbd5e1;border-radius:8px;padding:10px;margin-top:10px;background:#f8fafc;}'
-            . 'table{width:100%;border-collapse:collapse;}'
-            . 'td{border:1px solid #e2e8f0;padding:6px 8px;vertical-align:top;}'
-            . 'td.label{width:180px;font-weight:700;background:#f1f5f9;}'
-            . 'pre{white-space:pre-wrap;border:1px solid #cbd5e1;border-radius:8px;padding:10px;background:#ffffff;line-height:1.35;}'
-            . 'ul{margin:0;padding-left:18px;}'
+            . '.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;}'
+            . '.label{font-weight:700;color:#0f172a;}'
+            . 'table{width:100%;border-collapse:collapse;margin-top:12px;}'
+            . 'th,td{border:1px solid #cbd5e1;padding:6px;vertical-align:top;}'
+            . 'th{background:#f1f5f9;text-align:left;}'
+            . '.num{text-align:right;}'
+            . '.totals{margin-top:10px;width:360px;margin-left:auto;}'
+            . '.footer{margin-top:16px;font-size:10px;color:#475569;}'
+            . 'ul{margin:6px 0 0 18px;padding:0;}'
             . '</style></head><body>'
-            . '<h1>Prelucrare PDF aviz - emitent DEON</h1>'
-            . '<div class="muted">Fisier sursa: '
-            . htmlspecialchars($sourceName, ENT_QUOTES, 'UTF-8')
+            . '<div class="top">'
+            . '<div><h1>AVIZ INSOTIRE MARFA ' . htmlspecialchars($documentNo, ENT_QUOTES, 'UTF-8') . '</h1>'
+            . '<div class="meta">Data emitere: ' . htmlspecialchars($issueDate, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div class="meta">Data scadenta: ' . htmlspecialchars($dueDate, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div class="meta">Sursa: ' . htmlspecialchars($sourceName, ENT_QUOTES, 'UTF-8') . '</div>'
             . '</div>'
-            . '<div class="muted">Prefix serie inlocuit: '
-            . htmlspecialchars($seriesFrom, ENT_QUOTES, 'UTF-8')
-            . ' -> '
-            . htmlspecialchars($seriesTo, ENT_QUOTES, 'UTF-8')
             . '</div>'
-            . '<div class="muted">Generat la: '
-            . htmlspecialchars(date('d.m.Y H:i:s'), ENT_QUOTES, 'UTF-8')
+            . '<div class="cols">'
+            . '<div class="box">'
+            . '<div class="label">Furnizor</div>'
+            . '<div>' . htmlspecialchars($company['denumire'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>CUI: ' . htmlspecialchars($company['cui'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Reg. Com.: ' . htmlspecialchars($company['nr_reg_comertului'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Adresa: ' . htmlspecialchars($companyAddressDisplay, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Judet: ' . htmlspecialchars($company['judet'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Tara: ' . htmlspecialchars($company['tara'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Banca: ' . htmlspecialchars($company['banca'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>IBAN: ' . htmlspecialchars($company['iban'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Email: ' . htmlspecialchars($company['email'], ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Telefon: ' . htmlspecialchars($company['telefon'], ENT_QUOTES, 'UTF-8') . '</div>'
             . '</div>'
-            . '<div class="box"><h3>Date emitent folosite din Setari</h3><table>'
-            . $companyTableRows
-            . '</table></div>'
+            . '<div class="box">'
+            . '<div class="label">Client</div>'
+            . '<div>' . htmlspecialchars((string) ($client['denumire'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>CUI: ' . htmlspecialchars((string) ($client['cui'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Reg. Com.: ' . htmlspecialchars((string) ($client['reg_com'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Adresa: ' . htmlspecialchars($clientAddressDisplay, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Judet: ' . htmlspecialchars((string) ($client['judet'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div>Tara: ' . htmlspecialchars((string) ($client['tara'] ?? ''), ENT_QUOTES, 'UTF-8') . '</div>'
+            . '</div>'
+            . '</div>'
+            . '<table>'
+            . '<thead><tr>'
+            . '<th style="width:40px">#</th>'
+            . '<th>Produs / serviciu</th>'
+            . '<th style="width:70px">U.M.</th>'
+            . '<th style="width:80px" class="num">Cant.</th>'
+            . '<th style="width:100px" class="num">Pret unitar</th>'
+            . '<th style="width:100px" class="num">Valoare</th>'
+            . '<th style="width:70px" class="num">TVA%</th>'
+            . '<th style="width:100px" class="num">Total</th>'
+            . '</tr></thead><tbody>'
+            . $itemRows
+            . '</tbody></table>'
+            . '<table class="totals">'
+            . '<tr><th>Total fara TVA</th><td class="num">' . $this->formatNumber($totalWithoutVat, 2) . ' RON</td></tr>'
+            . '<tr><th>Total TVA</th><td class="num">' . $this->formatNumber($totalVat, 2) . ' RON</td></tr>'
+            . '<tr><th>Total cu TVA</th><td class="num">' . $this->formatNumber($totalWithVat, 2) . ' RON</td></tr>'
+            . '</table>'
             . $changesHtml
-            . '<h2>Continut extras si prelucrat</h2>'
-            . '<pre>' . htmlspecialchars($rewrittenText, ENT_QUOTES, 'UTF-8') . '</pre>'
+            . '<div class="footer">Factura circula fara semnatura si stampila cf. art. V alin. (2) din OG 17/2015 si art. 319 alin. (29) din Legea 227/2015.</div>'
             . '</body></html>';
     }
 
-    private function collectStreamPayloads(string $pdfBinary): array
+    private function collectDecodedStreams(string $pdfBinary): array
     {
-        $payloads = [];
+        $streams = [];
         $matches = [];
+        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdfBinary, $matches) <= 0) {
+            return [];
+        }
 
-        if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdfBinary, $matches) > 0) {
-            foreach ($matches[1] as $match) {
-                if (is_string($match) && $match !== '') {
-                    $payloads[] = $match;
+        foreach ($matches[1] as $rawPayload) {
+            if (!is_string($rawPayload) || $rawPayload === '') {
+                continue;
+            }
+            foreach ($this->decodePayloadCandidates($rawPayload) as $decoded) {
+                $key = md5($decoded);
+                if (!isset($streams[$key])) {
+                    $streams[$key] = $decoded;
                 }
             }
         }
 
-        if (empty($payloads)) {
-            $fallbackMatches = [];
-            if (preg_match_all('/stream\s*(.*?)\s*endstream/s', $pdfBinary, $fallbackMatches) > 0) {
-                foreach ($fallbackMatches[1] as $match) {
-                    if (is_string($match) && $match !== '') {
-                        $payloads[] = $match;
-                    }
-                }
-            }
-        }
-
-        return $payloads;
+        return array_values($streams);
     }
 
-    private function decodeStreamPayload(string $payload): array
+    private function decodePayloadCandidates(string $payload): array
     {
-        $decoded = [];
-        $this->appendCandidate($decoded, $payload);
-        $this->appendCandidate($decoded, ltrim($payload, "\r\n"));
+        $result = [];
+        $this->appendUnique($result, $payload);
+        $payloadTrimmed = ltrim($payload, "\r\n");
+        $this->appendUnique($result, $payloadTrimmed);
 
-        $inflatedCandidates = [];
-        foreach ($decoded as $candidate) {
+        $decoded = [];
+        foreach ($result as $candidate) {
             $raw = ltrim($candidate, "\r\n");
             if ($raw === '') {
                 continue;
             }
-
             if (function_exists('zlib_decode')) {
                 $value = @zlib_decode($raw);
                 if (is_string($value) && $value !== '') {
-                    $inflatedCandidates[] = $value;
+                    $decoded[] = $value;
                 }
             }
-
             $value = @gzuncompress($raw);
             if (is_string($value) && $value !== '') {
-                $inflatedCandidates[] = $value;
+                $decoded[] = $value;
             }
-
             $value = @gzinflate($raw);
             if (is_string($value) && $value !== '') {
-                $inflatedCandidates[] = $value;
+                $decoded[] = $value;
             }
         }
 
-        foreach ($inflatedCandidates as $candidate) {
-            $this->appendCandidate($decoded, $candidate);
+        foreach ($decoded as $value) {
+            $this->appendUnique($result, $value);
         }
 
-        return $decoded;
+        return array_values($result);
     }
 
-    private function appendCandidate(array &$items, string $value): void
+    private function appendUnique(array &$store, string $value): void
     {
         if ($value === '') {
             return;
         }
-        $key = md5($value);
-        if (isset($items[$key])) {
-            return;
-        }
-        $items[$key] = $value;
+        $store[md5($value)] = $value;
     }
 
-    private function extractTextOperators(string $streamContent): string
+    private function extractCMapCandidates(array $streams): array
     {
-        if ($streamContent === '') {
-            return '';
-        }
-
-        $parts = [];
-        $matches = [];
-
-        if (preg_match_all('/\((?:\\\\.|[^\\\\)])*\)\s*Tj/s', $streamContent, $matches) > 0) {
-            foreach ($matches[0] as $match) {
-                if (preg_match('/\((?:\\\\.|[^\\\\)])*\)/s', $match, $literalMatch) === 1) {
-                    $parts[] = $this->decodeLiteralPdfString($literalMatch[0]);
-                }
+        $maps = [];
+        foreach ($streams as $stream) {
+            if (!is_string($stream) || stripos($stream, 'begincmap') === false) {
+                continue;
+            }
+            $map = $this->parseCMapFromStream($stream);
+            if (!empty($map)) {
+                $maps[] = $map;
             }
         }
 
-        $arrayMatches = [];
-        if (preg_match_all('/\[(.*?)\]\s*TJ/s', $streamContent, $arrayMatches) > 0) {
-            foreach ($arrayMatches[1] as $arrayBody) {
-                $lineParts = [];
-                $literalMatches = [];
-                if (preg_match_all('/\((?:\\\\.|[^\\\\)])*\)/s', (string) $arrayBody, $literalMatches) > 0) {
-                    foreach ($literalMatches[0] as $literal) {
-                        $decoded = $this->decodeLiteralPdfString($literal);
-                        if ($decoded !== '') {
-                            $lineParts[] = $decoded;
+        usort($maps, static function (array $a, array $b): int {
+            return count($b) <=> count($a);
+        });
+
+        return $maps;
+    }
+
+    private function parseCMapFromStream(string $stream): array
+    {
+        $map = [];
+        $lines = preg_split('/\r\n|\r|\n/', $stream) ?: [];
+        $countLines = count($lines);
+        $index = 0;
+        while ($index < $countLines) {
+            $line = trim((string) $lines[$index]);
+
+            if (preg_match('/^(\d+)\s+beginbfchar$/i', $line, $match) === 1) {
+                $rows = (int) $match[1];
+                $index++;
+                for ($r = 0; $r < $rows && $index < $countLines; $r++, $index++) {
+                    $row = trim((string) $lines[$index]);
+                    if (preg_match('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/', $row, $charMatch) !== 1) {
+                        continue;
+                    }
+                    $src = strtoupper($charMatch[1]);
+                    $dst = $this->unicodeHexToUtf8($charMatch[2]);
+                    if ($src !== '' && $dst !== '') {
+                        $map[$src] = $dst;
+                    }
+                }
+                continue;
+            }
+
+            if (preg_match('/^(\d+)\s+beginbfrange$/i', $line, $match) === 1) {
+                $rows = (int) $match[1];
+                $index++;
+                for ($r = 0; $r < $rows && $index < $countLines; $r++, $index++) {
+                    $row = trim((string) $lines[$index]);
+                    if ($row === '') {
+                        continue;
+                    }
+                    if (
+                        preg_match('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[(.+)\]\s*$/', $row, $rangeListMatch) === 1
+                    ) {
+                        $start = (int) hexdec($rangeListMatch[1]);
+                        $values = [];
+                        preg_match_all('/<([0-9A-Fa-f]+)>/', $rangeListMatch[3], $valueMatches);
+                        if (!empty($valueMatches[1])) {
+                            $values = $valueMatches[1];
+                        }
+                        foreach ($values as $offset => $hexValue) {
+                            $src = strtoupper(str_pad(dechex($start + $offset), strlen($rangeListMatch[1]), '0', STR_PAD_LEFT));
+                            $dst = $this->unicodeHexToUtf8((string) $hexValue);
+                            if ($dst !== '') {
+                                $map[$src] = $dst;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (
+                        preg_match('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>$/', $row, $rangeMatch) === 1
+                    ) {
+                        $start = (int) hexdec($rangeMatch[1]);
+                        $end = (int) hexdec($rangeMatch[2]);
+                        $destStart = (int) hexdec($rangeMatch[3]);
+                        $srcLen = strlen($rangeMatch[1]);
+                        for ($code = $start; $code <= $end; $code++) {
+                            $src = strtoupper(str_pad(dechex($code), $srcLen, '0', STR_PAD_LEFT));
+                            $destCode = $destStart + ($code - $start);
+                            $dst = $this->unicodeCodepointToUtf8($destCode);
+                            if ($dst !== '') {
+                                $map[$src] = $dst;
+                            }
                         }
                     }
                 }
-                if (!empty($lineParts)) {
-                    $parts[] = implode('', $lineParts);
+                continue;
+            }
+
+            $index++;
+        }
+
+        return $map;
+    }
+
+    private function extractTextLinesFromContentStream(string $stream, array $cmapCandidates): array
+    {
+        $lines = [];
+        $blocks = [];
+        if (preg_match_all('/BT(.*?)ET/s', $stream, $blocks) <= 0) {
+            return [];
+        }
+
+        foreach ($blocks[1] as $block) {
+            $current = '';
+            $tokens = [];
+            if (
+                preg_match_all(
+                    '/\[(?:[^\]]*)\]\s*TJ|<[^>]+>\s*Tj|\((?:\\\\.|[^\\\\)])*\)\s*Tj|-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+Td|T\*/s',
+                    (string) $block,
+                    $tokens
+                ) <= 0
+            ) {
+                continue;
+            }
+
+            foreach ($tokens[0] as $tokenRaw) {
+                $token = trim((string) $tokenRaw);
+                if ($token === '') {
+                    continue;
+                }
+
+                if ($token === 'T*') {
+                    $this->flushLine($lines, $current);
+                    continue;
+                }
+
+                if (str_ends_with($token, 'Td')) {
+                    if (preg_match('/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+Td$/', $token, $tdMatch) === 1) {
+                        $dy = (float) $tdMatch[2];
+                        if (abs($dy) > 0.01) {
+                            $this->flushLine($lines, $current);
+                        }
+                    }
+                    continue;
+                }
+
+                if (str_ends_with($token, 'TJ')) {
+                    $arrayContent = trim(substr($token, 0, -2));
+                    $this->appendDecodedArrayText($current, $arrayContent, $cmapCandidates);
+                    continue;
+                }
+
+                if (str_ends_with($token, 'Tj')) {
+                    $value = trim(substr($token, 0, -2));
+                    if (str_starts_with($value, '<') && str_ends_with($value, '>')) {
+                        $current .= $this->decodeHexToken(substr($value, 1, -1), $cmapCandidates);
+                    } elseif (str_starts_with($value, '(') && str_ends_with($value, ')')) {
+                        $current .= $this->decodeLiteralPdfString($value);
+                    }
+                }
+            }
+
+            $this->flushLine($lines, $current);
+        }
+
+        return $lines;
+    }
+
+    private function appendDecodedArrayText(string &$current, string $arrayContent, array $cmapCandidates): void
+    {
+        $parts = [];
+        preg_match_all('/<([0-9A-Fa-f]+)>|\((?:\\\\.|[^\\\\)])*\)|-?\d+(?:\.\d+)?/', $arrayContent, $parts);
+        if (empty($parts[0])) {
+            return;
+        }
+
+        foreach ($parts[0] as $part) {
+            $part = trim((string) $part);
+            if ($part === '') {
+                continue;
+            }
+            if ($part[0] === '<' && str_ends_with($part, '>')) {
+                $current .= $this->decodeHexToken(substr($part, 1, -1), $cmapCandidates);
+                continue;
+            }
+            if ($part[0] === '(' && str_ends_with($part, ')')) {
+                $current .= $this->decodeLiteralPdfString($part);
+                continue;
+            }
+            if (is_numeric($part)) {
+                $adjust = (float) $part;
+                if ($adjust < -120 && $current !== '' && !str_ends_with($current, ' ')) {
+                    $current .= ' ';
                 }
             }
         }
+    }
 
-        $hexMatches = [];
-        if (preg_match_all('/<([0-9A-Fa-f]{2,})>\s*Tj/s', $streamContent, $hexMatches) > 0) {
-            foreach ($hexMatches[1] as $hexBody) {
-                $decoded = $this->decodeHexPdfString((string) $hexBody);
-                if ($decoded !== '') {
-                    $parts[] = $decoded;
-                }
+    private function decodeHexToken(string $hex, array $cmapCandidates): string
+    {
+        $hex = strtoupper(trim(preg_replace('/[^0-9A-Fa-f]/', '', $hex) ?? ''));
+        if ($hex === '') {
+            return '';
+        }
+
+        $bestText = '';
+        $bestScore = -PHP_INT_MAX;
+        foreach ($cmapCandidates as $map) {
+            if (!is_array($map) || empty($map)) {
+                continue;
+            }
+            $decoded = $this->decodeHexWithMap($hex, $map);
+            $score = $this->scoreDecodedText($decoded['text'], $decoded['decoded'], $decoded['missing']);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestText = $decoded['text'];
             }
         }
 
-        $parts = array_values(array_filter(array_map(static function ($value): string {
-            return trim((string) $value);
-        }, $parts), static function ($value): bool {
-            return $value !== '';
-        }));
+        if ($bestText !== '') {
+            return $bestText;
+        }
 
-        return implode("\n", $parts);
+        $raw = @hex2bin((strlen($hex) % 2) === 0 ? $hex : ($hex . '0'));
+        if (!is_string($raw) || $raw === '') {
+            return '';
+        }
+
+        if (str_starts_with($raw, "\xFE\xFF")) {
+            return $this->unicodeHexToUtf8(substr($hex, 4));
+        }
+
+        if (strpos($raw, "\x00") !== false) {
+            $converted = $this->convertUtf16ToUtf8($raw, 'UTF-16BE');
+            if ($converted !== '') {
+                return $converted;
+            }
+        }
+
+        return $this->stripControlChars($raw);
+    }
+
+    private function decodeHexWithMap(string $hex, array $map): array
+    {
+        $keys = array_keys($map);
+        if (empty($keys)) {
+            return ['text' => '', 'decoded' => 0, 'missing' => 0];
+        }
+
+        $codeLen = strlen((string) $keys[0]);
+        if ($codeLen <= 0) {
+            $codeLen = 4;
+        }
+        if ($codeLen % 2 !== 0) {
+            $codeLen++;
+        }
+        if (strlen($hex) % $codeLen !== 0) {
+            if ($codeLen !== 2 && (strlen($hex) % 2 === 0)) {
+                $codeLen = 2;
+            }
+        }
+
+        $decoded = 0;
+        $missing = 0;
+        $text = '';
+        for ($offset = 0; $offset < strlen($hex); $offset += $codeLen) {
+            $chunk = substr($hex, $offset, $codeLen);
+            if ($chunk === '' || strlen($chunk) < $codeLen) {
+                continue;
+            }
+            if (isset($map[$chunk])) {
+                $text .= (string) $map[$chunk];
+                $decoded++;
+            } else {
+                $missing++;
+            }
+        }
+
+        return ['text' => $text, 'decoded' => $decoded, 'missing' => $missing];
+    }
+
+    private function scoreDecodedText(string $text, int $decoded, int $missing): int
+    {
+        if ($text === '' || $decoded <= 0) {
+            return -10000;
+        }
+        $letters = preg_match_all('/[A-Za-z]/', $text);
+        $digits = preg_match_all('/[0-9]/', $text);
+        $readable = preg_match_all('/[A-Za-z0-9 \.\,\:\-\(\)\/%]/', $text);
+
+        return ($decoded * 5) + ($letters * 3) + ($digits * 2) + ($readable) - ($missing * 2);
     }
 
     private function decodeLiteralPdfString(string $literal): string
@@ -411,25 +612,22 @@ class PdfRewriteService
         if ($literal === '') {
             return '';
         }
-
         if (str_starts_with($literal, '(') && str_ends_with($literal, ')')) {
             $literal = substr($literal, 1, -1);
         }
 
-        $length = strlen($literal);
         $result = '';
+        $length = strlen($literal);
         for ($i = 0; $i < $length; $i++) {
             $char = $literal[$i];
             if ($char !== '\\') {
                 $result .= $char;
                 continue;
             }
-
             $i++;
             if ($i >= $length) {
                 break;
             }
-
             $escaped = $literal[$i];
             if ($escaped === 'n') {
                 $result .= "\n";
@@ -475,45 +673,58 @@ class PdfRewriteService
             $result .= $escaped;
         }
 
-        return $this->normalizeDecodedText($result);
+        return $this->stripControlChars($result);
     }
 
-    private function decodeHexPdfString(string $hex): string
+    private function flushLine(array &$lines, string &$current): void
     {
-        $hex = preg_replace('/[^0-9a-f]/i', '', $hex);
-        if ($hex === null || $hex === '') {
-            return '';
+        $line = trim($this->normalizeSpacing($current));
+        if ($line !== '') {
+            $lines[] = $line;
         }
-        if ((strlen($hex) % 2) !== 0) {
-            $hex .= '0';
-        }
-
-        $binary = @hex2bin($hex);
-        if (!is_string($binary) || $binary === '') {
-            return '';
-        }
-
-        return $this->normalizeDecodedText($binary);
+        $current = '';
     }
 
-    private function normalizeDecodedText(string $raw): string
+    private function normalizeSpacing(string $text): string
     {
-        $raw = str_replace(["\r\n", "\r"], "\n", $raw);
-        if (str_starts_with($raw, "\xFE\xFF")) {
-            $decoded = $this->convertUtf16ToUtf8(substr($raw, 2), 'UTF-16BE');
-            if ($decoded !== '') {
-                $raw = $decoded;
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+        return trim($text);
+    }
+
+    private function fallbackExtractLiteralStrings(string $pdfBinary): string
+    {
+        $result = [];
+        $matches = [];
+        if (preg_match_all('/\((?:\\\\.|[^\\\\)]){3,}\)/s', $pdfBinary, $matches) <= 0) {
+            return '';
+        }
+        foreach ($matches[0] as $match) {
+            $decoded = $this->decodeLiteralPdfString((string) $match);
+            if ($decoded === '') {
+                continue;
             }
-        } elseif (str_starts_with($raw, "\xFF\xFE")) {
-            $decoded = $this->convertUtf16ToUtf8(substr($raw, 2), 'UTF-16LE');
-            if ($decoded !== '') {
-                $raw = $decoded;
+            if (preg_match('/[A-Za-z0-9]/', $decoded) !== 1) {
+                continue;
             }
+            $result[] = $decoded;
         }
 
-        $raw = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $raw) ?? '';
+        return $this->normalizeExtractedText(implode("\n", $result));
+    }
 
-        return trim($raw);
+    private function normalizeExtractedText(string $text): string
+    {
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+        $text = $this->stripControlChars($text);
+        $text = preg_replace("/[ \t]+\n/u", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
+    private function stripControlChars(string $value): string
+    {
+        return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $value) ?? '';
     }
 
     private function convertUtf16ToUtf8(string $value, string $encoding): string
@@ -521,42 +732,331 @@ class PdfRewriteService
         if (!function_exists('iconv')) {
             return '';
         }
-
         $converted = @iconv($encoding, 'UTF-8//IGNORE', $value);
         if (!is_string($converted)) {
             return '';
         }
-
-        return $converted;
+        return $this->stripControlChars($converted);
     }
 
-    private function fallbackExtractLiteralStrings(string $pdfBinary): string
+    private function unicodeHexToUtf8(string $hex): string
     {
-        $results = [];
-        $matches = [];
-        if (preg_match_all('/\((?:\\\\.|[^\\\\)]){3,}\)/s', $pdfBinary, $matches) > 0) {
-            foreach ($matches[0] as $match) {
-                $decoded = $this->decodeLiteralPdfString((string) $match);
-                if ($decoded === '') {
-                    continue;
-                }
-                if (preg_match('/[a-zA-Z0-9]/', $decoded) !== 1) {
-                    continue;
-                }
-                $results[] = $decoded;
+        $hex = preg_replace('/[^0-9A-Fa-f]/', '', $hex);
+        if ($hex === null || $hex === '') {
+            return '';
+        }
+        if (strlen($hex) % 2 !== 0) {
+            $hex = '0' . $hex;
+        }
+        $binary = @hex2bin($hex);
+        if (!is_string($binary) || $binary === '') {
+            return '';
+        }
+
+        if (strlen($binary) === 1) {
+            return chr(ord($binary));
+        }
+
+        $converted = $this->convertUtf16ToUtf8($binary, 'UTF-16BE');
+        if ($converted !== '') {
+            return $converted;
+        }
+
+        return $this->stripControlChars($binary);
+    }
+
+    private function unicodeCodepointToUtf8(int $codepoint): string
+    {
+        if ($codepoint < 0 || $codepoint > 0x10FFFF) {
+            return '';
+        }
+        if ($codepoint <= 0x7F) {
+            return chr($codepoint);
+        }
+        $hex = strtoupper(dechex($codepoint));
+        if (strlen($hex) % 4 !== 0) {
+            $hex = str_pad($hex, (int) (ceil(strlen($hex) / 4) * 4), '0', STR_PAD_LEFT);
+        }
+        return $this->unicodeHexToUtf8($hex);
+    }
+
+    private function splitNonEmptyLines(string $text): array
+    {
+        $parts = preg_split('/\n/', $text) ?: [];
+        $lines = [];
+        foreach ($parts as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            $lines[] = $line;
+        }
+        return $lines;
+    }
+
+    private function extractDocumentNumber(string $text): string
+    {
+        if (preg_match('/\b(A-[A-Z0-9]+)\s+([0-9]{1,10})\b/', $text, $match) === 1) {
+            return trim($match[1] . ' ' . $match[2]);
+        }
+
+        if (preg_match('/AVIZ\s+INSOTIRE\s+MARFA\s+([A-Z0-9\- ]+)/i', $text, $match) === 1) {
+            return trim((string) $match[1]);
+        }
+
+        return 'A-DEON';
+    }
+
+    private function extractDateByLabel(string $text, string $label): string
+    {
+        $label = preg_quote($label, '/');
+        if (preg_match('/' . $label . '\s*:\s*([0-9]{2}\.[0-9]{2}\.[0-9]{4})/i', $text, $match) === 1) {
+            return trim((string) $match[1]);
+        }
+        return '';
+    }
+
+    private function extractClientLines(array $lines): array
+    {
+        $start = -1;
+        $end = count($lines);
+        foreach ($lines as $index => $line) {
+            if (preg_match('/^Client$/i', $line) === 1) {
+                $start = $index + 1;
+                continue;
+            }
+            if ($start >= 0 && ($line === '#' || stripos($line, 'Produs / serviciu') !== false)) {
+                $end = $index;
+                break;
             }
         }
 
-        return implode("\n", $results);
+        if ($start < 0) {
+            return [];
+        }
+
+        return array_slice($lines, $start, max(0, $end - $start));
     }
 
-    private function normalizeExtractedText(string $text): string
+    private function parseClient(array $clientLines): array
     {
-        $text = str_replace(["\r\n", "\r"], "\n", $text);
-        $text = preg_replace("/[ \t]+\n/u", "\n", $text) ?? $text;
-        $text = preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text;
+        $client = [
+            'denumire' => '',
+            'cui' => '',
+            'reg_com' => '',
+            'tara' => '',
+            'judet' => '',
+            'localitate' => '',
+            'adresa' => '',
+        ];
 
-        return trim($text);
+        if (empty($clientLines)) {
+            return $client;
+        }
+
+        foreach ($clientLines as $line) {
+            if ($client['denumire'] !== '') {
+                break;
+            }
+            if (preg_match('/^(CUI|Reg\.?Com|Reg\.?\s*Com|Tara|Judet|Localitate|Adresa)\b/i', $line) === 1) {
+                continue;
+            }
+            $client['denumire'] = trim($line);
+        }
+
+        $client['cui'] = $this->extractClientValue($clientLines, '/^CUI\b/i', '/(?:RO\s*)?[0-9]{4,}/');
+        $client['reg_com'] = $this->extractClientValue($clientLines, '/^Reg\.?\s*Com\b/i', '/[A-Z]{0,2}\d{2,}[A-Z0-9\/]*/i');
+        $client['tara'] = $this->extractClientValue($clientLines, '/^Tara\b/i', '/[A-Z][A-Z ]{2,}/');
+        $client['judet'] = $this->extractClientValue($clientLines, '/^Judet\b/i', '/[A-Z][A-Z ]{2,}/');
+        $client['localitate'] = $this->extractClientValue($clientLines, '/^Localitate\b/i', '/.+/');
+        $client['adresa'] = $this->extractClientValue($clientLines, '/^Adresa\b/i', '/.+/');
+
+        return $client;
+    }
+
+    private function extractClientValue(array $lines, string $labelRegex, string $valueRegex): string
+    {
+        $count = count($lines);
+        for ($i = 0; $i < $count; $i++) {
+            $line = (string) $lines[$i];
+            if (preg_match($labelRegex, $line) !== 1) {
+                continue;
+            }
+
+            for ($j = $i; $j < min($i + 4, $count); $j++) {
+                $candidate = trim((string) $lines[$j]);
+                if ($candidate === '' || preg_match($labelRegex, $candidate) === 1) {
+                    continue;
+                }
+                if (preg_match('/^(CUI|Reg\.?\s*Com|Tara|Judet|Localitate|Adresa)\b/i', $candidate) === 1) {
+                    continue;
+                }
+                if (preg_match($valueRegex, $candidate, $match) === 1) {
+                    return trim((string) ($match[0] ?? ''));
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function parseMainItem(string $text, array $lines): array
+    {
+        $item = [
+            'name' => '',
+            'unit' => '',
+            'quantity' => 0.0,
+            'unit_price' => 0.0,
+            'total_without_vat' => 0.0,
+            'vat_percent' => 0.0,
+            'vat_value' => 0.0,
+            'total_with_vat' => 0.0,
+        ];
+
+        if (
+            preg_match(
+                '/(\d+(?:[\.,]\d+)?)\s+(\d+(?:[\.,]\d+)?)\s+(\d+(?:[\.,]\d+)?)\s+\((\d+(?:[\.,]\d+)?)%\)\s+(\d+(?:[\.,]\d+)?)\s+(\d+(?:[\.,]\d+)?)/s',
+                $text,
+                $match
+            ) === 1
+        ) {
+            $item['quantity'] = $this->toFloat($match[1]);
+            $item['unit_price'] = $this->toFloat($match[2]);
+            $item['total_without_vat'] = $this->toFloat($match[3]);
+            $item['vat_percent'] = $this->toFloat($match[4]);
+            $item['vat_value'] = $this->toFloat($match[5]);
+            $item['total_with_vat'] = $this->toFloat($match[6]);
+        }
+
+        if (preg_match('/\(([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)/', $text, $vatMatch) === 1) {
+            $item['vat_percent'] = max($item['vat_percent'], $this->toFloat($vatMatch[1]));
+        }
+
+        $item['unit'] = $this->extractUnit($lines);
+        $item['name'] = $this->extractProductName($lines);
+
+        return $item;
+    }
+
+    private function extractUnit(array $lines): string
+    {
+        $allowed = ['BUC', 'KG', 'L', 'ML', 'M', 'MP', 'MC', 'SET', 'PACH', 'CUT', 'SAC', 'PAL'];
+        foreach ($lines as $line) {
+            $normalized = strtoupper(trim((string) $line));
+            if (in_array($normalized, $allowed, true)) {
+                return $normalized;
+            }
+        }
+        return 'BUC';
+    }
+
+    private function extractProductName(array $lines): string
+    {
+        $reserved = [
+            'FURNIZOR',
+            'CLIENT',
+            'TOTAL',
+            'CUI',
+            'REG. COM.',
+            'REG.COM.',
+            'TARA',
+            'JUDET',
+            'LOCALITATE',
+            'ADRESA',
+            'PRODUS / SERVICIU',
+            'U.M.',
+            'CANT.',
+            'PRET UNITAR',
+            'VALOARE',
+            'TVA%',
+        ];
+        $count = count($lines);
+        for ($i = 0; $i < $count - 1; $i++) {
+            $line = trim((string) $lines[$i]);
+            if (preg_match('/^\d+$/', $line) !== 1) {
+                continue;
+            }
+            $candidate = trim((string) $lines[$i + 1]);
+            if ($candidate === '') {
+                continue;
+            }
+            $candidateUpper = strtoupper($candidate);
+            if (in_array($candidateUpper, $reserved, true)) {
+                continue;
+            }
+            if (preg_match('/^[0-9\.\,\(\)%]+$/', $candidate) === 1) {
+                continue;
+            }
+            if (strlen($candidate) >= 4) {
+                return $candidate;
+            }
+        }
+
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+            if (preg_match('/^[A-Z0-9 \/,\.\-\(\)]{6,}$/', strtoupper($line)) === 1) {
+                if (preg_match('/(AVIZ|FURNIZOR|CLIENT|TOTAL|DATA|CUI|REG|TARA|JUDET|LOCALITATE|ADRESA)/i', $line) === 1) {
+                    continue;
+                }
+                return $line;
+            }
+        }
+
+        return '';
+    }
+
+    private function parseTotals(string $text, array $lines, array $item): array
+    {
+        $totals = [
+            'without_vat' => 0.0,
+            'vat' => 0.0,
+            'with_vat' => 0.0,
+            'vat_percent' => (float) ($item['vat_percent'] ?? 0),
+        ];
+
+        if (
+            preg_match('/Total\s+([0-9]+(?:[\.,][0-9]+)?)\s+([0-9]+(?:[\.,][0-9]+)?)\s+([0-9]+(?:[\.,][0-9]+)?)/i', $text, $match) === 1
+        ) {
+            $totals['without_vat'] = $this->toFloat($match[1]);
+            $totals['vat'] = $this->toFloat($match[2]);
+            $totals['with_vat'] = $this->toFloat($match[3]);
+        }
+
+        if ($totals['without_vat'] <= 0 || $totals['with_vat'] <= 0) {
+            $numbers = [];
+            foreach ($lines as $line) {
+                if (preg_match('/^[0-9]+(?:[\.,][0-9]+)?$/', $line) === 1) {
+                    $numbers[] = $this->toFloat($line);
+                }
+            }
+            if (count($numbers) >= 3) {
+                $slice = array_slice($numbers, -3);
+                if ($totals['without_vat'] <= 0) {
+                    $totals['without_vat'] = (float) $slice[0];
+                }
+                if ($totals['vat'] <= 0) {
+                    $totals['vat'] = (float) $slice[1];
+                }
+                if ($totals['with_vat'] <= 0) {
+                    $totals['with_vat'] = (float) $slice[2];
+                }
+            }
+        }
+
+        if ($totals['without_vat'] <= 0) {
+            $totals['without_vat'] = (float) ($item['total_without_vat'] ?? 0);
+        }
+        if ($totals['with_vat'] <= 0) {
+            $totals['with_vat'] = (float) ($item['total_with_vat'] ?? 0);
+        }
+        if ($totals['vat'] <= 0 && $totals['with_vat'] > 0 && $totals['without_vat'] > 0) {
+            $totals['vat'] = round($totals['with_vat'] - $totals['without_vat'], 2);
+        }
+
+        return $totals;
     }
 
     private function normalizeCompany(array $company): array
@@ -585,57 +1085,22 @@ class PdfRewriteService
         return $normalized;
     }
 
-    private function buildCompanyAddress(array $company): string
+    private function toFloat(string|float|int $value): float
     {
-        $parts = [];
-        if ($company['adresa'] !== '') {
-            $parts[] = $company['adresa'];
+        $string = trim((string) $value);
+        if ($string === '') {
+            return 0.0;
         }
-        if ($company['localitate'] !== '') {
-            $parts[] = 'Localitate: ' . $company['localitate'];
+        $string = str_replace(' ', '', $string);
+        $string = str_replace(',', '.', $string);
+        if (!is_numeric($string)) {
+            return 0.0;
         }
-
-        return implode(', ', $parts);
+        return round((float) $string, 4);
     }
 
-    private function isSupplierLabelLine(string $line): bool
+    private function formatNumber(float $value, int $decimals): string
     {
-        return preg_match('/^(CUI|Reg\.?\s*Com|Capital|Adresa|Judet|Tara|Email|Telefon|Client)\b/i', $line) === 1;
-    }
-
-    private function isSupplierNameLine(string $line): bool
-    {
-        if ($this->isSupplierLabelLine($line)) {
-            return false;
-        }
-        if ($this->looksLikeIban($line)) {
-            return false;
-        }
-        if ($this->looksLikeBankLine($line)) {
-            return false;
-        }
-        if (preg_match('/^\d+[\s\.,]/', $line) === 1) {
-            return false;
-        }
-
-        return stripos($line, 'mivinia') !== false
-            || preg_match('/^[A-Z0-9\.\-\s]{4,}$/', strtoupper($line)) === 1;
-    }
-
-    private function looksLikeIban(string $line): bool
-    {
-        return preg_match('/^RO[0-9A-Z]{10,}$/', strtoupper(preg_replace('/\s+/', '', $line) ?? '')) === 1;
-    }
-
-    private function looksLikeBankLine(string $line): bool
-    {
-        $normalized = strtoupper(trim($line));
-        if ($normalized === '') {
-            return false;
-        }
-
-        return str_contains($normalized, 'BANK')
-            || str_contains($normalized, 'BANCA')
-            || str_contains($normalized, 'TREZORER');
+        return number_format($value, $decimals, '.', ' ');
     }
 }

@@ -32,7 +32,7 @@ $companyRows = [
     <div class="xl:col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Incarcare si prelucrare</h2>
         <p class="mt-1 text-sm text-slate-600">
-            Se inlocuiesc automat campurile furnizorului (denumire, CUI, Reg. Com., adresa, banca, IBAN, email, telefon) cu valorile din Setari.
+            Citim continutul din PDF-ul sursa si generam un aviz nou de la zero, cu datele emitentului din Setari.
         </p>
 
         <form
@@ -83,9 +83,9 @@ $companyRows = [
                     type="submit"
                     class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
                 >
-                    Prelucreaza si descarca PDF
+                    Genereaza aviz nou si descarca PDF
                 </button>
-                <span class="text-xs text-slate-600">Daca generatorul PDF este indisponibil, se descarca textul prelucrat (.txt).</span>
+                <span class="text-xs text-slate-600">Daca generatorul PDF este indisponibil, se descarca textul extras (.txt).</span>
             </div>
         </form>
     </div>

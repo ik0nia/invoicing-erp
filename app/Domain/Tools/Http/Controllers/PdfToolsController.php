@@ -63,18 +63,25 @@ class PdfToolsController
             Response::redirect('/admin/utile/prelucrare-pdf');
         }
 
-        $rewriteResult = $this->rewriteService->rewriteSupplierData($extractedText, $company, $seriesFrom, $seriesTo);
-        $rewrittenText = trim((string) ($rewriteResult['text'] ?? ''));
-        if ($rewrittenText === '') {
-            Session::flash('error', 'Nu s-a putut genera continutul prelucrat pentru PDF.');
-            Response::redirect('/admin/utile/prelucrare-pdf');
+        $aviz = $this->rewriteService->parseAvizData($extractedText);
+        $changes = [];
+        $documentNo = trim((string) ($aviz['document_number'] ?? ''));
+        if ($documentNo !== '' && $seriesFrom !== '' && $seriesTo !== '' && $seriesFrom !== $seriesTo) {
+            $replaceCount = 0;
+            $updatedNo = str_replace($seriesFrom, $seriesTo, $documentNo, $replaceCount);
+            if ($replaceCount > 0) {
+                $aviz['document_number'] = $updatedNo;
+                $changes[] = 'Serie aviz inlocuita: ' . $seriesFrom . ' -> ' . $seriesTo . '.';
+            }
+        } elseif ($documentNo === '' && $seriesTo !== '') {
+            $aviz['document_number'] = $seriesTo;
         }
 
-        $html = $this->rewriteService->buildPrintableHtml($rewrittenText, $company, [
+        $html = $this->rewriteService->buildAvizHtml($aviz, $company, [
             'source_name' => $sourceName,
             'series_from' => $seriesFrom,
             'series_to' => $seriesTo,
-            'changes' => (array) ($rewriteResult['changes'] ?? []),
+            'changes' => $changes,
         ]);
 
         $pdfBinary = $this->pdfService->generatePdfBinaryFromHtml($html, 'prelucrare-aviz');
@@ -83,7 +90,7 @@ class PdfToolsController
             header('Content-Type: text/plain; charset=UTF-8');
             header('Content-Disposition: attachment; filename="' . $downloadName . '"');
             header('X-Content-Type-Options: nosniff');
-            echo $rewrittenText;
+            echo $extractedText;
             exit;
         }
 
