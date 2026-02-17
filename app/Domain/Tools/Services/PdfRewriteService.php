@@ -912,7 +912,7 @@ class PdfRewriteService
             return [];
         }
 
-        $numericRows = $this->parseNumericRows($lines, $headerIndex);
+        $numericRows = $this->parseNumericRows($lines);
         $productRows = $this->parseProductRows($lines, $headerIndex);
         $items = [];
 
@@ -1006,15 +1006,11 @@ class PdfRewriteService
         return -1;
     }
 
-    private function parseNumericRows(array $lines, int $headerIndex): array
+    private function parseNumericRows(array $lines): array
     {
         $rows = [];
-        if ($headerIndex <= 0) {
-            return $rows;
-        }
-
-        for ($i = 0; $i < $headerIndex; $i++) {
-            $line = trim((string) $lines[$i]);
+        foreach ($lines as $lineRaw) {
+            $line = trim((string) $lineRaw);
             if ($line === '') {
                 continue;
             }
