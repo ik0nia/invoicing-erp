@@ -11,6 +11,7 @@ class SagaExportService
 {
     private CommissionService $commissionService;
     private SagaStatusService $sagaStatusService;
+    private array $invoiceDiscountPricingCache = [];
 
     public function __construct(?CommissionService $commissionService = null, ?SagaStatusService $sagaStatusService = null)
     {
@@ -49,7 +50,7 @@ class SagaExportService
             $statusSelect = $hasSagaStatus ? 'p.saga_status' : 'NULL AS saga_status';
             $packageRow = Database::fetchOne(
                 'SELECT p.id, p.package_no, p.label, p.vat_percent, ' . $statusSelect . ',
-                        i.id AS invoice_in_id, i.invoice_number, i.issue_date,
+                        i.id AS invoice_in_id, i.invoice_number, i.issue_date, i.total_with_vat,
                         i.selected_client_cui, i.supplier_cui, i.commission_percent
                  FROM packages p
                  JOIN invoices_in i ON i.id = p.invoice_in_id
@@ -135,7 +136,7 @@ class SagaExportService
         $supplierCui = preg_replace('/\D+/', '', (string) ($packageRow['supplier_cui'] ?? ''));
         if ($commissionPercent === null && !empty($packageRow['invoice_in_id'])) {
             $invoiceRow = Database::fetchOne(
-                'SELECT invoice_number, selected_client_cui, supplier_cui, commission_percent
+                'SELECT invoice_number, selected_client_cui, supplier_cui, commission_percent, total_with_vat
                  FROM invoices_in
                  WHERE id = :id
                  LIMIT 1',
@@ -162,8 +163,12 @@ class SagaExportService
             );
         }
 
+        $invoiceId = (int) ($packageRow['invoice_in_id'] ?? 0);
+        $invoiceGrossTotal = isset($packageRow['total_with_vat']) ? (float) $packageRow['total_with_vat'] : null;
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoiceId, $invoiceGrossTotal);
+
         $sellGross = $sumGross;
-        if ($commissionPercent !== null) {
+        if ($commissionPercent !== null && !$hasDiscountPricing) {
             $sellGross = $this->commissionService->applyCommission($sellGross, $commissionPercent);
         }
         $vatPercent = (float) ($packageRow['vat_percent'] ?? 0);
@@ -207,10 +212,41 @@ class SagaExportService
                 'vat_percent' => $vatPercent,
                 'pret_vanz_calc' => $pretVanz,
                 'is_storno' => $isStorno,
+                'has_discount_pricing' => $hasDiscountPricing,
             ];
         }
 
         return $payload;
+    }
+
+    private function invoiceHasDiscountPricing(int $invoiceId, ?float $invoiceGrossTotal = null): bool
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_in_lines')) {
+            return false;
+        }
+        if (isset($this->invoiceDiscountPricingCache[$invoiceId])) {
+            return (bool) $this->invoiceDiscountPricingCache[$invoiceId];
+        }
+
+        if ($invoiceGrossTotal === null && Database::tableExists('invoices_in')) {
+            $invoiceGrossTotal = (float) (Database::fetchValue(
+                'SELECT total_with_vat FROM invoices_in WHERE id = :id LIMIT 1',
+                ['id' => $invoiceId]
+            ) ?? 0.0);
+        }
+        if ($invoiceGrossTotal === null) {
+            $invoiceGrossTotal = 0.0;
+        }
+
+        $salesGrossTotal = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0) FROM invoice_in_lines WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+
+        $hasDiscountPricing = $salesGrossTotal > ($invoiceGrossTotal + 0.009);
+        $this->invoiceDiscountPricingCache[$invoiceId] = $hasDiscountPricing;
+
+        return $hasDiscountPricing;
     }
 
     private function normalizeName(string $value): string

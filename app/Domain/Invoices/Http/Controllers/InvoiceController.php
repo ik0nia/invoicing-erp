@@ -1068,7 +1068,7 @@ class InvoiceController
 
         $packages = Database::fetchAll(
             "SELECT p.id, p.package_no, p.label, p.vat_percent, p.invoice_in_id{$statusSelect},
-                    i.invoice_number, i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
+                    i.invoice_number, i.issue_date, i.total_with_vat, i.selected_client_cui, i.supplier_cui, i.commission_percent
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              JOIN (
