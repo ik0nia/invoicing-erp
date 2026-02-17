@@ -1517,18 +1517,37 @@ class InvoiceController
             Response::redirect('/admin/facturi/import');
         }
 
-        $supplierCuiRaw = (string) ($data['supplier_cui'] ?? '');
-        if (trim($supplierCuiRaw) === '') {
-            $supplierCuiFallback = $this->extractSupplierCuiFromXmlFile((string) ($file['tmp_name'] ?? ''));
+        $xmlTempPath = (string) ($file['tmp_name'] ?? '');
+        if (trim((string) ($data['supplier_cui'] ?? '')) === '') {
+            $supplierCuiFallback = $this->extractSupplierCuiFromXmlFile($xmlTempPath);
             if ($supplierCuiFallback !== '') {
-                $supplierCuiRaw = $supplierCuiFallback;
                 $data['supplier_cui'] = $supplierCuiFallback;
+            }
+        }
+        if (trim((string) ($data['supplier_name'] ?? '')) === '') {
+            $supplierNameFallback = $this->extractSupplierNameFromXmlFile($xmlTempPath);
+            if ($supplierNameFallback !== '') {
+                $data['supplier_name'] = $supplierNameFallback;
+            }
+        }
+        if (trim((string) ($data['customer_name'] ?? '')) === '') {
+            $customerNameFallback = $this->extractCustomerNameFromXmlFile($xmlTempPath);
+            if ($customerNameFallback !== '') {
+                $data['customer_name'] = $customerNameFallback;
             }
         }
         $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
         $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
         $data['supplier_cui'] = preg_replace('/\D+/', '', (string) ($data['supplier_cui'] ?? ''));
         $data['customer_cui'] = preg_replace('/\D+/', '', (string) ($data['customer_cui'] ?? ''));
+        $data['supplier_name'] = $this->resolvePartyName($data['supplier_cui'], $data['supplier_name']);
+        $data['customer_name'] = $this->resolvePartyName($data['customer_cui'], $data['customer_name']);
+        if ($data['supplier_name'] === '' && $data['supplier_cui'] !== '') {
+            $data['supplier_name'] = $data['supplier_cui'];
+        }
+        if ($data['customer_name'] === '' && $data['customer_cui'] !== '') {
+            $data['customer_name'] = $data['customer_cui'];
+        }
 
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
         if (!$this->supplierExistsInPlatform((string) ($data['supplier_cui'] ?? ''))) {
@@ -1573,8 +1592,8 @@ class InvoiceController
             $invoice = InvoiceIn::find($invoice->id);
         }
 
-        Partner::createIfMissing($data['supplier_cui'], $data['supplier_name']);
-        Partner::createIfMissing($data['customer_cui'], $data['customer_name']);
+        $this->syncInvoicePartyPartner($data['supplier_cui'], $data['supplier_name'], true, false);
+        $this->syncInvoicePartyPartner($data['customer_cui'], $data['customer_name'], false, true);
 
         foreach ($data['lines'] as $line) {
             InvoiceInLine::create($invoice->id, $line);
@@ -1766,8 +1785,8 @@ class InvoiceController
             );
         }
 
-        Partner::createIfMissing($supplierCui, $supplierName);
-        Partner::createIfMissing($customerCui, $customerName);
+        $this->syncInvoicePartyPartner($supplierCui, $supplierName, true, false);
+        $this->syncInvoicePartyPartner($customerCui, $customerName, false, true);
 
         foreach ($lines as $line) {
             InvoiceInLine::create($invoice->id, $line);
@@ -5664,6 +5683,34 @@ class InvoiceController
         return $this->extractSupplierCuiFromXmlContent($contents);
     }
 
+    private function extractSupplierNameFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractPartyNameFromXmlContent($contents, 'AccountingSupplierParty');
+    }
+
+    private function extractCustomerNameFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractPartyNameFromXmlContent($contents, 'AccountingCustomerParty');
+    }
+
     private function extractSupplierCuiFromXmlContent(string $contents): string
     {
         $supplierBlock = $contents;
@@ -5699,6 +5746,156 @@ class InvoiceController
         }
 
         return '';
+    }
+
+    private function extractPartyNameFromXmlContent(string $contents, string $partyTag): string
+    {
+        $partyTagPattern = preg_quote($partyTag, '/');
+        $partyBlock = $contents;
+        if (preg_match(
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?' . $partyTagPattern . '\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?' . $partyTagPattern . '\s*>/si',
+            $contents,
+            $blockMatch
+        )) {
+            $partyBlock = (string) ($blockMatch[1] ?? $contents);
+        }
+
+        $patterns = [
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyLegalEntity\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyName\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?Name\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?Name\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?Name\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?Name\s*>/si',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match_all($pattern, $partyBlock, $matches)) {
+                continue;
+            }
+
+            foreach (($matches[1] ?? []) as $value) {
+                $name = trim((string) html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                if ($name !== '') {
+                    return $name;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function resolvePartyName(string $cui, string $providedName): string
+    {
+        $name = CompanyName::normalize($providedName);
+        if ($name !== '') {
+            return $name;
+        }
+
+        $normalizedCui = preg_replace('/\D+/', '', (string) $cui);
+        if ($normalizedCui === '') {
+            return '';
+        }
+
+        $partnerName = $this->lookupNameByNormalizedCui('partners', $normalizedCui);
+        if ($partnerName !== '') {
+            return $partnerName;
+        }
+
+        $companyName = $this->lookupNameByNormalizedCui('companies', $normalizedCui);
+        if ($companyName !== '') {
+            return $companyName;
+        }
+
+        return '';
+    }
+
+    private function lookupNameByNormalizedCui(string $table, string $normalizedCui): string
+    {
+        if (
+            $normalizedCui === ''
+            || !in_array($table, ['partners', 'companies'], true)
+            || !Database::tableExists($table)
+        ) {
+            return '';
+        }
+
+        try {
+            $rows = Database::fetchAll('SELECT cui, denumire FROM ' . $table);
+        } catch (\Throwable $exception) {
+            return '';
+        }
+
+        foreach ($rows as $row) {
+            $candidateCui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($candidateCui !== $normalizedCui) {
+                continue;
+            }
+
+            $name = CompanyName::normalize((string) ($row['denumire'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return '';
+    }
+
+    private function syncInvoicePartyPartner(string $cui, string $name, bool $isSupplier, bool $isClient): void
+    {
+        $normalizedCui = preg_replace('/\D+/', '', (string) $cui);
+        if ($normalizedCui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $normalizedName = CompanyName::normalize($name);
+        $matchedRawCui = '';
+        $matchedName = '';
+
+        try {
+            $rows = Database::fetchAll('SELECT cui, denumire FROM partners');
+            foreach ($rows as $row) {
+                $candidateRawCui = (string) ($row['cui'] ?? '');
+                $candidateCui = preg_replace('/\D+/', '', $candidateRawCui);
+                if ($candidateCui !== $normalizedCui) {
+                    continue;
+                }
+                $matchedRawCui = $candidateRawCui;
+                $matchedName = CompanyName::normalize((string) ($row['denumire'] ?? ''));
+                break;
+            }
+        } catch (\Throwable $exception) {
+            return;
+        }
+
+        if ($matchedRawCui !== '') {
+            if (
+                $normalizedName !== ''
+                && $normalizedName !== $normalizedCui
+                && ($matchedName === '' || $matchedName === $normalizedCui)
+            ) {
+                Database::execute(
+                    'UPDATE partners SET denumire = :denumire, updated_at = :now WHERE cui = :cui',
+                    [
+                        'denumire' => $normalizedName,
+                        'now' => date('Y-m-d H:i:s'),
+                        'cui' => $matchedRawCui,
+                    ]
+                );
+            }
+
+            if (Database::columnExists('partners', 'is_supplier') && Database::columnExists('partners', 'is_client')) {
+                Partner::updateFlags($matchedRawCui, $isSupplier, $isClient);
+            }
+            return;
+        }
+
+        if ($normalizedName === '' || $normalizedName === $normalizedCui) {
+            return;
+        }
+
+        Partner::createIfMissing($normalizedCui, $normalizedName);
+        if (Database::columnExists('partners', 'is_supplier') && Database::columnExists('partners', 'is_client')) {
+            Partner::updateFlags($normalizedCui, $isSupplier, $isClient);
+        }
     }
 
     private function supplierMatchDiagnostics(string $xmlCuiRaw, string $xmlCuiNormalized): array
