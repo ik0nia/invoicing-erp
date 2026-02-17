@@ -100,12 +100,6 @@
 ?>
 
 <div class="mx-auto w-full max-w-6xl space-y-5">
-    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 class="text-2xl font-semibold text-slate-900"><?= htmlspecialchars($title) ?></h1>
-        <p class="mt-1 text-sm text-slate-600">
-            Link unic pentru completare date, incarcare documente si trimitere spre activare manuala.
-        </p>
-    </div>
 
     <?php if ($error !== ''): ?>
         <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -117,7 +111,7 @@
         <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Flux onboarding</div>
+                    <div class="text-sm font-semibold text-blue-700"><?= htmlspecialchars($title) ?></div>
                     <h2 class="mt-1 text-lg font-semibold text-slate-900">Completeaza pasii in ordine pentru activare</h2>
                     <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
                         <span class="font-semibold text-slate-700">Status:</span>
