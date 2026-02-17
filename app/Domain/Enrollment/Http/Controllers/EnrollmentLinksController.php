@@ -36,6 +36,7 @@ class EnrollmentLinksController
     public function index(): void
     {
         $user = $this->requireEnrollmentRole();
+        $this->backfillSupplierCuiForSupplierLinks();
         $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
         $isPendingPage = !empty($_GET['_pending_page']);
         if (!$isPendingPage) {
@@ -1954,6 +1955,36 @@ class EnrollmentLinksController
         }
 
         return $base . $relative;
+    }
+
+    private function backfillSupplierCuiForSupplierLinks(): void
+    {
+        if (!Database::tableExists('enrollment_links')) {
+            return;
+        }
+        if (!Database::columnExists('enrollment_links', 'type')) {
+            return;
+        }
+        if (!Database::columnExists('enrollment_links', 'supplier_cui')) {
+            return;
+        }
+        if (!Database::columnExists('enrollment_links', 'partner_cui')) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE enrollment_links
+             SET supplier_cui = partner_cui,
+                 updated_at = :updated_at
+             WHERE type = :type
+               AND partner_cui IS NOT NULL
+               AND partner_cui <> \'\'
+               AND (supplier_cui IS NULL OR supplier_cui = \'\')',
+            [
+                'updated_at' => date('Y-m-d H:i:s'),
+                'type' => 'supplier',
+            ]
+        );
     }
 
     private function resolveAdminReturnPath(string $fallback): string
