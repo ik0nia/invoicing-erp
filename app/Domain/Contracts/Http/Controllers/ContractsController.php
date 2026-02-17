@@ -259,6 +259,10 @@ class ContractsController
         $user = $this->requireContractsRole();
 
         $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+        $kind = strtolower(trim((string) ($_GET['kind'] ?? 'auto')));
+        if (!in_array($kind, ['auto', 'generated', 'signed'], true)) {
+            $kind = 'auto';
+        }
         if (!$id) {
             Response::redirect('/admin/contracts');
         }
@@ -277,21 +281,44 @@ class ContractsController
             }
         }
 
-        $path = (string) ($row['signed_upload_path'] ?? '');
-        if ($path === '') {
-            $path = (string) ($row['signed_file_path'] ?? '');
-        }
-        if ($path === '') {
-            $path = (string) ($row['generated_pdf_path'] ?? '');
-        }
-        if ($path === '') {
-            $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+        $path = '';
+        if ($kind === 'signed') {
+            $path = (string) ($row['signed_upload_path'] ?? '');
             if ($path === '') {
-                $refreshed = Database::fetchOne(
-                    'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
-                    ['id' => (int) ($row['id'] ?? 0)]
-                );
-                $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+                $path = (string) ($row['signed_file_path'] ?? '');
+            }
+            if ($path === '') {
+                Response::abort(404, 'Contractul semnat nu este disponibil.');
+            }
+        } elseif ($kind === 'generated') {
+            $path = (string) ($row['generated_pdf_path'] ?? '');
+            if ($path === '') {
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($row['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+                }
+            }
+        } else {
+            $path = (string) ($row['signed_upload_path'] ?? '');
+            if ($path === '') {
+                $path = (string) ($row['signed_file_path'] ?? '');
+            }
+            if ($path === '') {
+                $path = (string) ($row['generated_pdf_path'] ?? '');
+            }
+            if ($path === '') {
+                $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
+                if ($path === '') {
+                    $refreshed = Database::fetchOne(
+                        'SELECT generated_file_path FROM contracts WHERE id = :id LIMIT 1',
+                        ['id' => (int) ($row['id'] ?? 0)]
+                    );
+                    $path = trim((string) ($refreshed['generated_file_path'] ?? ($row['generated_file_path'] ?? '')));
+                }
             }
         }
         if ($path === '') {

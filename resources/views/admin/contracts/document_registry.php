@@ -84,7 +84,8 @@
                     <th class="px-3 py-2">Titlu</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2">Creat</th>
-                    <th class="px-3 py-2"></th>
+                    <th class="px-3 py-2 text-right">Nesemnat</th>
+                    <th class="px-3 py-2 text-right">Contract</th>
                 </tr>
             </thead>
             <tbody>
@@ -123,6 +124,11 @@
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($document['title'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($statusLabel) ?></td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($document['created_at'] ?? '—')) ?></td>
+                        <td class="px-3 py-2 text-right">
+                            <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0) . '&kind=generated') ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
+                                Descarca
+                            </a>
+                        </td>
                         <td class="px-3 py-2 text-right">
                             <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($document['id'] ?? 0)) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
                                 Descarca
