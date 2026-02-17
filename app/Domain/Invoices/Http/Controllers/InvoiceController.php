@@ -36,6 +36,7 @@ class InvoiceController
     private SagaStatusService $sagaStatusService;
     private PackageTotalsService $packageTotalsService;
     private array $invoiceSalesGrossCache = [];
+    private array $invoiceSalesNetCache = [];
 
     public function __construct()
     {
@@ -4422,6 +4423,27 @@ class InvoiceController
         if ($targetTotalVat < 0) {
             $targetTotalVat = 0.0;
         }
+        $isDiscountPricingAtAdjustment = $this->invoiceHasDiscountPricing($invoice);
+        $storedAdjustmentCommissionPercent = $invoice->commission_percent !== null
+            ? (float) $invoice->commission_percent
+            : null;
+        $discountRecalcCommissionPercent = null;
+        if ($isDiscountPricingAtAdjustment) {
+            $discountRecalcCommissionPercent = $storedAdjustmentCommissionPercent;
+        }
+        if (($discountRecalcCommissionPercent === null || $discountRecalcCommissionPercent <= 0.0) && $isDiscountPricingAtAdjustment) {
+            $salesGrossBeforeAdjustment = $this->invoiceSalesGrossTotal((int) $invoice->id);
+            $computedPercent = $this->discountPricingCommissionPercent(
+                (float) ($invoice->total_with_vat ?? 0.0),
+                $salesGrossBeforeAdjustment
+            );
+            if ($computedPercent > 0.0) {
+                $discountRecalcCommissionPercent = $computedPercent;
+            }
+        }
+        if ($isDiscountPricingAtAdjustment && $discountRecalcCommissionPercent !== null && $discountRecalcCommissionPercent > 0.0) {
+            $storedAdjustmentCommissionPercent = $discountRecalcCommissionPercent;
+        }
 
         $adjustmentId = 0;
         $pdo->beginTransaction();
@@ -4461,7 +4483,7 @@ class InvoiceController
                     'source_fgo_series' => (string) ($invoice->fgo_series ?? ''),
                     'source_fgo_number' => (string) ($invoice->fgo_number ?? ''),
                     'selected_client_cui' => (string) ($invoice->selected_client_cui ?? ''),
-                    'commission_percent' => $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null,
+                    'commission_percent' => $storedAdjustmentCommissionPercent,
                     'source_total_with_vat' => $sourceTotalVat,
                     'target_total_with_vat' => $targetTotalVat,
                     'decrease_total_with_vat' => $decreaseTotalVat,
@@ -4629,7 +4651,7 @@ class InvoiceController
             if ($createdPackages > 0) {
                 $this->setLastConfirmedPackageNo($nextPackageNo - 1);
             }
-            $totals = $this->recalculateInvoiceTotals((int) $invoice->id, $now);
+            $totals = $this->recalculateInvoiceTotals((int) $invoice->id, $now, $discountRecalcCommissionPercent);
 
             $pdo->commit();
 
@@ -4787,11 +4809,23 @@ class InvoiceController
         return strlen($lineNo) > 32 ? substr($lineNo, 0, 32) : $lineNo;
     }
 
-    private function recalculateInvoiceTotals(int $invoiceId, string $now): array
+    private function recalculateInvoiceTotals(int $invoiceId, string $now, ?float $discountCommissionPercent = null): array
     {
-        $totals = $this->packageTotalsService->calculateInvoiceTotals($invoiceId);
-        $totalWithoutVat = round((float) ($totals['sum_net'] ?? 0.0), 2);
-        $totalWithVat = round((float) ($totals['sum_gross'] ?? 0.0), 2);
+        if ($discountCommissionPercent !== null) {
+            $salesNet = $this->invoiceSalesNetTotal($invoiceId);
+            $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+            $percent = abs((float) $discountCommissionPercent);
+            $totalWithoutVat = $percent > 0.0
+                ? $this->commissionService->applyCommission($salesNet, -$percent)
+                : round($salesNet, 2);
+            $totalWithVat = $percent > 0.0
+                ? $this->commissionService->applyCommission($salesGross, -$percent)
+                : round($salesGross, 2);
+        } else {
+            $totals = $this->packageTotalsService->calculateInvoiceTotals($invoiceId);
+            $totalWithoutVat = round((float) ($totals['sum_net'] ?? 0.0), 2);
+            $totalWithVat = round((float) ($totals['sum_gross'] ?? 0.0), 2);
+        }
         $totalVat = round($totalWithVat - $totalWithoutVat, 2);
 
         Database::execute(
@@ -5086,6 +5120,23 @@ class InvoiceController
         return $value;
     }
 
+    private function invoiceSalesNetTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesNetCache[$invoiceId])) {
+            return (float) $this->invoiceSalesNetCache[$invoiceId];
+        }
+
+        $value = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total), 0)
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+        $this->invoiceSalesNetCache[$invoiceId] = $value;
+
+        return $value;
+    }
+
     private function discountPricingCommissionPercent(float $invoiceGrossTotal, float $salesGrossTotal): float
     {
         if ($invoiceGrossTotal <= 0.0 || $salesGrossTotal <= 0.0) {
@@ -5107,6 +5158,27 @@ class InvoiceController
         }
         if (!$this->invoiceHasDiscountPricing($invoice, $salesGrossTotal)) {
             return null;
+        }
+
+        $adjustmentCommissionPercent = $this->latestAdjustmentCommissionPercent((int) $invoice->id);
+        if ($adjustmentCommissionPercent !== null && $adjustmentCommissionPercent > 0.0) {
+            $this->syncInvoiceTotalsByCommission($invoice, $adjustmentCommissionPercent, $salesGrossTotal);
+            $currentCommission = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+            if ($currentCommission !== null && abs($currentCommission - $adjustmentCommissionPercent) < 0.000001) {
+                return $adjustmentCommissionPercent;
+            }
+
+            Database::execute(
+                'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                [
+                    'commission' => $adjustmentCommissionPercent,
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+            $invoice->commission_percent = $adjustmentCommissionPercent;
+
+            return $adjustmentCommissionPercent;
         }
 
         $commissionPercent = $this->discountPricingCommissionPercent(
@@ -5133,6 +5205,73 @@ class InvoiceController
         $invoice->commission_percent = $commissionPercent;
 
         return $commissionPercent;
+    }
+
+    private function latestAdjustmentCommissionPercent(int $invoiceId): ?float
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        $value = Database::fetchValue(
+            'SELECT commission_percent
+             FROM invoice_adjustments
+             WHERE invoice_in_id = :invoice
+               AND commission_percent IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 1',
+            ['invoice' => $invoiceId]
+        );
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function syncInvoiceTotalsByCommission(InvoiceIn $invoice, float $commissionPercent, float $salesGrossTotal): void
+    {
+        if ((int) ($invoice->id ?? 0) <= 0) {
+            return;
+        }
+
+        $salesNetTotal = $this->invoiceSalesNetTotal((int) $invoice->id);
+        $percent = abs($commissionPercent);
+        if ($percent <= 0.0) {
+            return;
+        }
+
+        $targetWithoutVat = $this->commissionService->applyCommission($salesNetTotal, -$percent);
+        $targetWithVat = $this->commissionService->applyCommission($salesGrossTotal, -$percent);
+        $targetVat = round($targetWithVat - $targetWithoutVat, 2);
+
+        $currentWithoutVat = (float) ($invoice->total_without_vat ?? 0.0);
+        $currentWithVat = (float) ($invoice->total_with_vat ?? 0.0);
+        if (
+            abs($currentWithoutVat - $targetWithoutVat) < 0.009
+            && abs($currentWithVat - $targetWithVat) < 0.009
+        ) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in
+             SET total_without_vat = :without_vat,
+                 total_vat = :vat,
+                 total_with_vat = :with_vat,
+                 updated_at = :now
+             WHERE id = :id',
+            [
+                'without_vat' => $targetWithoutVat,
+                'vat' => $targetVat,
+                'with_vat' => $targetWithVat,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+        $invoice->total_without_vat = $targetWithoutVat;
+        $invoice->total_vat = $targetVat;
+        $invoice->total_with_vat = $targetWithVat;
     }
 
     private function ensurePackageAutoIncrement(): void

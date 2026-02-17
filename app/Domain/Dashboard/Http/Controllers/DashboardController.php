@@ -455,6 +455,11 @@ class DashboardController
             return null;
         }
 
+        $adjustmentCommission = $this->latestAdjustmentCommissionPercent($invoiceId);
+        if ($adjustmentCommission !== null && $adjustmentCommission > 0.0) {
+            return $adjustmentCommission;
+        }
+
         $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
         if ($invoiceGross <= 0.0) {
             return null;
@@ -471,6 +476,28 @@ class DashboardController
         }
 
         return round($percent, 6);
+    }
+
+    private function latestAdjustmentCommissionPercent(int $invoiceId): ?float
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        $value = Database::fetchValue(
+            'SELECT commission_percent
+             FROM invoice_adjustments
+             WHERE invoice_in_id = :invoice
+               AND commission_percent IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 1',
+            ['invoice' => $invoiceId]
+        );
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     private function invoiceSalesGrossTotal(int $invoiceId): float
