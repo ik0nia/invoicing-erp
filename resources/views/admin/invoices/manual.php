@@ -279,8 +279,8 @@
                     <thead class="bg-slate-50 text-slate-600">
                         <tr>
                             <th class="px-3 py-2">Denumire</th>
-                            <th class="px-3 py-2">Cantitate</th>
                             <th class="px-3 py-2">UM</th>
+                            <th class="px-3 py-2">Cantitate</th>
                             <th class="px-3 py-2">Pret unit.</th>
                             <th class="px-3 py-2">TVA %</th>
                             <th class="px-3 py-2">Total fara TVA</th>
@@ -300,16 +300,9 @@
                                     >
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input
-                                        name="lines[<?= (int) $index ?>][quantity]"
-                                        type="text"
-                                        value="<?= htmlspecialchars($line['quantity'] ?? '') ?>"
-                                        class="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                                    >
-                                </td>
-                                <td class="px-3 py-2">
                                     <select
                                         name="lines[<?= (int) $index ?>][unit_code]"
+                                        tabindex="-1"
                                         class="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
                                     >
                                         <?php foreach ($unitOptions as $unit): ?>
@@ -318,6 +311,14 @@
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                </td>
+                                <td class="px-3 py-2">
+                                    <input
+                                        name="lines[<?= (int) $index ?>][quantity]"
+                                        type="text"
+                                        value="<?= htmlspecialchars($line['quantity'] ?? '') ?>"
+                                        class="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                                    >
                                 </td>
                                 <td class="px-3 py-2">
                                     <input
@@ -404,12 +405,12 @@
                         <input name="lines[${index}][product_name]" type="text" class="w-full rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
                     <td class="px-3 py-2">
-                        <input name="lines[${index}][quantity]" type="text" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
-                    </td>
-                    <td class="px-3 py-2">
-                        <select name="lines[${index}][unit_code]" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
+                        <select name="lines[${index}][unit_code]" tabindex="-1" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
                             ${buildOptions(units, 'BUC')}
                         </select>
+                    </td>
+                    <td class="px-3 py-2">
+                        <input name="lines[${index}][quantity]" type="text" class="w-24 rounded border border-slate-300 px-2 py-1 text-sm">
                     </td>
                     <td class="px-3 py-2">
                         <input name="lines[${index}][unit_price]" type="text" class="w-28 rounded border border-slate-300 px-2 py-1 text-sm">
