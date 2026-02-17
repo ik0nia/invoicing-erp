@@ -5452,23 +5452,41 @@ class InvoiceController
     private function supplierExistsInPlatform(string $supplierCui): bool
     {
         $supplierCui = preg_replace('/\D+/', '', $supplierCui);
-        if ($supplierCui === '' || !Database::tableExists('partners')) {
+        if ($supplierCui === '') {
             return false;
         }
 
-        $sql = 'SELECT cui FROM partners WHERE cui = :cui';
-        $hasIsSupplier = Database::columnExists('partners', 'is_supplier');
-        $hasCommissions = Database::tableExists('commissions');
-
-        if ($hasIsSupplier && $hasCommissions) {
-            $sql .= ' AND (is_supplier = 1 OR cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\'))';
-        } elseif ($hasIsSupplier) {
-            $sql .= ' AND is_supplier = 1';
-        } elseif ($hasCommissions) {
-            $sql .= ' AND cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\')';
+        if ($this->normalizedCuiExistsInTable('partners', $supplierCui)) {
+            return true;
         }
 
-        return Database::fetchOne($sql . ' LIMIT 1', ['cui' => $supplierCui]) !== null;
+        if ($this->normalizedCuiExistsInTable('companies', $supplierCui)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function normalizedCuiExistsInTable(string $table, string $supplierCui): bool
+    {
+        if (!in_array($table, ['partners', 'companies'], true) || !Database::tableExists($table)) {
+            return false;
+        }
+
+        $row = Database::fetchOne('SELECT cui FROM ' . $table . ' WHERE cui = :cui LIMIT 1', ['cui' => $supplierCui]);
+        if ($row) {
+            return true;
+        }
+
+        $rows = Database::fetchAll('SELECT cui FROM ' . $table);
+        foreach ($rows as $candidate) {
+            $candidateCui = preg_replace('/\D+/', '', (string) ($candidate['cui'] ?? ''));
+            if ($candidateCui !== '' && $candidateCui === $supplierCui) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array
