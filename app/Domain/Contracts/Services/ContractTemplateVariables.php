@@ -55,6 +55,8 @@ class ContractTemplateVariables
             ['key' => 'relation.supplier_cui', 'label' => 'Relatie - CUI furnizor'],
             ['key' => 'relation.client_cui', 'label' => 'Relatie - CUI client'],
             ['key' => 'relation.invoice_inbox_email', 'label' => 'Email inbox facturi (relatie)'],
+            ['key' => 'relation.commission_percent', 'label' => 'Relatie - comision (%)'],
+            ['key' => 'relation.commission_percent_text', 'label' => 'Relatie - comision text (1-15)'],
             ['key' => 'contract.title', 'label' => 'Titlu contract'],
             ['key' => 'contract.created_at', 'label' => 'Data creare contract'],
             ['key' => 'contract.date', 'label' => 'Data contract'],
@@ -170,6 +172,14 @@ class ContractTemplateVariables
         $vars['relation.supplier_cui'] = $supplierCui ?? '';
         $vars['relation.client_cui'] = $clientCui ?? '';
         $vars['relation.invoice_inbox_email'] = $this->fetchRelationEmail($supplierCui, $clientCui);
+        $relationSupplierCui = $this->normalizeCui($supplierCui);
+        $relationClientCui = $this->normalizeCui($clientCui);
+        if ($relationSupplierCui === '' && $relationClientCui === '') {
+            $relationSupplierCui = $this->normalizeCui($partnerCui);
+        }
+        $relationCommissionPercent = $this->resolveRelationCommissionPercent($relationSupplierCui, $relationClientCui);
+        $vars['relation.commission_percent'] = $this->formatCommissionPercent($relationCommissionPercent);
+        $vars['relation.commission_percent_text'] = $this->commissionPercentText($relationCommissionPercent);
         $vars['contacts.table'] = $this->buildContactsTableVariable($partnerCui, $supplierCui, $clientCui);
         $stampVars = $this->resolveStampVariables(
             isset($contractContext['template_id']) ? (int) $contractContext['template_id'] : 0,
@@ -792,6 +802,94 @@ class ContractTemplateVariables
         }
 
         return 'NULL AS ' . $column;
+    }
+
+    private function resolveRelationCommissionPercent(string $supplierCui, string $clientCui): ?float
+    {
+        if ($supplierCui !== '' && $clientCui !== '' && Database::tableExists('commissions')) {
+            $row = Database::fetchOne(
+                'SELECT commission
+                 FROM commissions
+                 WHERE supplier_cui = :supplier
+                   AND client_cui = :client
+                 LIMIT 1',
+                [
+                    'supplier' => $supplierCui,
+                    'client' => $clientCui,
+                ]
+            );
+            if ($row && isset($row['commission']) && $row['commission'] !== null && is_numeric((string) $row['commission'])) {
+                return (float) $row['commission'];
+            }
+        }
+
+        if (
+            $supplierCui !== ''
+            && Database::tableExists('partners')
+            && Database::columnExists('partners', 'default_commission')
+        ) {
+            $row = Database::fetchOne(
+                'SELECT default_commission
+                 FROM partners
+                 WHERE cui = :supplier
+                 LIMIT 1',
+                ['supplier' => $supplierCui]
+            );
+            if ($row && isset($row['default_commission']) && $row['default_commission'] !== null && is_numeric((string) $row['default_commission'])) {
+                return (float) $row['default_commission'];
+            }
+        }
+
+        return null;
+    }
+
+    private function formatCommissionPercent(?float $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $roundedInt = (int) round($value);
+        if (abs($value - $roundedInt) < 0.0001) {
+            return (string) $roundedInt;
+        }
+
+        $formatted = number_format($value, 2, '.', '');
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+
+        return $formatted;
+    }
+
+    private function commissionPercentText(?float $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        $roundedInt = (int) round($value);
+        if (abs($value - $roundedInt) >= 0.0001) {
+            return '';
+        }
+
+        $map = [
+            1 => 'un procent',
+            2 => 'doua procente',
+            3 => 'trei procente',
+            4 => 'patru procente',
+            5 => 'cinci procente',
+            6 => 'sase procente',
+            7 => 'sapte procente',
+            8 => 'opt procente',
+            9 => 'noua procente',
+            10 => 'zece procente',
+            11 => 'unsprezece procente',
+            12 => 'douasprezece procente',
+            13 => 'treisprezece procente',
+            14 => 'paisprezece procente',
+            15 => 'cincisprezece procente',
+        ];
+
+        return $map[$roundedInt] ?? '';
     }
 
     private function fetchRelationEmail(?string $supplierCui, ?string $clientCui): string
