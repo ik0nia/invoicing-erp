@@ -221,7 +221,7 @@
 
         <div class="grid gap-4 md:grid-cols-4">
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="invoice_series">Serie</label>
+                <label class="block text-sm font-medium text-slate-700" for="invoice_series">Serie (optional)</label>
                 <input
                     id="invoice_series"
                     name="invoice_series"

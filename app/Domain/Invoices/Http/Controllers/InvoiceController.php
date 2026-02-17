@@ -1658,8 +1658,8 @@ class InvoiceController
         $supplierName = CompanyName::normalize($supplierName);
         $customerName = CompanyName::normalize($customerName);
 
-        if ($invoiceSeries === '' || $invoiceNo === '') {
-            $errors[] = 'Completeaza seria si numarul facturii.';
+        if ($invoiceNo === '') {
+            $errors[] = 'Completeaza numarul facturii.';
         }
         if ($supplierName === '' || $supplierCui === '') {
             $errors[] = 'Completeaza furnizorul (denumire si CUI).';
