@@ -535,11 +535,18 @@ class EnrollmentLinksController
 
         $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
         if ($partnerCui !== '') {
+            $isSupplierLink = (string) ($row['type'] ?? '') === 'supplier';
             Partner::updateFlags(
                 $partnerCui,
-                (string) ($row['type'] ?? '') === 'supplier',
+                $isSupplierLink,
                 (string) ($row['type'] ?? '') === 'client'
             );
+            if ($isSupplierLink) {
+                $this->applySupplierDefaultCommissionFromLink(
+                    $partnerCui,
+                    $row['commission_percent'] ?? null
+                );
+            }
         }
 
         Audit::record('onboarding.approved', 'enrollment_link', $id, [
@@ -1676,6 +1683,45 @@ class EnrollmentLinksController
         }
 
         return (float) ($row['default_commission'] ?? 0.0);
+    }
+
+    private function applySupplierDefaultCommissionFromLink(string $supplierCui, mixed $commission): void
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $value = $this->normalizeCommissionPercentValue($commission);
+        if ($value === null) {
+            return;
+        }
+
+        Partner::updateDefaultCommission($supplierCui, $value);
+    }
+
+    private function normalizeCommissionPercentValue(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = str_replace(',', '.', $raw);
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        $commission = (float) $normalized;
+        if ($commission < 0) {
+            return null;
+        }
+
+        return $commission;
     }
 
     private function fetchEnrollmentResources(?string $linkType = null, bool $onlyActive = true): array

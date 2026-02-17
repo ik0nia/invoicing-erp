@@ -186,6 +186,9 @@ class PublicPartnerController
         $isSupplier = $linkType === 'supplier';
         $isClient = $linkType === 'client';
         Partner::updateFlags($cui, $isSupplier, $isClient);
+        if ($isSupplier) {
+            $this->ensureSupplierDefaultCommission($cui, $context['link']['commission_percent'] ?? null);
+        }
 
         $supplierCui = (string) ($context['link']['relation_supplier_cui'] ?? $context['link']['supplier_cui'] ?? '');
         if ($isClient && $supplierCui !== '') {
@@ -1405,6 +1408,45 @@ class PublicPartnerController
                 'updated_at' => date('Y-m-d H:i:s'),
             ]
         );
+    }
+
+    private function ensureSupplierDefaultCommission(string $supplierCui, mixed $commission): void
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $value = $this->normalizeCommissionPercent($commission);
+        if ($value === null) {
+            return;
+        }
+
+        Partner::updateDefaultCommission($supplierCui, $value);
+    }
+
+    private function normalizeCommissionPercent(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = str_replace(',', '.', $raw);
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        $commission = (float) $normalized;
+        if ($commission < 0) {
+            return null;
+        }
+
+        return $commission;
     }
 
     private function updateLinkAfterCompanySave(array $context, string $partnerCui, string $supplierCui, int $nextStep): void
