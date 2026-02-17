@@ -4221,6 +4221,8 @@ class InvoiceController
                     'quantity' => $quantity,
                     'unit_code' => (string) ($line->unit_code ?? ''),
                     'unit_price' => (float) ($line->unit_price ?? 0.0),
+                    'cost_line_total' => $line->cost_line_total,
+                    'cost_line_total_vat' => $line->cost_line_total_vat,
                     'tax_percent' => (float) ($line->tax_percent ?? 0.0),
                     'line_total_vat' => (float) ($line->line_total_vat ?? 0.0),
                     'cod_saga' => $line->cod_saga ?? null,
@@ -4404,6 +4406,8 @@ class InvoiceController
         $hasSagaStatus = Database::columnExists('packages', 'saga_status');
         $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
         $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
         $now = date('Y-m-d H:i:s');
 
         $createdPackages = 0;
@@ -4512,7 +4516,9 @@ class InvoiceController
                         $this->buildStornoLineNo((string) ($line['line_no'] ?? '')),
                         $now,
                         $hasCodSaga,
-                        $hasStockSaga
+                        $hasStockSaga,
+                        $hasCostNet,
+                        $hasCostGross
                     );
                     $createdLines++;
                 }
@@ -4562,7 +4568,9 @@ class InvoiceController
                         $this->buildRefacereLineNo((string) ($line['line_no'] ?? '')),
                         $now,
                         $hasCodSaga,
-                        $hasStockSaga
+                        $hasStockSaga,
+                        $hasCostNet,
+                        $hasCostGross
                     );
                     $createdLines++;
                     $createdReplacementLines++;
@@ -4688,12 +4696,27 @@ class InvoiceController
         string $lineNo,
         string $now,
         bool $hasCodSaga,
-        bool $hasStockSaga
+        bool $hasStockSaga,
+        bool $hasCostNet,
+        bool $hasCostGross
     ): void {
         $unitPrice = (float) ($lineData['unit_price'] ?? 0.0);
         $taxPercent = (float) ($lineData['tax_percent'] ?? 0.0);
         $lineTotal = round($quantity * $unitPrice, 2);
         $lineTotalVat = round($lineTotal * (1 + ($taxPercent / 100)), 2);
+        $sourceQty = (float) ($lineData['quantity'] ?? 0.0);
+        $costLineTotal = null;
+        $costLineTotalVat = null;
+        if ($hasCostNet && isset($lineData['cost_line_total']) && $lineData['cost_line_total'] !== null && abs($sourceQty) > 0.00001) {
+            $costUnit = (float) $lineData['cost_line_total'] / $sourceQty;
+            $costLineTotal = round($quantity * $costUnit, 2);
+        }
+        if ($hasCostGross && isset($lineData['cost_line_total_vat']) && $lineData['cost_line_total_vat'] !== null && abs($sourceQty) > 0.00001) {
+            $costVatUnit = (float) $lineData['cost_line_total_vat'] / $sourceQty;
+            $costLineTotalVat = round($quantity * $costVatUnit, 2);
+        } elseif ($hasCostGross && $costLineTotal !== null) {
+            $costLineTotalVat = round($costLineTotal * (1 + ($taxPercent / 100)), 2);
+        }
 
         $params = [
             'invoice_in_id' => $invoiceId,
@@ -4705,6 +4728,8 @@ class InvoiceController
             'line_total' => $lineTotal,
             'tax_percent' => $taxPercent,
             'line_total_vat' => $lineTotalVat,
+            'cost_line_total' => $costLineTotal,
+            'cost_line_total_vat' => $costLineTotalVat,
             'package_id' => $packageId,
             'created_at' => $now,
         ];
@@ -4713,10 +4738,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name, cod_saga, stock_saga,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name, :cod_saga, :stock_saga,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 array_merge($params, [
                     'cod_saga' => $lineData['cod_saga'] ?? null,
@@ -4727,10 +4752,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name, cod_saga,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name, :cod_saga,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 array_merge($params, [
                     'cod_saga' => $lineData['cod_saga'] ?? null,
@@ -4740,10 +4765,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 $params
             );
