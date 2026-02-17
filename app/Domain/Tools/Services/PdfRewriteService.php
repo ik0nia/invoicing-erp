@@ -372,6 +372,15 @@ class PdfRewriteService
                     if ($row === '') {
                         continue;
                     }
+                    if (str_contains($row, '[') && !str_contains($row, ']')) {
+                        while ($index + 1 < $countLines) {
+                            $index++;
+                            $row .= ' ' . trim((string) $lines[$index]);
+                            if (str_contains($row, ']')) {
+                                break;
+                            }
+                        }
+                    }
                     if (
                         preg_match('/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[(.+)\]\s*$/', $row, $rangeListMatch) === 1
                     ) {
