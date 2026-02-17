@@ -918,6 +918,7 @@ class ContractTemplateVariables
         $hasRelationClient = Database::columnExists('enrollment_links', 'relation_client_cui');
         $hasSupplier = Database::columnExists('enrollment_links', 'supplier_cui');
         $hasPartner = Database::columnExists('enrollment_links', 'partner_cui');
+        $hasPrefillJson = Database::columnExists('enrollment_links', 'prefill_json');
         $hasType = Database::columnExists('enrollment_links', 'type');
 
         if ($supplierCui !== '' && $clientCui !== '') {
@@ -927,6 +928,7 @@ class ContractTemplateVariables
                      FROM enrollment_links
                      WHERE relation_supplier_cui = :supplier
                        AND relation_client_cui = :client
+                       AND commission_percent IS NOT NULL
                      ORDER BY id DESC
                      LIMIT 1',
                     [
@@ -945,6 +947,7 @@ class ContractTemplateVariables
                      FROM enrollment_links
                      WHERE supplier_cui = :supplier
                        AND partner_cui = :client
+                       AND commission_percent IS NOT NULL
                      ORDER BY id DESC
                      LIMIT 1',
                     [
@@ -960,21 +963,36 @@ class ContractTemplateVariables
 
         $supplierForLookup = $supplierCui !== '' ? $supplierCui : $partnerCui;
         if ($supplierForLookup !== '') {
-            if ($hasType && $hasPartner) {
-                $row = Database::fetchOne(
-                    'SELECT commission_percent
-                     FROM enrollment_links
-                     WHERE type = :type
-                       AND partner_cui = :supplier
-                     ORDER BY id DESC
-                     LIMIT 1',
-                    [
-                        'type' => 'supplier',
-                        'supplier' => $supplierForLookup,
-                    ]
-                );
-                if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
-                    return (float) $row['commission_percent'];
+            if ($hasType && ($hasPartner || $hasSupplier || $hasPrefillJson)) {
+                $supplierConditions = [];
+                $params = [
+                    'type' => 'supplier',
+                    'supplier' => $supplierForLookup,
+                ];
+                if ($hasPartner) {
+                    $supplierConditions[] = 'partner_cui = :supplier';
+                }
+                if ($hasSupplier) {
+                    $supplierConditions[] = 'supplier_cui = :supplier';
+                }
+                if ($hasPrefillJson) {
+                    $supplierConditions[] = 'prefill_json LIKE :prefill_cui_json';
+                    $params['prefill_cui_json'] = '%"cui":"' . $supplierForLookup . '"%';
+                }
+                if (!empty($supplierConditions)) {
+                    $row = Database::fetchOne(
+                        'SELECT commission_percent
+                         FROM enrollment_links
+                         WHERE type = :type
+                           AND (' . implode(' OR ', $supplierConditions) . ')
+                           AND commission_percent IS NOT NULL
+                         ORDER BY id DESC
+                         LIMIT 1',
+                        $params
+                    );
+                    if ($row && isset($row['commission_percent']) && $row['commission_percent'] !== null && is_numeric((string) $row['commission_percent'])) {
+                        return (float) $row['commission_percent'];
+                    }
                 }
             }
 
@@ -983,6 +1001,7 @@ class ContractTemplateVariables
                     'SELECT commission_percent
                      FROM enrollment_links
                      WHERE relation_supplier_cui = :supplier
+                       AND commission_percent IS NOT NULL
                      ORDER BY id DESC
                      LIMIT 1',
                     ['supplier' => $supplierForLookup]
