@@ -4,6 +4,9 @@ namespace App\Domain\Tools\Services;
 
 class PdfRewriteService
 {
+    private const OCR_DPI = 300;
+    private const OCR_LANGUAGE = 'ron+eng';
+
     public function extractText(string $pdfAbsolutePath): string
     {
         if (!is_file($pdfAbsolutePath) || !is_readable($pdfAbsolutePath)) {
@@ -39,6 +42,86 @@ class PdfRewriteService
         }
 
         return $this->normalizeExtractedText($text);
+    }
+
+    public function isOcrAvailable(): bool
+    {
+        return $this->resolveBinaryPath('tesseract') !== ''
+            && $this->resolveBinaryPath('pdftoppm') !== '';
+    }
+
+    public function extractTextWithOcr(string $pdfAbsolutePath): string
+    {
+        if (!$this->isOcrAvailable()) {
+            return '';
+        }
+        if (!is_file($pdfAbsolutePath) || !is_readable($pdfAbsolutePath)) {
+            return '';
+        }
+
+        $tesseract = $this->resolveBinaryPath('tesseract');
+        $pdftoppm = $this->resolveBinaryPath('pdftoppm');
+        if ($tesseract === '' || $pdftoppm === '') {
+            return '';
+        }
+
+        $tmpRoot = rtrim(sys_get_temp_dir(), '/');
+        try {
+            $workDir = $tmpRoot . '/erp_ocr_' . bin2hex(random_bytes(6));
+        } catch (\Throwable $exception) {
+            return '';
+        }
+        if (!@mkdir($workDir, 0775, true) && !is_dir($workDir)) {
+            return '';
+        }
+
+        $prefix = $workDir . '/page';
+        $renderCommand = escapeshellarg($pdftoppm)
+            . ' -r ' . (int) self::OCR_DPI
+            . ' -png '
+            . escapeshellarg($pdfAbsolutePath)
+            . ' '
+            . escapeshellarg($prefix)
+            . ' 2>/dev/null';
+        @shell_exec($renderCommand);
+
+        $images = glob($prefix . '-*.png');
+        if (!is_array($images) || empty($images)) {
+            $this->cleanupOcrArtifacts($workDir, []);
+            return '';
+        }
+        sort($images, SORT_NATURAL);
+
+        $chunks = [];
+        foreach ($images as $imagePath) {
+            if (!is_string($imagePath) || !is_file($imagePath)) {
+                continue;
+            }
+            $ocrCommand = escapeshellarg($tesseract)
+                . ' '
+                . escapeshellarg($imagePath)
+                . ' stdout'
+                . ' -l ' . escapeshellarg(self::OCR_LANGUAGE)
+                . ' --psm 6 2>/dev/null';
+            $output = @shell_exec($ocrCommand);
+            if (!is_string($output) || trim($output) === '') {
+                $fallbackCommand = escapeshellarg($tesseract)
+                    . ' '
+                    . escapeshellarg($imagePath)
+                    . ' stdout -l eng --psm 6 2>/dev/null';
+                $output = @shell_exec($fallbackCommand);
+            }
+            if (is_string($output) && trim($output) !== '') {
+                $chunks[] = trim($output);
+            }
+        }
+
+        $this->cleanupOcrArtifacts($workDir, $images);
+        if (empty($chunks)) {
+            return '';
+        }
+
+        return $this->normalizeExtractedText(implode("\n", $chunks));
     }
 
     public function parseAvizData(string $sourceText): array
@@ -1061,7 +1144,7 @@ class PdfRewriteService
                 continue;
             }
 
-            if (preg_match('/^\(([0-9]+(?:[\.,][0-9]+)?)%\)$/', $line, $vatMatch) === 1) {
+            if (preg_match('/^\(?([0-9]+(?:[\.,][0-9]+)?)%\)?$/', $line, $vatMatch) === 1) {
                 $tokenStream[] = [
                     'type' => 'vat',
                     'value' => $this->toFloat((string) $vatMatch[1]),
@@ -1123,13 +1206,40 @@ class PdfRewriteService
                 break;
             }
 
-            if (preg_match('/^(\d+)\s+(.+?)\s+([A-Za-z0-9]{2,})$/', $line, $singleLineMatch) === 1) {
+            if (preg_match('/^(\d+)\s*(.*)$/', $line, $singleLineMatch) === 1) {
                 $positionNo = (int) $singleLineMatch[1];
-                $name = $this->normalizeSpacing(trim((string) $singleLineMatch[2]));
-                $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', (string) $singleLineMatch[3]) ?? ''));
-                if ($positionNo > 0 && $name !== '' && !$this->isReservedProductLabel($name) && $this->isUnitToken($unit)) {
-                    $rows[$positionNo] = ['name' => $name, 'unit' => $unit];
-                    continue;
+                $rest = $this->normalizeSpacing(trim((string) $singleLineMatch[2]));
+                if ($positionNo > 0 && $rest !== '' && !$this->isReservedProductLabel($rest)) {
+                    $unit = '';
+                    $name = $rest;
+                    $parts = preg_split('/\s+/', $rest) ?: [];
+                    if (!empty($parts)) {
+                        $last = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', (string) end($parts)) ?? ''));
+                        if ($last !== '' && $this->isUnitToken($last)) {
+                            array_pop($parts);
+                            $name = $this->normalizeSpacing(implode(' ', $parts));
+                            $unit = $last;
+                        }
+                    }
+
+                    if ($name !== '' && !$this->isReservedProductLabel($name)) {
+                        if ($unit === '') {
+                            $nextIndex = $this->nextNonEmptyLineIndex($lines, $i + 1, $count);
+                            if ($nextIndex !== null) {
+                                $nextRaw = trim((string) $lines[$nextIndex]);
+                                $nextToken = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $nextRaw) ?? ''));
+                                if ($this->isUnitToken($nextToken)) {
+                                    $unit = $nextToken;
+                                    $i = $nextIndex;
+                                }
+                            }
+                        }
+                        if ($unit === '') {
+                            $unit = 'BUC';
+                        }
+                        $rows[$positionNo] = ['name' => $name, 'unit' => $unit];
+                        continue;
+                    }
                 }
             }
 
@@ -1155,24 +1265,29 @@ class PdfRewriteService
             }
 
             $unitIndex = $this->nextNonEmptyLineIndex($lines, $nameIndex + 1, $count);
-            if ($unitIndex === null) {
-                break;
-            }
-            $unitRaw = trim((string) $lines[$unitIndex]);
-            if ($this->isItemsStopLine($unitRaw)) {
-                break;
-            }
-            $unit = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
-            if (!$this->isUnitToken($unit)) {
-                $i = $nameIndex;
-                continue;
+            $unit = 'BUC';
+            if ($unitIndex !== null) {
+                $unitRaw = trim((string) $lines[$unitIndex]);
+                if ($this->isItemsStopLine($unitRaw)) {
+                    $rows[$positionNo] = [
+                        'name' => $this->normalizeSpacing($nameLine),
+                        'unit' => $unit,
+                    ];
+                    break;
+                }
+                $unitCandidate = strtoupper((string) (preg_replace('/[^A-Za-z0-9]/', '', $unitRaw) ?? ''));
+                if ($this->isUnitToken($unitCandidate)) {
+                    $unit = $unitCandidate;
+                    $i = $unitIndex;
+                } else {
+                    $i = $nameIndex;
+                }
             }
 
             $rows[$positionNo] = [
                 'name' => $this->normalizeSpacing($nameLine),
                 'unit' => $unit,
             ];
-            $i = $unitIndex;
         }
 
         ksort($rows);
@@ -1181,10 +1296,10 @@ class PdfRewriteService
 
     private function parseCombinedNumericRow(string $line): ?array
     {
-        if (preg_match('/\(([0-9]+(?:[\.,][0-9]+)?)%\)/', $line, $vatMatch) !== 1) {
+        if (preg_match('/\(?([0-9]+(?:[\.,][0-9]+)?)%\)?/', $line, $vatMatch) !== 1) {
             return null;
         }
-        $withoutPercent = preg_replace('/\([0-9]+(?:[\.,][0-9]+)?%\)/', ' ', $line) ?? $line;
+        $withoutPercent = preg_replace('/\(?[0-9]+(?:[\.,][0-9]+)?%\)?/', ' ', $line) ?? $line;
         $tokens = $this->extractNumberTokens($withoutPercent);
         if (count($tokens) < 5) {
             return null;
@@ -1277,7 +1392,7 @@ class PdfRewriteService
             $item['total_with_vat'] = $this->toFloat($match[6]);
         }
 
-        if (preg_match('/\(([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)/', $text, $vatMatch) === 1) {
+        if (preg_match('/\(?([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)?/', $text, $vatMatch) === 1) {
             $item['vat_percent'] = max($item['vat_percent'], $this->toFloat($vatMatch[1]));
         }
 
@@ -1421,7 +1536,7 @@ class PdfRewriteService
             }
         }
 
-        if (preg_match('/\(([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)/', $text, $vatMatch) === 1) {
+        if (preg_match('/\(?([0-9]{1,2}(?:[\.,][0-9]{1,2})?)%\)?/', $text, $vatMatch) === 1) {
             $totals['vat_percent'] = $this->toFloat((string) $vatMatch[1]);
         }
 
@@ -1498,5 +1613,33 @@ class PdfRewriteService
     private function formatNumber(float $value, int $decimals): string
     {
         return number_format($value, $decimals, '.', ' ');
+    }
+
+    private function resolveBinaryPath(string $binary): string
+    {
+        $binary = trim($binary);
+        if ($binary === '') {
+            return '';
+        }
+        $path = @shell_exec('command -v ' . escapeshellarg($binary) . ' 2>/dev/null');
+        if (!is_string($path)) {
+            return '';
+        }
+        $resolved = trim($path);
+        if ($resolved === '' || !is_executable($resolved)) {
+            return '';
+        }
+
+        return $resolved;
+    }
+
+    private function cleanupOcrArtifacts(string $workDir, array $images): void
+    {
+        foreach ($images as $imagePath) {
+            if (is_string($imagePath) && $imagePath !== '') {
+                @unlink($imagePath);
+            }
+        }
+        @rmdir($workDir);
     }
 }

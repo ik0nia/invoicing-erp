@@ -57,13 +57,30 @@ class PdfToolsController
         }
 
         $company = $this->loadCompanyFromSettings();
-        $extractedText = $this->rewriteService->extractText($tmpPath);
-        if ($extractedText === '') {
-            Session::flash('error', 'Nu am putut extrage text din PDF-ul incarcat. Verifica daca este PDF text (nu scanat imagine).');
+        $primaryText = $this->rewriteService->extractText($tmpPath);
+        if ($primaryText === '') {
+            $primaryText = $this->rewriteService->extractTextWithOcr($tmpPath);
+        }
+        if ($primaryText === '') {
+            Session::flash('error', 'Nu am putut extrage text din PDF-ul incarcat, nici cu OCR.');
             Response::redirect('/admin/utile/prelucrare-pdf');
         }
 
-        $aviz = $this->rewriteService->parseAvizData($extractedText);
+        $aviz = $this->rewriteService->parseAvizData($primaryText);
+        $selectedText = $primaryText;
+        $primaryScore = $this->scoreParsedAviz($aviz, $primaryText);
+
+        if ($this->shouldUseOcrFallback($aviz, $primaryText) && $this->rewriteService->isOcrAvailable()) {
+            $ocrText = $this->rewriteService->extractTextWithOcr($tmpPath);
+            if ($ocrText !== '') {
+                $ocrAviz = $this->rewriteService->parseAvizData($ocrText);
+                $ocrScore = $this->scoreParsedAviz($ocrAviz, $ocrText);
+                if ($ocrScore > $primaryScore) {
+                    $aviz = $ocrAviz;
+                    $selectedText = $ocrText;
+                }
+            }
+        }
         $changes = [];
         $documentNo = trim((string) ($aviz['document_number'] ?? ''));
         if ($documentNo !== '' && $seriesFrom !== '' && $seriesTo !== '' && $seriesFrom !== $seriesTo) {
@@ -90,7 +107,7 @@ class PdfToolsController
             header('Content-Type: text/plain; charset=UTF-8');
             header('Content-Disposition: attachment; filename="' . $downloadName . '"');
             header('X-Content-Type-Options: nosniff');
-            echo $extractedText;
+            echo $selectedText;
             exit;
         }
 
@@ -194,5 +211,72 @@ class PdfToolsController
         }
 
         return $base . '-deon.' . $extension;
+    }
+
+    private function shouldUseOcrFallback(array $aviz, string $sourceText): bool
+    {
+        $items = is_array($aviz['items'] ?? null) ? $aviz['items'] : [];
+        $itemCount = count($items);
+        $totalWithVat = (float) ($aviz['total_with_vat'] ?? 0);
+        $totalWithoutVat = (float) ($aviz['total_without_vat'] ?? 0);
+        $vatHints = preg_match_all('/\(?[0-9]{1,2}(?:[\.,][0-9]{1,2})?%\)?/', $sourceText);
+
+        if ($itemCount === 0) {
+            return true;
+        }
+        if ($totalWithVat <= 0 || $totalWithoutVat <= 0) {
+            return true;
+        }
+        if ($itemCount < 2 && $vatHints !== false && $vatHints > 1) {
+            return true;
+        }
+
+        $first = $items[0] ?? [];
+        $firstUnitPrice = (float) ($first['unit_price'] ?? 0);
+        $firstTotal = (float) ($first['total_with_vat'] ?? 0);
+        if ($itemCount === 1 && ($firstUnitPrice <= 0 || $firstTotal <= 0) && $vatHints !== false && $vatHints > 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function scoreParsedAviz(array $aviz, string $sourceText): int
+    {
+        $items = is_array($aviz['items'] ?? null) ? $aviz['items'] : [];
+        $score = count($items) * 100;
+
+        $totalWithoutVat = (float) ($aviz['total_without_vat'] ?? 0);
+        $totalWithVat = (float) ($aviz['total_with_vat'] ?? 0);
+        if ($totalWithoutVat > 0) {
+            $score += 80;
+        }
+        if ($totalWithVat > 0) {
+            $score += 80;
+        }
+
+        $validRows = 0;
+        foreach ($items as $item) {
+            $qty = (float) ($item['quantity'] ?? 0);
+            $price = (float) ($item['unit_price'] ?? 0);
+            $total = (float) ($item['total_with_vat'] ?? 0);
+            $name = trim((string) ($item['name'] ?? ''));
+            if ($name !== '' && preg_match('/^Pozitie\s+\d+$/i', $name) !== 1) {
+                $score += 10;
+            } elseif ($name !== '') {
+                $score -= 20;
+            }
+            if ($qty > 0 && $price > 0 && $total > 0) {
+                $validRows++;
+            }
+        }
+        $score += ($validRows * 25);
+
+        $vatHints = preg_match_all('/\(?[0-9]{1,2}(?:[\.,][0-9]{1,2})?%\)?/', $sourceText);
+        if ($vatHints !== false && $vatHints > 0) {
+            $score += min(200, $vatHints * 5);
+        }
+
+        return $score;
     }
 }
