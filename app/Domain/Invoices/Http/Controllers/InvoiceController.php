@@ -5371,6 +5371,7 @@ class InvoiceController
             : '0 AS default_commission';
         $sql = 'SELECT cui, denumire, ' . $defaultCommissionColumn . ' FROM partners';
         $params = [];
+        $where = [];
         if (!empty($allowedSuppliers)) {
             $placeholders = [];
             foreach ($allowedSuppliers as $index => $cui) {
@@ -5378,7 +5379,21 @@ class InvoiceController
                 $placeholders[] = ':' . $key;
                 $params[$key] = $cui;
             }
-            $sql .= ' WHERE cui IN (' . implode(',', $placeholders) . ')';
+            $where[] = 'cui IN (' . implode(',', $placeholders) . ')';
+        } else {
+            $hasIsSupplier = Database::columnExists('partners', 'is_supplier');
+            $hasCommissions = Database::tableExists('commissions');
+            if ($hasIsSupplier && $hasCommissions) {
+                $where[] = '(is_supplier = 1 OR cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\'))';
+            } elseif ($hasIsSupplier) {
+                $where[] = 'is_supplier = 1';
+            } elseif ($hasCommissions) {
+                $where[] = 'cui IN (SELECT DISTINCT supplier_cui FROM commissions WHERE supplier_cui IS NOT NULL AND supplier_cui <> \'\')';
+            }
+        }
+
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= ' ORDER BY denumire ASC, cui ASC';
 
