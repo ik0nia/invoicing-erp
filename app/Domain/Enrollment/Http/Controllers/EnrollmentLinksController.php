@@ -2034,6 +2034,41 @@ class EnrollmentLinksController
                 'type' => 'supplier',
             ]
         );
+
+        if (Database::columnExists('enrollment_links', 'relation_client_cui')) {
+            Database::execute(
+                'UPDATE enrollment_links
+                 SET relation_client_cui = partner_cui,
+                     updated_at = :updated_at
+                 WHERE type = :type
+                   AND partner_cui IS NOT NULL
+                   AND partner_cui <> \'\'
+                   AND (relation_client_cui IS NULL OR relation_client_cui = \'\')',
+                [
+                    'updated_at' => date('Y-m-d H:i:s'),
+                    'type' => 'client',
+                ]
+            );
+        }
+
+        if (
+            Database::columnExists('enrollment_links', 'relation_supplier_cui')
+            && Database::columnExists('enrollment_links', 'supplier_cui')
+        ) {
+            Database::execute(
+                'UPDATE enrollment_links
+                 SET relation_supplier_cui = supplier_cui,
+                     updated_at = :updated_at
+                 WHERE type = :type
+                   AND supplier_cui IS NOT NULL
+                   AND supplier_cui <> \'\'
+                   AND (relation_supplier_cui IS NULL OR relation_supplier_cui = \'\')',
+                [
+                    'updated_at' => date('Y-m-d H:i:s'),
+                    'type' => 'client',
+                ]
+            );
+        }
     }
 
     private function resolveAdminReturnPath(string $fallback): string
