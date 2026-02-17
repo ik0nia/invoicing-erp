@@ -103,8 +103,6 @@ class PdfRewriteService
         $client = is_array($aviz['client'] ?? null) ? $aviz['client'] : [];
         $items = is_array($aviz['items'] ?? null) ? $aviz['items'] : [];
 
-        $changes = is_array($meta['changes'] ?? null) ? $meta['changes'] : [];
-
         $documentNo = trim((string) ($aviz['document_number'] ?? 'A-DEON'));
         $issueDate = trim((string) ($aviz['issue_date'] ?? ''));
         $dueDate = trim((string) ($aviz['due_date'] ?? ''));
@@ -167,15 +165,6 @@ class PdfRewriteService
             }
         } else {
             $itemRows = '<tr><td colspan="8">Nu au fost identificate linii de produse in PDF-ul sursa.</td></tr>';
-        }
-
-        $changesHtml = '';
-        if (!empty($changes)) {
-            $parts = [];
-            foreach ($changes as $change) {
-                $parts[] = '<li>' . htmlspecialchars((string) $change, ENT_QUOTES, 'UTF-8') . '</li>';
-            }
-            $changesHtml = '<div class="box"><strong>Modificari aplicate:</strong><ul>' . implode('', $parts) . '</ul></div>';
         }
 
         return '<!doctype html>'
@@ -245,7 +234,6 @@ class PdfRewriteService
             . '<tr><th>Total TVA</th><td class="num">' . $this->formatNumber($totalVat, 2) . ' RON</td></tr>'
             . '<tr><th>Total cu TVA</th><td class="num">' . $this->formatNumber($totalWithVat, 2) . ' RON</td></tr>'
             . '</table>'
-            . $changesHtml
             . '<div class="footer">Factura circula fara semnatura si stampila cf. art. V alin. (2) din OG 17/2015 si art. 319 alin. (29) din Legea 227/2015.</div>'
             . '</body></html>';
     }
@@ -960,60 +948,83 @@ class PdfRewriteService
 
     private function extractProductName(array $lines): string
     {
+        $count = count($lines);
+        $tableStart = -1;
+        for ($i = 0; $i < $count; $i++) {
+            $line = trim((string) $lines[$i]);
+            if ($line === '#' || stripos($line, 'Produs / serviciu') !== false) {
+                $tableStart = $i;
+                break;
+            }
+        }
+
+        if ($tableStart >= 0) {
+            for ($i = $tableStart; $i < $count; $i++) {
+                $line = trim((string) $lines[$i]);
+                if (preg_match('/^\d+$/', $line) !== 1) {
+                    continue;
+                }
+                for ($j = $i + 1; $j < min($count, $i + 6); $j++) {
+                    $candidate = trim((string) $lines[$j]);
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    if ($this->isReservedProductLabel($candidate)) {
+                        continue;
+                    }
+                    if ($this->isUnitToken($candidate)) {
+                        continue;
+                    }
+                    if (preg_match('/^[0-9\.\,\(\)%]+$/', $candidate) === 1) {
+                        continue;
+                    }
+                    if (preg_match('/[A-Za-z]/', $candidate) !== 1) {
+                        continue;
+                    }
+                    if (strlen($candidate) >= 4) {
+                        return $candidate;
+                    }
+                }
+            }
+        }
+
+        return 'Produse conform avizului sursa';
+    }
+
+    private function isReservedProductLabel(string $value): bool
+    {
+        $normalized = strtoupper($value);
+        $normalized = preg_replace('/[^A-Z0-9]+/', '', $normalized) ?? '';
+        if ($normalized === '') {
+            return true;
+        }
+
         $reserved = [
             'FURNIZOR',
             'CLIENT',
             'TOTAL',
             'CUI',
-            'REG. COM.',
-            'REG.COM.',
+            'REGCOM',
             'TARA',
             'JUDET',
             'LOCALITATE',
             'ADRESA',
-            'PRODUS / SERVICIU',
-            'U.M.',
-            'CANT.',
-            'PRET UNITAR',
+            'PRODUSSERVICIU',
+            'UM',
+            'CANT',
+            'PRETUNITAR',
             'VALOARE',
-            'TVA%',
+            'TVA',
         ];
-        $count = count($lines);
-        for ($i = 0; $i < $count - 1; $i++) {
-            $line = trim((string) $lines[$i]);
-            if (preg_match('/^\d+$/', $line) !== 1) {
-                continue;
-            }
-            $candidate = trim((string) $lines[$i + 1]);
-            if ($candidate === '') {
-                continue;
-            }
-            $candidateUpper = strtoupper($candidate);
-            if (in_array($candidateUpper, $reserved, true)) {
-                continue;
-            }
-            if (preg_match('/^[0-9\.\,\(\)%]+$/', $candidate) === 1) {
-                continue;
-            }
-            if (strlen($candidate) >= 4) {
-                return $candidate;
-            }
-        }
 
-        foreach ($lines as $line) {
-            $line = trim((string) $line);
-            if ($line === '') {
-                continue;
-            }
-            if (preg_match('/^[A-Z0-9 \/,\.\-\(\)]{6,}$/', strtoupper($line)) === 1) {
-                if (preg_match('/(AVIZ|FURNIZOR|CLIENT|TOTAL|DATA|CUI|REG|TARA|JUDET|LOCALITATE|ADRESA)/i', $line) === 1) {
-                    continue;
-                }
-                return $line;
-            }
-        }
+        return in_array($normalized, $reserved, true);
+    }
 
-        return '';
+    private function isUnitToken(string $value): bool
+    {
+        $token = strtoupper(trim($value));
+        $allowed = ['BUC', 'KG', 'L', 'ML', 'M', 'MP', 'MC', 'SET', 'PACH', 'CUT', 'SAC', 'PAL'];
+        return in_array($token, $allowed, true);
     }
 
     private function parseTotals(string $text, array $lines, array $item): array
