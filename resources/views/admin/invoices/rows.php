@@ -58,12 +58,16 @@
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
                 <div class="inline-flex items-center gap-2">
-                        <?php if (!empty($invoice->supplier_request_at) && empty($invoice->fgo_number) && empty($invoice->fgo_storno_number) && !empty($canShowRequestAlert)): ?>
+                    <?php if (empty($invoice->xml_path) && !empty($canShowRequestAlert)): ?>
                         <?php
-                            $requestTs = strtotime((string) $invoice->supplier_request_at);
-                            $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;
+                            $warningTitle = 'Lipseste factura furnizor. Intra pe factura pentru incarcare.';
+                            if (!empty($invoice->supplier_request_at)) {
+                                $requestTs = strtotime((string) $invoice->supplier_request_at);
+                                $requestLabel = $requestTs ? date('d.m.Y H:i', $requestTs) : (string) $invoice->supplier_request_at;
+                                $warningTitle = 'Lipseste factura furnizor. Solicitare la ' . $requestLabel . '.';
+                            }
                         ?>
-                        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-700" title="Facturare solicitata la <?= htmlspecialchars($requestLabel) ?>">
+                        <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700" title="<?= htmlspecialchars($warningTitle) ?>">
                             !
                         </span>
                     <?php endif; ?>

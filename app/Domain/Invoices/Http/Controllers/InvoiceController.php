@@ -614,10 +614,6 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
-            Session::flash('error', 'Pachetele nu sunt confirmate.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
-        }
 
         if (empty($_FILES['supplier_file']) || $_FILES['supplier_file']['error'] !== UPLOAD_ERR_OK) {
             Session::flash('error', 'Te rog incarca un fisier valid.');
