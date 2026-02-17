@@ -43,11 +43,11 @@
         'rejected' => 'Respins',
     ];
     $onboardingClasses = [
-        'draft' => 'bg-slate-100 text-slate-700',
-        'waiting_signature' => 'bg-amber-100 text-amber-800',
-        'submitted' => 'bg-blue-100 text-blue-800',
-        'approved' => 'bg-emerald-100 text-emerald-800',
-        'rejected' => 'bg-rose-100 text-rose-800',
+        'draft' => 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+        'waiting_signature' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+        'submitted' => 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+        'approved' => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
+        'rejected' => 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200',
     ];
     $statusLabels = [
         'draft' => 'Ciorna',
@@ -57,11 +57,11 @@
         'approved' => 'Aprobat',
     ];
     $statusClasses = [
-        'draft' => 'bg-slate-100 text-slate-700',
-        'generated' => 'bg-blue-100 text-blue-700',
-        'sent' => 'bg-amber-100 text-amber-700',
-        'signed_uploaded' => 'bg-purple-100 text-purple-700',
-        'approved' => 'bg-emerald-100 text-emerald-700',
+        'draft' => 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+        'generated' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200',
+        'sent' => 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200',
+        'signed_uploaded' => 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-200',
+        'approved' => 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200',
     ];
     $contactDepartments = $contactDepartments ?? ['Reprezentant legal', 'Financiar-contabil', 'Achizitii', 'Logistica'];
     $linkType = (string) ($context['link']['type'] ?? 'client');
@@ -102,59 +102,59 @@
 <div class="mx-auto w-full max-w-6xl space-y-5">
 
     <?php if ($error !== ''): ?>
-        <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-200">
             <?= htmlspecialchars((string) $error) ?>
         </div>
     <?php endif; ?>
 
     <?php if (!empty($permissions['can_view'])): ?>
-        <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm">
+        <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-emerald-50 p-5 shadow-sm dark:border-slate-700 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-800">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                    <div class="text-sm font-semibold text-blue-700"><?= htmlspecialchars($title) ?></div>
-                    <h2 class="mt-1 text-lg font-semibold text-slate-900">Completeaza pasii in ordine pentru activare</h2>
+                    <div class="text-sm font-semibold text-blue-700 dark:text-blue-300"><?= htmlspecialchars($title) ?></div>
+                    <h2 class="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">Completeaza pasii in ordine pentru activare</h2>
                     <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                        <span class="font-semibold text-slate-700">Status:</span>
-                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700' ?>">
+                        <span class="font-semibold text-slate-700 dark:text-slate-200">Status:</span>
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $onboardingClasses[$onboardingStatus] ?? 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100' ?>">
                             <?= htmlspecialchars($onboardingLabels[$onboardingStatus] ?? ucfirst($onboardingStatus)) ?>
                         </span>
                     </div>
                 </div>
                 <div class="grid w-full gap-3 sm:grid-cols-3 lg:w-auto lg:min-w-[420px]">
-                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                        <div class="text-xs text-slate-500">Pas curent</div>
-                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Pas curent</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
                     </div>
-                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                        <div class="text-xs text-slate-500">Documente obligatorii</div>
-                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= $requiredSigned ?>/<?= $requiredTotal ?></div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Documente obligatorii</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= $requiredSigned ?>/<?= $requiredTotal ?></div>
                     </div>
-                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                        <div class="text-xs text-slate-500">Contacte adaugate</div>
-                        <div class="mt-1 text-sm font-semibold text-slate-800"><?= (int) $contactCount ?></div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950/70">
+                        <div class="text-xs text-slate-500 dark:text-slate-400">Contacte adaugate</div>
+                        <div class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100"><?= (int) $contactCount ?></div>
                     </div>
                 </div>
             </div>
             <div class="mt-4">
-                <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-600">
+                <div class="mb-1 flex items-center justify-between text-xs font-medium text-slate-600 dark:text-slate-300">
                     <span>Progres completare</span>
                     <span><?= (int) $wizardProgressPercent ?>%</span>
                 </div>
-                <div class="h-2 rounded-full bg-slate-200">
+                <div class="h-2 rounded-full bg-slate-200 dark:bg-slate-700">
                     <div class="h-2 rounded-full bg-blue-600" style="width: <?= (int) $wizardProgressPercent ?>%;"></div>
                 </div>
             </div>
         </div>
 
         <?php if (!$pdfAvailable): ?>
-            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
                 Generarea PDF este momentan indisponibila pe server. Puteti continua completarea, dar download-ul PDF va deveni disponibil
                 dupa configurarea utilitarului wkhtmltopdf de catre echipa interna.
             </div>
         <?php endif; ?>
 
         <?php if ($isReadOnly): ?>
-            <div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div class="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
                 <?php if ($onboardingStatus === 'submitted'): ?>
                     Cererea a fost trimisa spre activare. Un angajat intern va analiza si aproba inrolarea.
                 <?php else: ?>
@@ -163,10 +163,10 @@
             </div>
         <?php endif; ?>
 
-        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="text-sm font-semibold text-slate-700">Navigare rapida pe pasi</div>
-                <div class="text-xs text-slate-500">Pas curent: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
+                <div class="text-sm font-semibold text-slate-700 dark:text-slate-100">Navigare rapida pe pasi</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Pas curent: <?= (int) $currentStep ?>/<?= (int) $maxStep ?></div>
             </div>
             <div class="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 <?php foreach ($stepLabels as $step => $label): ?>
@@ -175,11 +175,11 @@
                         $isCompletedStep = !empty($stepCompletion[$step]);
                         $stepButtonClasses = 'w-full rounded-xl border px-3 py-3 text-left text-sm transition';
                         if ($isActiveStep) {
-                            $stepButtonClasses .= ' border-blue-600 bg-blue-50 text-blue-800 shadow-sm';
+                            $stepButtonClasses .= ' border-blue-600 bg-blue-50 text-blue-800 shadow-sm dark:border-blue-400 dark:bg-blue-950/70 dark:text-blue-100';
                         } elseif ($isCompletedStep) {
-                            $stepButtonClasses .= ' border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100';
+                            $stepButtonClasses .= ' border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100 dark:hover:bg-emerald-900/70';
                         } else {
-                            $stepButtonClasses .= ' border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
+                            $stepButtonClasses .= ' border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800';
                         }
                         $stepStatus = $isCompletedStep
                             ? 'Completat'
@@ -190,7 +190,7 @@
                         <input type="hidden" name="step" value="<?= (int) $step ?>">
                         <button class="<?= $stepButtonClasses ?>">
                             <div class="flex items-center justify-between gap-2">
-                                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-700">
+                                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-100">
                                     <?= (int) $step ?>
                                 </span>
                                 <span class="text-[11px] font-semibold uppercase tracking-wide"><?= htmlspecialchars($stepStatus) ?></span>
