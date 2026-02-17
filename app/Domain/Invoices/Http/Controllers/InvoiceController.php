@@ -5464,21 +5464,29 @@ class InvoiceController
             return true;
         }
 
+        if ($this->normalizedCuiExistsInTable('invoices_in', $supplierCui)) {
+            return true;
+        }
+
         return false;
     }
 
     private function normalizedCuiExistsInTable(string $table, string $supplierCui): bool
     {
-        if (!in_array($table, ['partners', 'companies'], true) || !Database::tableExists($table)) {
+        if (!in_array($table, ['partners', 'companies', 'invoices_in'], true) || !Database::tableExists($table)) {
             return false;
         }
 
-        $row = Database::fetchOne('SELECT cui FROM ' . $table . ' WHERE cui = :cui LIMIT 1', ['cui' => $supplierCui]);
+        $column = $table === 'invoices_in' ? 'supplier_cui' : 'cui';
+        $row = Database::fetchOne(
+            'SELECT ' . $column . ' AS cui FROM ' . $table . ' WHERE ' . $column . ' = :cui LIMIT 1',
+            ['cui' => $supplierCui]
+        );
         if ($row) {
             return true;
         }
 
-        $rows = Database::fetchAll('SELECT cui FROM ' . $table);
+        $rows = Database::fetchAll('SELECT ' . $column . ' AS cui FROM ' . $table);
         foreach ($rows as $candidate) {
             $candidateCui = preg_replace('/\D+/', '', (string) ($candidate['cui'] ?? ''));
             if ($candidateCui !== '' && $candidateCui === $supplierCui) {
