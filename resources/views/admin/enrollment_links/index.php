@@ -1218,6 +1218,7 @@
                 localitate: getField('prefill-localitate'),
                 judet: getField('prefill-judet'),
                 telefon: getField('prefill-telefon'),
+                email: getField('prefill-email'),
             };
             let lastLookupKey = '';
             let activeLookup = 0;
@@ -1235,6 +1236,10 @@
                 }
                 if (tone === 'success') {
                     prefillStatus.classList.add('text-emerald-700');
+                    return;
+                }
+                if (tone === 'warning') {
+                    prefillStatus.classList.add('text-amber-700');
                     return;
                 }
                 prefillStatus.classList.add('text-slate-500');
@@ -1365,8 +1370,19 @@
                         }
 
                         const source = json && typeof json.source === 'string' ? json.source : 'openapi';
+                        const warningMessage = json && typeof json.warning === 'string'
+                            ? json.warning.trim()
+                            : '';
+                        if (warningMessage !== '') {
+                            setPrefillStatus(warningMessage, 'warning');
+                            return;
+                        }
                         if (source === 'database') {
                             setPrefillStatus('Datele firmei au fost preluate din baza de date.', 'success');
+                            return;
+                        }
+                        if (source === 'database_openapi') {
+                            setPrefillStatus('Datele firmei au fost completate din baza de date + OpenAPI.', 'success');
                             return;
                         }
                         setPrefillStatus('Datele firmei au fost preluate automat din OpenAPI.', 'success');

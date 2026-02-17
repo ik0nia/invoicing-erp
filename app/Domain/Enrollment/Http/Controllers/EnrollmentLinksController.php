@@ -710,7 +710,9 @@ class EnrollmentLinksController
 
         $checks = $this->analyzeCompanyForEnrollment($cui, $linkType, $selectedSupplierCui);
         $dbData = $this->prefillFromDatabase($cui);
-        if ($dbData !== null && !empty($dbData)) {
+        $hasDbData = is_array($dbData) && !empty($dbData);
+        $shouldEnrichWithOpenApi = !$hasDbData || $this->shouldEnrichLookupWithOpenApi((array) $dbData);
+        if ($hasDbData && !$shouldEnrichWithOpenApi) {
             $this->json([
                 'success' => true,
                 'source' => 'database',
@@ -721,18 +723,35 @@ class EnrollmentLinksController
 
         $service = new CompanyLookupService();
         $response = $service->lookupByCui($cui);
-        if ($response['error'] !== null) {
+        $openApiData = is_array($response['data'] ?? null) ? $response['data'] : null;
+        $openApiErrorMessage = is_string($response['error'] ?? null) && trim((string) $response['error']) !== ''
+            ? trim((string) $response['error'])
+            : 'Nu am putut prelua datele firmei din OpenAPI.';
+        if ($response['error'] !== null || $openApiData === null) {
+            if ($hasDbData) {
+                $this->json([
+                    'success' => true,
+                    'source' => 'database',
+                    'data' => $dbData,
+                    'checks' => $checks,
+                    'warning' => 'Date partiale preluate din baza de date. Completarea OpenAPI este indisponibila momentan.',
+                ]);
+            }
             $this->json([
                 'success' => false,
-                'message' => $response['error'],
+                'message' => $openApiErrorMessage,
                 'checks' => $checks,
             ]);
         }
 
+        $data = $hasDbData
+            ? $this->mergeLookupPrefillData((array) $dbData, $openApiData)
+            : $openApiData;
+
         $this->json([
             'success' => true,
-            'source' => 'openapi',
-            'data' => $response['data'],
+            'source' => $hasDbData ? 'database_openapi' : 'openapi',
+            'data' => $data,
             'checks' => $checks,
         ]);
     }
@@ -1198,6 +1217,59 @@ class EnrollmentLinksController
         }
 
         return array_filter($data, static fn ($value) => $value !== '' && $value !== null);
+    }
+
+    private function shouldEnrichLookupWithOpenApi(array $data): bool
+    {
+        $denumire = trim((string) ($data['denumire'] ?? ''));
+        $nrRegComertului = trim((string) ($data['nr_reg_comertului'] ?? ''));
+        $adresa = trim((string) ($data['adresa'] ?? ''));
+        $localitate = trim((string) ($data['localitate'] ?? ''));
+        $judet = trim((string) ($data['judet'] ?? ''));
+
+        if ($denumire === '') {
+            return true;
+        }
+
+        // Daca avem doar identificare minima (ex: denumire din partners), incercam completarea din OpenAPI.
+        if ($nrRegComertului === '' && $adresa === '' && $localitate === '' && $judet === '') {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function mergeLookupPrefillData(array $baseData, array $openApiData): array
+    {
+        $fields = [
+            'cui',
+            'denumire',
+            'nr_reg_comertului',
+            'adresa',
+            'localitate',
+            'judet',
+            'telefon',
+            'email',
+        ];
+
+        $merged = [];
+        foreach ($fields as $field) {
+            $baseValue = trim((string) ($baseData[$field] ?? ''));
+            if ($baseValue !== '') {
+                $merged[$field] = $baseValue;
+                continue;
+            }
+            $openApiValue = trim((string) ($openApiData[$field] ?? ''));
+            if ($openApiValue !== '') {
+                $merged[$field] = $openApiValue;
+            }
+        }
+
+        if (empty($merged['cui'])) {
+            $merged['cui'] = preg_replace('/\D+/', '', (string) ($baseData['cui'] ?? $openApiData['cui'] ?? ''));
+        }
+
+        return array_filter($merged, static fn ($value) => $value !== '' && $value !== null);
     }
 
     private function analyzeCompanyForEnrollment(string $companyCui, string $linkType, string $selectedSupplierCui): array
