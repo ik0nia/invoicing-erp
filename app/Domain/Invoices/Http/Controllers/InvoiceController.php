@@ -35,6 +35,7 @@ class InvoiceController
     private PackageLockService $packageLockService;
     private SagaStatusService $sagaStatusService;
     private PackageTotalsService $packageTotalsService;
+    private array $invoiceSalesGrossCache = [];
 
     public function __construct()
     {
@@ -5010,15 +5011,27 @@ class InvoiceController
     {
         $invoiceGross = (float) ($invoice->total_with_vat ?? 0.0);
         if ($salesGrossTotal === null) {
-            $salesGrossTotal = (float) Database::fetchValue(
-                'SELECT COALESCE(SUM(line_total_vat), 0)
-                 FROM invoice_in_lines
-                 WHERE invoice_in_id = :invoice',
-                ['invoice' => (int) $invoice->id]
-            );
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
         }
 
         return $salesGrossTotal > ($invoiceGross + 0.009);
+    }
+
+    private function invoiceSalesGrossTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesGrossCache[$invoiceId])) {
+            return (float) $this->invoiceSalesGrossCache[$invoiceId];
+        }
+
+        $value = (float) Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0)
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        );
+        $this->invoiceSalesGrossCache[$invoiceId] = $value;
+
+        return $value;
     }
 
     private function ensurePackageAutoIncrement(): void
@@ -5124,9 +5137,13 @@ class InvoiceController
     {
         $commission = $this->commissionForInvoice($invoice, $commissionMap);
         $clientTotal = null;
+        $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $salesGrossTotal);
 
         if ($commission !== null) {
-            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $hasDiscountPricing
+                ? round($salesGrossTotal, 2)
+                : $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
