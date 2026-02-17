@@ -5452,41 +5452,16 @@ class InvoiceController
     private function supplierExistsInPlatform(string $supplierCui): bool
     {
         $supplierCui = preg_replace('/\D+/', '', $supplierCui);
-        if ($supplierCui === '') {
+        if ($supplierCui === '' || !Database::tableExists('companies')) {
             return false;
         }
 
-        if ($this->normalizedCuiExistsInTable('partners', $supplierCui)) {
-            return true;
+        $hasCompanyType = Database::columnExists('companies', 'tip_companie');
+        $sql = 'SELECT cui FROM companies';
+        if ($hasCompanyType) {
+            $sql .= ' WHERE tip_companie = :tip_companie';
         }
-
-        if ($this->normalizedCuiExistsInTable('companies', $supplierCui)) {
-            return true;
-        }
-
-        if ($this->normalizedCuiExistsInTable('invoices_in', $supplierCui)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private function normalizedCuiExistsInTable(string $table, string $supplierCui): bool
-    {
-        if (!in_array($table, ['partners', 'companies', 'invoices_in'], true) || !Database::tableExists($table)) {
-            return false;
-        }
-
-        $column = $table === 'invoices_in' ? 'supplier_cui' : 'cui';
-        $row = Database::fetchOne(
-            'SELECT ' . $column . ' AS cui FROM ' . $table . ' WHERE ' . $column . ' = :cui LIMIT 1',
-            ['cui' => $supplierCui]
-        );
-        if ($row) {
-            return true;
-        }
-
-        $rows = Database::fetchAll('SELECT ' . $column . ' AS cui FROM ' . $table);
+        $rows = Database::fetchAll($sql, $hasCompanyType ? ['tip_companie' => 'furnizor'] : []);
         foreach ($rows as $candidate) {
             $candidateCui = preg_replace('/\D+/', '', (string) ($candidate['cui'] ?? ''));
             if ($candidateCui !== '' && $candidateCui === $supplierCui) {
