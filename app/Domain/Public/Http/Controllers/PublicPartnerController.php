@@ -58,19 +58,22 @@ class PublicPartnerController
         $prefill = $this->resolvePrefill($context, $partnerCui);
         $scope = $this->resolveScope($context, $partnerCui);
         $onboardingResources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
+        $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
+        $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
+        $hasMandatoryCompanyProfile = $partnerCui !== '' && $this->hasMandatoryCompanyProfile($partnerCui);
+        $maxNavigableStep = $this->resolveMaxNavigableWizardStep(
+            $partnerCui,
+            $hasMandatoryCompanyProfile,
+            count($contacts) + count($relationContacts),
+            $onboardingStatus
+        );
 
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         if ($currentStep < 1 || $currentStep > self::WIZARD_MAX_STEP) {
             $currentStep = 1;
         }
-        if ($partnerCui === '' && $currentStep > 1) {
-            $currentStep = 1;
-        }
-        if ($partnerCui !== '' && $currentStep > 1 && !$this->hasMandatoryCompanyProfile($partnerCui)) {
-            $currentStep = 2;
-        }
-        if (in_array($onboardingStatus, ['submitted', 'approved'], true)) {
-            $currentStep = self::WIZARD_MAX_STEP;
+        if ($currentStep > $maxNavigableStep) {
+            $currentStep = $maxNavigableStep;
         }
 
         if ($partnerCui !== '' && $currentStep >= 2) {
@@ -89,8 +92,6 @@ class PublicPartnerController
         }
         $onboardingStatus = $this->refreshOnboardingStatus((int) ($context['link']['id'] ?? 0), $onboardingStatus);
 
-        $contacts = $partnerCui !== '' ? $this->fetchPartnerContacts($partnerCui) : [];
-        $relationContacts = $scope['type'] === 'relation' ? $this->fetchRelationContacts($scope) : [];
         $company = null;
         if ($partnerCui !== '' && Database::tableExists('companies')) {
             $company = Company::findByCui($partnerCui);
@@ -116,6 +117,7 @@ class PublicPartnerController
             'scope' => $scope,
             'onboardingResources' => $onboardingResources,
             'currentStep' => $currentStep,
+            'maxNavigableStep' => $maxNavigableStep,
             'onboardingStatus' => $onboardingStatus,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
             'token' => $token,
@@ -378,13 +380,27 @@ class PublicPartnerController
         $status = $this->resolveOnboardingStatus($context['link'] ?? []);
         $partnerCui = $this->resolvePartnerCui($context);
         $scope = $this->resolveScope($context, $partnerCui);
-        if ($step > 1 && $partnerCui === '') {
-            Session::flash('error', 'Completeaza datele companiei pentru a continua.');
-            $step = 1;
-        }
-        if ($step > 2 && $partnerCui !== '' && !$this->hasMandatoryCompanyProfile($partnerCui)) {
-            Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
-            $step = 2;
+        $hasMandatoryCompanyProfile = $partnerCui !== '' && $this->hasMandatoryCompanyProfile($partnerCui);
+        $savedContactCount = $this->savedContactsCount($partnerCui, $scope);
+        $maxNavigableStep = $this->resolveMaxNavigableWizardStep(
+            $partnerCui,
+            $hasMandatoryCompanyProfile,
+            $savedContactCount,
+            $status
+        );
+        $blockedForwardStep = false;
+        if ($step > $maxNavigableStep) {
+            $blockedForwardStep = true;
+            if ($partnerCui === '') {
+                Session::flash('error', 'Completeaza datele companiei pentru a continua.');
+            } elseif (!$hasMandatoryCompanyProfile) {
+                Session::flash('error', 'Pentru a continua, completeaza reprezentantul legal, functia, banca si IBAN-ul companiei.');
+            } elseif ($savedContactCount <= 0) {
+                Session::flash('error', 'Pentru a continua, adauga si salveaza cel putin un contact in Pasul 3.');
+            } else {
+                Session::flash('error', 'Pasul selectat devine disponibil dupa salvarea pasilor anteriori.');
+            }
+            $step = $maxNavigableStep;
         }
         if ($step === self::WIZARD_MAX_STEP && !in_array($status, ['submitted', 'approved'], true)) {
             $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
@@ -394,7 +410,9 @@ class PublicPartnerController
         }
 
         $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
-        Session::flash('status', 'Pas actualizat.');
+        if (!$blockedForwardStep) {
+            Session::flash('status', 'Pas actualizat.');
+        }
         Response::redirect('/p/' . $token . '#pas-' . $step);
     }
 
@@ -1626,6 +1644,45 @@ class PublicPartnerController
         if (!in_array($status, self::EDITABLE_ONBOARDING_STATUSES, true)) {
             Response::abort(403, 'Inrolarea a fost trimisa spre activare sau este deja aprobata.');
         }
+    }
+
+    private function resolveMaxNavigableWizardStep(
+        string $partnerCui,
+        bool $hasMandatoryCompanyProfile,
+        int $contactCount,
+        string $status
+    ): int {
+        if (in_array($status, ['submitted', 'approved'], true)) {
+            return self::WIZARD_MAX_STEP;
+        }
+
+        if ($partnerCui === '') {
+            return 1;
+        }
+
+        if (!$hasMandatoryCompanyProfile) {
+            return 2;
+        }
+
+        if ($contactCount <= 0) {
+            return 3;
+        }
+
+        return self::WIZARD_MAX_STEP;
+    }
+
+    private function savedContactsCount(string $partnerCui, array $scope): int
+    {
+        if ($partnerCui === '') {
+            return 0;
+        }
+
+        $count = count($this->fetchPartnerContacts($partnerCui));
+        if (($scope['type'] ?? '') === 'relation') {
+            $count += count($this->fetchRelationContacts($scope));
+        }
+
+        return $count;
     }
 
     private function hasMandatoryCompanyProfile(string $cui): bool

@@ -22,6 +22,10 @@
         $currentStep = 1;
     }
     $maxStep = 4;
+    $maxNavigableStep = (int) ($maxNavigableStep ?? $currentStep);
+    if ($maxNavigableStep < 1 || $maxNavigableStep > $maxStep) {
+        $maxNavigableStep = $currentStep;
+    }
     $onboardingStatus = (string) ($onboardingStatus ?? 'draft');
     $pdfAvailable = !empty($pdfAvailable);
     $permissions = $context['permissions'] ?? [
@@ -173,22 +177,30 @@
                     <?php
                         $isActiveStep = $currentStep === $step;
                         $isCompletedStep = !empty($stepCompletion[$step]);
+                        $isLockedStep = !$isReadOnly && $step > $maxNavigableStep;
                         $stepButtonClasses = 'w-full rounded-xl border px-3 py-3 text-left text-sm transition';
-                        if ($isActiveStep) {
+                        if ($isLockedStep) {
+                            $stepButtonClasses .= ' cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500';
+                        } elseif ($isActiveStep) {
                             $stepButtonClasses .= ' border-blue-600 bg-blue-50 text-blue-800 shadow-sm dark:border-blue-400 dark:bg-blue-950/70 dark:text-blue-100';
                         } elseif ($isCompletedStep) {
                             $stepButtonClasses .= ' border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100 dark:hover:bg-emerald-900/70';
                         } else {
                             $stepButtonClasses .= ' border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800';
                         }
-                        $stepStatus = $isCompletedStep
-                            ? 'Completat'
-                            : ($isActiveStep ? 'In lucru' : 'In asteptare');
+                        $stepStatus = $isLockedStep
+                            ? 'Blocat'
+                            : ($isCompletedStep
+                                ? 'Completat'
+                                : ($isActiveStep ? 'In lucru' : 'In asteptare'));
+                        $stepButtonAttrs = $isLockedStep
+                            ? 'disabled aria-disabled="true" title="Deblocheaza acest pas dupa salvarea pasului anterior."'
+                            : '';
                     ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) $step ?>">
-                        <button class="<?= $stepButtonClasses ?>">
+                        <button class="<?= $stepButtonClasses ?>" <?= $stepButtonAttrs ?>>
                             <div class="flex items-center justify-between gap-2">
                                 <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-100">
                                     <?= (int) $step ?>
@@ -200,6 +212,11 @@
                     </form>
                 <?php endforeach; ?>
             </div>
+            <?php if (!$isReadOnly && $maxNavigableStep < $maxStep): ?>
+                <div class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                    Pasii urmatori se deblocheaza doar dupa salvarea pasului anterior.
+                </div>
+            <?php endif; ?>
         </div>
 
         <?php if ($currentStep === 1): ?>
@@ -940,7 +957,7 @@
                 <?php endif; ?>
             </div>
             <div>
-                <?php if (!$isReadOnly && $currentStep < $maxStep): ?>
+                <?php if (!$isReadOnly && $currentStep < $maxNavigableStep): ?>
                     <form method="POST" action="<?= App\Support\Url::to('p/' . $token . '/set-step') ?>">
                         <?= App\Support\Csrf::input() ?>
                         <input type="hidden" name="step" value="<?= (int) ($currentStep + 1) ?>">
