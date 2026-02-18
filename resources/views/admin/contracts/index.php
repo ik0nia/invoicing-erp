@@ -211,6 +211,9 @@
         const contractSelect = document.getElementById('signed-upload-contract');
         const submitButton = document.getElementById('signed-upload-submit');
         const statusNode = document.getElementById('signed-upload-status');
+        const uploadCard = document.getElementById('contracts-upload-card');
+        const uploadCardToggleButton = document.getElementById('contracts-open-upload');
+        const uploadFileInput = document.getElementById('signed-upload-file');
         if (!companySelect || !contractSelect || !submitButton || !statusNode) {
             return;
         }
@@ -223,6 +226,8 @@
 
         let companiesRequestId = 0;
         let contractsRequestId = 0;
+        let companiesLoaded = false;
+        let pendingUploadTarget = null;
 
         const setStatus = (message, tone) => {
             statusNode.textContent = message;
@@ -236,6 +241,18 @@
                 return;
             }
             statusNode.classList.add('text-slate-500');
+        };
+
+        const openUploadCard = () => {
+            if (uploadCard && uploadCard.classList.contains('hidden')) {
+                uploadCard.classList.remove('hidden');
+            }
+            if (uploadCardToggleButton) {
+                uploadCardToggleButton.setAttribute('aria-expanded', 'true');
+            }
+            if (uploadCard) {
+                uploadCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         };
 
         const setSubmitEnabled = () => {
@@ -255,6 +272,7 @@
 
         const loadCompanies = () => {
             const currentRequestId = ++companiesRequestId;
+            companiesLoaded = false;
             setStatus('Se incarca firmele cu documente...', 'info');
             fetch(companiesUrl, {
                 credentials: 'same-origin',
@@ -283,6 +301,7 @@
                         return;
                     }
 
+                    companiesLoaded = true;
                     items.forEach((item) => {
                         const option = document.createElement('option');
                         const cui = String(item && item.cui ? item.cui : '').trim();
@@ -295,17 +314,23 @@
                         companySelect.appendChild(option);
                     });
                     setStatus('Selecteaza firma pentru a vedea documentele disponibile.', 'info');
+                    if (pendingUploadTarget) {
+                        const target = pendingUploadTarget;
+                        pendingUploadTarget = null;
+                        openUploadForContract(target.companyCui, target.contractId);
+                    }
                 })
                 .catch(() => {
                     if (currentRequestId !== companiesRequestId) {
                         return;
                     }
+                    companiesLoaded = false;
                     setStatus('Nu am putut incarca lista firmelor.', 'error');
                     resetContractSelect('Eroare la incarcarea documentelor');
                 });
         };
 
-        const loadContractsForCompany = (companyCui) => {
+        const loadContractsForCompany = (companyCui, preferredContractId = '') => {
             const currentRequestId = ++contractsRequestId;
             const url = new URL(contractsUrl, window.location.origin);
             url.searchParams.set('company_cui', companyCui);
@@ -350,9 +375,22 @@
                         contractSelect.appendChild(option);
                     });
 
+                    if (preferredContractId !== '') {
+                        const hasPreferred = Array.from(contractSelect.options).some((option) => option.value === preferredContractId);
+                        if (hasPreferred) {
+                            contractSelect.value = preferredContractId;
+                        }
+                    }
                     contractSelect.disabled = false;
                     setSubmitEnabled();
-                    setStatus('Selecteaza documentul pentru care incarci fisierul semnat.', 'success');
+                    if (contractSelect.value !== '') {
+                        setStatus('Document selectat. Incarca fisierul semnat.', 'success');
+                        if (uploadFileInput) {
+                            uploadFileInput.focus();
+                        }
+                    } else {
+                        setStatus('Selecteaza documentul pentru care incarci fisierul semnat.', 'success');
+                    }
                 })
                 .catch(() => {
                     if (currentRequestId !== contractsRequestId) {
@@ -361,6 +399,32 @@
                     resetContractSelect('Eroare la incarcarea documentelor');
                     setStatus('Nu am putut incarca documentele pentru firma selectata.', 'error');
                 });
+        };
+
+        const openUploadForContract = (companyCui, contractId) => {
+            const normalizedCompanyCui = String(companyCui || '').trim();
+            const normalizedContractId = String(contractId || '').trim();
+            openUploadCard();
+            if (normalizedCompanyCui === '') {
+                setStatus('Contractul selectat nu are firma asociata pentru filtrare.', 'error');
+                return;
+            }
+            if (!companiesLoaded) {
+                pendingUploadTarget = {
+                    companyCui: normalizedCompanyCui,
+                    contractId: normalizedContractId,
+                };
+                setStatus('Se pregateste selectia documentului...', 'info');
+                return;
+            }
+
+            const hasCompany = Array.from(companySelect.options).some((option) => option.value === normalizedCompanyCui);
+            if (!hasCompany) {
+                setStatus('Firma documentului nu este disponibila in lista curenta.', 'error');
+                return;
+            }
+            companySelect.value = normalizedCompanyCui;
+            loadContractsForCompany(normalizedCompanyCui, normalizedContractId);
         };
 
         companySelect.addEventListener('change', () => {
@@ -375,6 +439,21 @@
 
         contractSelect.addEventListener('change', () => {
             setSubmitEnabled();
+        });
+
+        document.addEventListener('click', (event) => {
+            const eventTarget = event.target;
+            const trigger = eventTarget && typeof eventTarget.closest === 'function'
+                ? eventTarget.closest('[data-contract-upload-trigger="1"]')
+                : null;
+            if (!trigger) {
+                return;
+            }
+            event.preventDefault();
+            openUploadForContract(
+                trigger.getAttribute('data-upload-company-cui') || '',
+                trigger.getAttribute('data-upload-contract-id') || ''
+            );
         });
 
         resetContractSelect('Selectati mai intai firma');
@@ -436,6 +515,7 @@
                 <th class="px-3 py-2">Titlu</th>
                 <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
+                <th class="px-3 py-2">Incarcare document</th>
                 <th class="px-3 py-2">Descarcare</th>
                 <th class="px-3 py-2"></th>
             </tr>
@@ -443,7 +523,7 @@
         <tbody id="contracts-table-body">
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -463,6 +543,9 @@
                         $relationPartnerName = $relationPartnerCui !== ''
                             ? (string) ($companyNamesByCui[$relationPartnerCui] ?? $relationPartnerCui)
                             : '';
+                        $uploadTargetCompanyCui = $relationSupplierCui !== ''
+                            ? $relationSupplierCui
+                            : ($relationClientCui !== '' ? $relationClientCui : $relationPartnerCui);
                         $statusKey = (string) ($contract['status'] ?? '');
                         $statusLabel = $statusLabels[$statusKey] ?? $statusKey;
                         $statusClass = $statusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
@@ -541,6 +624,21 @@
                             </span>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
+                            <?php if ($uploadTargetCompanyCui !== ''): ?>
+                                <button
+                                    type="button"
+                                    class="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                                    data-contract-upload-trigger="1"
+                                    data-upload-company-cui="<?= htmlspecialchars($uploadTargetCompanyCui) ?>"
+                                    data-upload-contract-id="<?= (int) $contract['id'] ?>"
+                                >
+                                    Incarca semnat
+                                </button>
+                            <?php else: ?>
+                                <span class="text-xs text-slate-400">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="px-3 py-2 text-slate-600">
                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                         </td>
                         <td class="px-3 py-2 text-right">
@@ -564,7 +662,7 @@
                     </tr>
                 <?php endforeach; ?>
                 <tr id="contracts-empty-filtered-row" class="hidden">
-                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte pentru filtrele selectate.
                     </td>
                 </tr>
