@@ -150,49 +150,58 @@
                 $chartHasData = !empty($commissionDailyChart['has_data']);
                 $daysCount = count($chartDays);
             ?>
-            <div class="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="text-sm font-medium text-slate-700">
-                        Comision zilnic (luna <?= htmlspecialchars($chartMonthLabel !== '' ? $chartMonthLabel : date('m.Y')) ?>)
-                    </div>
-                    <div class="text-xs font-semibold text-blue-700">
-                        Total comision: <?= number_format($chartTotal, 2, '.', ' ') ?> RON
-                    </div>
-                </div>
-                <?php if (empty($chartDays) || !$chartHasData || $chartMax <= 0.0): ?>
-                    <div class="mt-3 text-sm text-slate-500">Nu exista comision inregistrat pentru luna curenta.</div>
-                <?php else: ?>
-                    <div class="mt-4 overflow-x-auto">
-                        <div class="min-w-[760px]">
-                            <div class="flex h-40 items-end gap-1 rounded border border-slate-200 bg-white px-2 py-2">
-                                <?php foreach ($chartDays as $point): ?>
-                                    <?php
-                                        $dayNo = (int) ($point['day'] ?? 0);
-                                        $value = (float) ($point['value'] ?? 0.0);
-                                        $height = $chartMax > 0.0 ? (int) round(($value / $chartMax) * 120) : 0;
-                                        if ($value > 0.0 && $height < 6) {
-                                            $height = 6;
-                                        }
-                                        $showTick = $dayNo === 1 || $dayNo === $daysCount || $dayNo % 2 === 0;
-                                    ?>
-                                    <div class="flex min-w-0 flex-1 flex-col items-center justify-end">
-                                        <div
-                                            class="<?= $value > 0.0 ? 'bg-blue-500' : 'bg-slate-200' ?> w-full rounded-t"
-                                            style="height: <?= $height ?>px"
-                                            title="Ziua <?= $dayNo ?>: <?= number_format($value, 2, '.', ' ') ?> RON"
-                                        ></div>
-                                        <div class="mt-1 h-3 text-[10px] leading-3 text-slate-500">
-                                            <?= $showTick ? (string) $dayNo : '' ?>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
+            <div class="mt-6 lg:w-1/2">
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-slate-700">
+                            Comision zilnic (luna <?= htmlspecialchars($chartMonthLabel !== '' ? $chartMonthLabel : date('m.Y')) ?>)
+                        </div>
+                        <div class="text-xs font-semibold text-blue-700">
+                            Total comision: <?= number_format($chartTotal, 2, '.', ' ') ?> RON
                         </div>
                     </div>
-                    <div class="mt-2 text-[11px] text-slate-500">
-                        Barele arata comisionul zilnic calculat ca diferenta dintre total client si total furnizor pentru facturile emise.
-                    </div>
-                <?php endif; ?>
+                    <?php if (empty($chartDays) || !$chartHasData || $chartMax <= 0.0): ?>
+                        <div class="mt-3 text-sm text-slate-500">Nu exista comision inregistrat pentru luna curenta.</div>
+                    <?php else: ?>
+                        <div class="mt-4 overflow-x-auto">
+                            <div class="min-w-[760px]">
+                                <div class="flex h-40 items-end gap-1 rounded border border-slate-200 bg-white px-2 py-2">
+                                    <?php foreach ($chartDays as $point): ?>
+                                        <?php
+                                            $dayNo = (int) ($point['day'] ?? 0);
+                                            $value = (float) ($point['value'] ?? 0.0);
+                                            $height = $chartMax > 0.0 ? (int) round(($value / $chartMax) * 120) : 0;
+                                            if ($value > 0.0 && $height < 6) {
+                                                $height = 6;
+                                            } elseif ($height <= 0) {
+                                                $height = 3;
+                                            }
+                                            $showTick = $dayNo === 1 || $dayNo === $daysCount || $dayNo % 2 === 0;
+                                        ?>
+                                        <div class="group flex min-w-0 flex-1 flex-col items-center justify-end">
+                                            <div class="relative flex w-full items-end justify-center">
+                                                <div class="pointer-events-none absolute -top-7 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow group-hover:block">
+                                                    <?= number_format($value, 2, '.', ' ') ?> RON
+                                                </div>
+                                                <div
+                                                    class="<?= $value > 0.0 ? 'bg-blue-500 group-hover:bg-blue-600' : 'bg-slate-200 group-hover:bg-slate-300' ?> w-full rounded-t transition-colors"
+                                                    style="height: <?= $height ?>px"
+                                                    aria-label="Ziua <?= $dayNo ?>: <?= number_format($value, 2, '.', ' ') ?> RON"
+                                                ></div>
+                                            </div>
+                                            <div class="mt-1 h-3 text-[10px] leading-3 text-slate-500">
+                                                <?= $showTick ? (string) $dayNo : '' ?>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-2 text-[11px] text-slate-500">
+                            Barele arata comisionul zilnic calculat ca diferenta dintre total client si total furnizor pentru facturile emise.
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php endif; ?>
 
