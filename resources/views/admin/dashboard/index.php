@@ -150,7 +150,7 @@
                 $chartHasData = !empty($commissionDailyChart['has_data']);
                 $daysCount = count($chartDays);
             ?>
-            <div class="mt-6 lg:w-1/2">
+            <div class="mt-6 grid gap-4 lg:grid-cols-2">
                 <div class="rounded border border-slate-200 bg-slate-50 p-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="text-sm font-medium text-slate-700">
@@ -163,16 +163,16 @@
                     <?php if (empty($chartDays) || !$chartHasData || $chartMax <= 0.0): ?>
                         <div class="mt-3 text-sm text-slate-500">Nu exista comision inregistrat pentru luna curenta.</div>
                     <?php else: ?>
-                        <div class="mt-4 overflow-x-auto">
-                            <div class="min-w-[760px]">
-                                <div class="flex h-40 items-end gap-1 rounded border border-slate-200 bg-white px-2 py-2">
+                        <div class="mt-4 overflow-x-auto overflow-y-visible">
+                            <div class="min-w-[560px]">
+                                <div class="flex h-52 items-end gap-1 rounded border border-slate-200 bg-white px-2 pb-2 pt-8">
                                     <?php foreach ($chartDays as $point): ?>
                                         <?php
                                             $dayNo = (int) ($point['day'] ?? 0);
                                             $value = (float) ($point['value'] ?? 0.0);
-                                            $height = $chartMax > 0.0 ? (int) round(($value / $chartMax) * 120) : 0;
-                                            if ($value > 0.0 && $height < 6) {
-                                                $height = 6;
+                                            $height = $chartMax > 0.0 ? (int) round(($value / $chartMax) * 140) : 0;
+                                            if ($value > 0.0 && $height < 8) {
+                                                $height = 8;
                                             } elseif ($height <= 0) {
                                                 $height = 3;
                                             }
@@ -180,7 +180,7 @@
                                         ?>
                                         <div class="group flex min-w-0 flex-1 flex-col items-center justify-end">
                                             <div class="relative flex w-full items-end justify-center">
-                                                <div class="pointer-events-none absolute -top-7 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow group-hover:block">
+                                                <div class="pointer-events-none absolute -top-8 left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] font-medium text-white shadow group-hover:block">
                                                     <?= number_format($value, 2, '.', ' ') ?> RON
                                                 </div>
                                                 <div
@@ -202,11 +202,41 @@
                         </div>
                     <?php endif; ?>
                 </div>
-            </div>
-        <?php endif; ?>
 
-        <div class="mt-6 grid gap-4 lg:grid-cols-2">
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
+                        <a
+                            href="<?= App\Support\Url::to('admin/incasari') ?>"
+                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                            Vezi incasari
+                        </a>
+                    </div>
+                    <?php if (empty($uncollectedInvoices ?? [])): ?>
+                        <div class="mt-3 text-sm text-slate-500">Nu exista facturi restante.</div>
+                    <?php else: ?>
+                        <ul class="mt-3 space-y-2 text-sm">
+                            <?php foreach (array_slice($uncollectedInvoices, 0, 10) as $invoice): ?>
+                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <span class="font-semibold text-slate-800"><?= htmlspecialchars($invoice['invoice_number']) ?></span>
+                                        <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?> → <?= htmlspecialchars($invoice['client_name'] ?? '—') ?>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        Rest: <?= number_format((float) ($invoice['remaining'] ?? 0), 2, '.', ' ') ?> RON
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
                 <div class="flex items-center justify-between gap-2">
                     <div class="text-sm font-medium text-slate-700">Ultimele 10 facturi introduse</div>
                     <a
@@ -242,39 +272,78 @@
                     </ul>
                 <?php endif; ?>
             </div>
-
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="flex items-center justify-between gap-2">
-                    <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
-                    <a
-                        href="<?= App\Support\Url::to('admin/incasari') ?>"
-                        class="text-xs font-semibold text-blue-700 hover:text-blue-800"
-                    >
-                        Vezi incasari
-                    </a>
+        <?php else: ?>
+            <div class="mt-6 grid gap-4 lg:grid-cols-2">
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-slate-700">Ultimele 10 facturi introduse</div>
+                        <a
+                            href="<?= App\Support\Url::to('admin/facturi') ?>"
+                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                            Vezi toate
+                        </a>
+                    </div>
+                    <?php if (empty($latestInvoices ?? [])): ?>
+                        <div class="mt-3 text-sm text-slate-500">Nu exista facturi importate.</div>
+                    <?php else: ?>
+                        <ul class="mt-3 space-y-2 text-sm">
+                            <?php foreach ($latestInvoices as $invoice): ?>
+                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <a
+                                            href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice['id']) ?>"
+                                            class="font-semibold text-blue-700 hover:text-blue-800"
+                                        >
+                                            <?= htmlspecialchars($invoice['invoice_number']) ?>
+                                        </a>
+                                        <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        Total: <?= number_format((float) ($invoice['total_with_vat'] ?? 0), 2, '.', ' ') ?> RON
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
                 </div>
-                <?php if (empty($uncollectedInvoices ?? [])): ?>
-                    <div class="mt-3 text-sm text-slate-500">Nu exista facturi restante.</div>
-                <?php else: ?>
-                    <ul class="mt-3 space-y-2 text-sm">
-                        <?php foreach (array_slice($uncollectedInvoices, 0, 10) as $invoice): ?>
-                            <li class="rounded border border-slate-200 bg-white px-3 py-2">
-                                <div class="flex flex-wrap items-center justify-between gap-2">
-                                    <span class="font-semibold text-slate-800"><?= htmlspecialchars($invoice['invoice_number']) ?></span>
-                                    <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
-                                </div>
-                                <div class="text-xs text-slate-600">
-                                    <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?> → <?= htmlspecialchars($invoice['client_name'] ?? '—') ?>
-                                </div>
-                                <div class="text-xs text-slate-600">
-                                    Rest: <?= number_format((float) ($invoice['remaining'] ?? 0), 2, '.', ' ') ?> RON
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
+
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
+                        <a
+                            href="<?= App\Support\Url::to('admin/incasari') ?>"
+                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                            Vezi incasari
+                        </a>
+                    </div>
+                    <?php if (empty($uncollectedInvoices ?? [])): ?>
+                        <div class="mt-3 text-sm text-slate-500">Nu exista facturi restante.</div>
+                    <?php else: ?>
+                        <ul class="mt-3 space-y-2 text-sm">
+                            <?php foreach (array_slice($uncollectedInvoices, 0, 10) as $invoice): ?>
+                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <span class="font-semibold text-slate-800"><?= htmlspecialchars($invoice['invoice_number']) ?></span>
+                                        <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?> → <?= htmlspecialchars($invoice['client_name'] ?? '—') ?>
+                                    </div>
+                                    <div class="text-xs text-slate-600">
+                                        Rest: <?= number_format((float) ($invoice['remaining'] ?? 0), 2, '.', ' ') ?> RON
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
             </div>
-        </div>
+        <?php endif; ?>
 
         <?php if ($canAccessSaga): ?>
             <div class="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
