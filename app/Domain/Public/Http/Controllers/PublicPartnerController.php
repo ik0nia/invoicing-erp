@@ -205,9 +205,7 @@ class PublicPartnerController
         $this->updateLinkAfterCompanySave($context, $cui, $supplierCui, $nextStep);
 
         $scope = $this->resolveScope($context, $cui);
-        if ($nextStep >= 2) {
-            $this->ensureRequiredOnboardingContracts($context, $scope, $cui);
-        }
+        $this->regenerateOnboardingGeneratedContracts($context, $scope, $cui);
         $documentsProgress = $this->buildDocumentsProgress($this->fetchContracts($scope));
         $this->syncOnboardingStatus(
             (int) ($context['link']['id'] ?? 0),
@@ -306,6 +304,8 @@ class PublicPartnerController
             );
         }
 
+        $scope = $this->resolveScope($context, $partnerCui);
+        $this->regenerateOnboardingGeneratedContracts($context, $scope, $partnerCui);
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.save', 'public_link', (int) ($context['link']['id'] ?? 0), [
@@ -345,6 +345,7 @@ class PublicPartnerController
         }
 
         Database::execute('DELETE FROM partner_contacts WHERE id = :id', ['id' => $id]);
+        $this->regenerateOnboardingGeneratedContracts($context, $scope, $partnerCui);
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), max(1, min(self::WIZARD_MAX_STEP, $currentStep)), true);
         Audit::record('public_contact.delete', 'public_link', (int) ($context['link']['id'] ?? 0), [
@@ -1345,6 +1346,93 @@ class PublicPartnerController
             $supplierCui !== '' ? $supplierCui : null,
             $clientCui !== '' ? $clientCui : null
         );
+    }
+
+    private function regenerateOnboardingGeneratedContracts(array $context, array $scope, string $partnerCui): void
+    {
+        if ($partnerCui === '' || !Database::tableExists('contracts') || !$this->hasMandatoryCompanyProfile($partnerCui)) {
+            return;
+        }
+
+        $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
+        $contracts = $this->fetchContracts($scope);
+        if (empty($contracts)) {
+            return;
+        }
+
+        $pdfService = new ContractPdfService();
+        foreach ($contracts as $contract) {
+            if (!$this->shouldRegenerateOnboardingContract($contract)) {
+                continue;
+            }
+
+            $contractId = (int) ($contract['id'] ?? 0);
+            if ($contractId <= 0) {
+                continue;
+            }
+
+            $this->clearGeneratedContractFiles($contractId, $contract);
+            try {
+                $pdfService->generatePdfForContract($contractId, 'public');
+            } catch (\Throwable $exception) {
+                continue;
+            }
+        }
+    }
+
+    private function shouldRegenerateOnboardingContract(array $contract): bool
+    {
+        if (array_key_exists('required_onboarding', $contract)) {
+            return !empty($contract['required_onboarding']);
+        }
+
+        return true;
+    }
+
+    private function clearGeneratedContractFiles(int $contractId, array $contract): void
+    {
+        if ($contractId <= 0 || !Database::tableExists('contracts')) {
+            return;
+        }
+
+        $generatedPdfPath = trim((string) ($contract['generated_pdf_path'] ?? ''));
+        if ($generatedPdfPath !== '') {
+            $this->deleteUploadFile($generatedPdfPath);
+        }
+
+        $generatedFilePath = trim((string) ($contract['generated_file_path'] ?? ''));
+        if ($generatedFilePath !== '') {
+            $this->deleteUploadFile($generatedFilePath);
+        }
+
+        $setParts = [];
+        $params = ['id' => $contractId];
+        if (Database::columnExists('contracts', 'generated_pdf_path')) {
+            $setParts[] = 'generated_pdf_path = NULL';
+        }
+        if (Database::columnExists('contracts', 'generated_file_path')) {
+            $setParts[] = 'generated_file_path = NULL';
+        }
+        if (Database::columnExists('contracts', 'updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = date('Y-m-d H:i:s');
+        }
+        if (empty($setParts)) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE contracts SET ' . implode(', ', $setParts) . ' WHERE id = :id',
+            $params
+        );
+    }
+
+    private function deleteUploadFile(string $relativePath): void
+    {
+        $absolutePath = $this->resolveUploadAbsolutePath($relativePath);
+        if ($absolutePath !== '' && is_file($absolutePath)) {
+            @unlink($absolutePath);
+        }
     }
 
     private function upsertCompanyFromPayload(string $cui, array $context, array $payload): void
