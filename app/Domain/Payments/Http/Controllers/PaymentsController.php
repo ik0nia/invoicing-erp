@@ -16,6 +16,7 @@ use App\Support\Session;
 class PaymentsController
 {
     private array $invoiceSalesGrossCache = [];
+    private array $invoicePackageSalesGrossCache = [];
 
     public function indexIn(): void
     {
@@ -950,8 +951,7 @@ class PaymentsController
                 continue;
             }
             $commission = $this->resolveCommissionForInvoiceRow($row, $clientCui);
-
-            $totalClient = $this->applyCommission((float) $row['total_with_vat'], $commission);
+            $totalClient = $this->invoiceClientTotalForRow($row, $commission);
             $collected = (float) $row['collected'];
 
             $invoices[] = [
@@ -995,9 +995,8 @@ class PaymentsController
             $paid = (float) $row['paid'];
             $collected = (float) $row['collected'];
             $commissionValue = (float) $commission;
-            $collectedNet = $commissionValue !== 0.0
-                ? $this->applyCommission($collected, -abs($commissionValue))
-                : $collected;
+            $totalClient = $this->invoiceClientTotalForRow($row, $commissionValue);
+            $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, $commissionValue);
             $available = max(0, $collectedNet - $paid);
             $balance = max(0, $totalSupplier - $paid);
             if ($available > $balance) {
@@ -1337,10 +1336,9 @@ class PaymentsController
             $commission = $this->resolveCommissionForInvoiceRow($row);
             $collected = (float) ($collectedMap[$invoiceId] ?? 0.0);
             $paid = (float) ($paidMap[$invoiceId] ?? 0.0);
-
-            $collectedNet = $commission !== 0.0
-                ? $this->applyCommission($collected, -abs($commission))
-                : $collected;
+            $totalSupplier = (float) ($row['total_with_vat'] ?? 0.0);
+            $totalClient = $this->invoiceClientTotalForRow($row, $commission);
+            $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, (float) $commission);
 
             if (!isset($summary[$supplierCui])) {
                 $summary[$supplierCui] = [
@@ -1380,6 +1378,48 @@ class PaymentsController
         }
 
         return round($amount / $factor, 2);
+    }
+
+    private function invoiceClientTotalForRow(array $row, float $commission): float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceId <= 0) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($invoiceGross > 0.0 && $salesGross > ($invoiceGross + 0.009)) {
+            return round($salesGross, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals($invoiceId);
+        if (empty($packageTotals)) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
+    private function collectedNetForSupplier(float $collected, float $totalClient, float $totalSupplier, float $commission): float
+    {
+        if ($totalClient > 0.0 && $collected + 0.01 >= $totalClient) {
+            return round($totalSupplier, 2);
+        }
+
+        if ($commission !== 0.0) {
+            return $this->applyCommission($collected, -abs($commission));
+        }
+
+        return round($collected, 2);
     }
 
     private function resolveCommissionForInvoiceRow(array $row, ?string $forcedClientCui = null): float
@@ -1483,6 +1523,44 @@ class PaymentsController
         $this->invoiceSalesGrossCache[$invoiceId] = $value;
 
         return $value;
+    }
+
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
     }
 
     private function parseNumber(mixed $value): ?float

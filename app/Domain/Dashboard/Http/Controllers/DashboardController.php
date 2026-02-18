@@ -10,6 +10,7 @@ use App\Support\Response;
 class DashboardController
 {
     private array $invoiceSalesGrossCache = [];
+    private array $invoicePackageSalesGrossCache = [];
 
     public function index(): void
     {
@@ -100,7 +101,7 @@ class DashboardController
             if (Database::tableExists('payment_in_allocations') && Database::tableExists('payment_out_allocations')) {
                 $supplierDueRows = Database::fetchAll(
                     'SELECT i.id, i.invoice_number, i.issue_date, i.supplier_cui, i.selected_client_cui, i.customer_name,
-                            i.commission_percent,
+                            i.commission_percent, i.total_with_vat,
                             COALESCE(SUM(a.amount), 0) AS collected,
                             COALESCE(SUM(o.amount), 0) AS paid
                      FROM invoices_in i
@@ -135,9 +136,9 @@ class DashboardController
                     continue;
                 }
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $collectedNet = $commission !== 0.0
-                    ? $this->applyCommission($collected, -abs($commission))
-                    : $collected;
+                $totalSupplier = (float) ($row['total_with_vat'] ?? 0.0);
+                $totalClient = $this->invoiceClientTotalForRow($row, $commission);
+                $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, $commission);
                 $paid = (float) $row['paid'];
                 $available = max(0, $collectedNet - $paid);
                 if ($available <= 0) {
@@ -183,9 +184,7 @@ class DashboardController
 
             foreach ($monthIssuedRows as $row) {
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $clientTotal = $commission !== 0.0
-                    ? $this->applyCommission((float) $row['total_with_vat'], $commission)
-                    : (float) $row['total_with_vat'];
+                $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
                 $monthIssuedTotal += $clientTotal;
                 $monthIssuedCount++;
             }
@@ -223,9 +222,7 @@ class DashboardController
 
             foreach ($uncollectedRows as $row) {
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $clientTotal = $commission !== 0.0
-                    ? $this->applyCommission((float) $row['total_with_vat'], $commission)
-                    : (float) $row['total_with_vat'];
+                $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
                 $collected = (float) $row['collected'];
                 if ($collected + 0.01 >= $clientTotal) {
                     continue;
@@ -448,6 +445,48 @@ class DashboardController
         return round($amount / $factor, 2);
     }
 
+    private function invoiceClientTotalForRow(array $row, float $commission): float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceId <= 0) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($invoiceGross > 0.0 && $salesGross > ($invoiceGross + 0.009)) {
+            return round($salesGross, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals($invoiceId);
+        if (empty($packageTotals)) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
+    private function collectedNetForSupplier(float $collected, float $totalClient, float $totalSupplier, float $commission): float
+    {
+        if ($totalClient > 0.0 && $collected + 0.01 >= $totalClient) {
+            return round($totalSupplier, 2);
+        }
+
+        if ($commission !== 0.0) {
+            return $this->applyCommission($collected, -abs($commission));
+        }
+
+        return round($collected, 2);
+    }
+
     private function discountCommissionForInvoiceRow(array $row): ?float
     {
         $invoiceId = (int) ($row['id'] ?? 0);
@@ -513,5 +552,43 @@ class DashboardController
         $this->invoiceSalesGrossCache[$invoiceId] = $value;
 
         return $value;
+    }
+
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
     }
 }

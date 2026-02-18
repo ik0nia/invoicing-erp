@@ -37,6 +37,7 @@ class InvoiceController
     private PackageTotalsService $packageTotalsService;
     private array $invoiceSalesGrossCache = [];
     private array $invoiceSalesNetCache = [];
+    private array $invoicePackageSalesGrossCache = [];
 
     public function __construct()
     {
@@ -190,7 +191,10 @@ class InvoiceController
             if ($hasDiscountPricing && $selectedClientCui !== '') {
                 $clientTotal = round($packageGrossTotal, 2);
             } elseif ($commissionBase !== null) {
-                $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
+                $clientTotal = $this->clientTotalFromPackageStats($packageStats, (float) $commissionBase);
+                if ($clientTotal === null) {
+                    $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commissionBase);
+                }
             }
             $canRefacereInvoice = $this->canRefacereInvoice($user);
             $refacerePackages = $canRefacereInvoice
@@ -3945,6 +3949,24 @@ class InvoiceController
         return $totals;
     }
 
+    private function clientTotalFromPackageStats(array $packageStats, float $commissionPercent): ?float
+    {
+        if (empty($packageStats)) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($packageStats as $stat) {
+            $value = (float) ($stat['total_vat'] ?? 0.0);
+            if (abs($value) < 0.0001) {
+                continue;
+            }
+            $total += $this->commissionService->applyCommission($value, $commissionPercent);
+        }
+
+        return round($total, 2);
+    }
+
     private function lastConfirmedPackageNo(): int
     {
         $settings = new SettingsService();
@@ -5137,6 +5159,69 @@ class InvoiceController
         return $value;
     }
 
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
+    }
+
+    private function invoiceClientTotalWithCommission(InvoiceIn $invoice, float $commission, ?float $salesGrossTotal = null): float
+    {
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        }
+        if ($this->invoiceHasDiscountPricing($invoice, $salesGrossTotal)) {
+            return round((float) $salesGrossTotal, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
+        if (empty($packageTotals)) {
+            return $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->commissionService->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
     private function discountPricingCommissionPercent(float $invoiceGrossTotal, float $salesGrossTotal): float
     {
         if ($invoiceGrossTotal <= 0.0 || $salesGrossTotal <= 0.0) {
@@ -5387,7 +5472,7 @@ class InvoiceController
         }
 
         if ($commission !== null) {
-            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $this->invoiceClientTotalWithCommission($invoice, (float) $commission, $salesGrossTotal);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
