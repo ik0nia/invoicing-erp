@@ -2,6 +2,7 @@
 
 namespace App\Domain\Contracts\Http\Controllers;
 
+use App\Domain\Companies\Models\Company;
 use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Users\Models\UserSupplierAccess;
@@ -95,6 +96,11 @@ class ContractsController
                 );
                 Response::redirect('/admin/contracts');
             }
+        }
+        $pdfValidationError = $this->validatePdfGenerationPrerequisites($partnerCui, $supplierCui, $clientCui);
+        if ($pdfValidationError !== null) {
+            Session::flash('error', $pdfValidationError);
+            Response::redirect('/admin/contracts');
         }
         $numberService = new DocumentNumberService();
         $number = null;
@@ -384,6 +390,10 @@ class ContractsController
         } elseif ($kind === 'generated') {
             $path = (string) ($row['generated_pdf_path'] ?? '');
             if ($path === '') {
+                $pdfValidationError = $this->validatePdfGenerationPrerequisitesFromContractRow($row);
+                if ($pdfValidationError !== null) {
+                    Response::abort(422, $pdfValidationError);
+                }
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
                 if ($path === '') {
                     $refreshed = Database::fetchOne(
@@ -402,6 +412,10 @@ class ContractsController
                 $path = (string) ($row['generated_pdf_path'] ?? '');
             }
             if ($path === '') {
+                $pdfValidationError = $this->validatePdfGenerationPrerequisitesFromContractRow($row);
+                if ($pdfValidationError !== null) {
+                    Response::abort(422, $pdfValidationError);
+                }
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
                 if ($path === '') {
                     $refreshed = Database::fetchOne(
@@ -874,5 +888,99 @@ class ContractsController
         header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
         echo json_encode($payload, JSON_UNESCAPED_UNICODE);
         exit;
+    }
+
+    private function validatePdfGenerationPrerequisitesFromContractRow(array $row): ?string
+    {
+        return $this->validatePdfGenerationPrerequisites(
+            (string) ($row['partner_cui'] ?? ''),
+            (string) ($row['supplier_cui'] ?? ''),
+            (string) ($row['client_cui'] ?? '')
+        );
+    }
+
+    private function validatePdfGenerationPrerequisites(string $partnerCui, string $supplierCui, string $clientCui): ?string
+    {
+        $companyCuis = $this->contractCompanyCuis($partnerCui, $supplierCui, $clientCui);
+        if (empty($companyCuis)) {
+            return 'Nu poti genera PDF fara sa selectezi cel putin o firma (CUI).';
+        }
+
+        $missing = [];
+        foreach ($companyCuis as $cui) {
+            if (!$this->hasMandatoryCompanyProfile($cui)) {
+                $missing[] = $cui;
+            }
+        }
+
+        if (!empty($missing)) {
+            return 'Nu poti genera PDF pana nu completezi reprezentantul legal, functia, banca si IBAN-ul pentru firmele: '
+                . implode(', ', $missing)
+                . '.';
+        }
+
+        return null;
+    }
+
+    private function contractCompanyCuis(string $partnerCui, string $supplierCui, string $clientCui): array
+    {
+        $result = [];
+        foreach ([$partnerCui, $supplierCui, $clientCui] as $cui) {
+            $normalized = preg_replace('/\D+/', '', (string) $cui);
+            if ($normalized === '') {
+                continue;
+            }
+            $result[$normalized] = true;
+        }
+
+        return array_keys($result);
+    }
+
+    private function hasMandatoryCompanyProfile(string $cui): bool
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '' || !Database::tableExists('companies')) {
+            return false;
+        }
+
+        $company = Company::findByCui($cui);
+        if (!$company) {
+            return false;
+        }
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($company->bank_name ?? $company->banca ?? ''));
+        $iban = $this->sanitizeIban((string) ($company->iban ?? $company->bank_account ?? ''));
+
+        return $legalRepresentativeName !== ''
+            && $legalRepresentativeRole !== ''
+            && $bankName !== ''
+            && $this->isValidIban($iban);
+    }
+
+    private function sanitizeCompanyValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function sanitizeIban(string $value): string
+    {
+        $value = strtoupper(trim((string) $value));
+        $value = preg_replace('/\s+/', '', $value);
+        $value = preg_replace('/[^A-Z0-9]/', '', (string) $value);
+
+        return (string) $value;
+    }
+
+    private function isValidIban(string $iban): bool
+    {
+        $iban = $this->sanitizeIban($iban);
+        $length = strlen($iban);
+
+        return $length >= 15 && $length <= 34;
     }
 }

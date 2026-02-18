@@ -76,7 +76,7 @@ class PublicPartnerController
             $currentStep = $maxNavigableStep;
         }
 
-        if ($partnerCui !== '' && $currentStep >= 2) {
+        if ($partnerCui !== '' && $hasMandatoryCompanyProfile && $currentStep >= 2) {
             $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
         }
         $contracts = $partnerCui !== '' ? $this->fetchContracts($scope) : [];
@@ -402,7 +402,12 @@ class PublicPartnerController
             }
             $step = $maxNavigableStep;
         }
-        if ($step === self::WIZARD_MAX_STEP && !in_array($status, ['submitted', 'approved'], true)) {
+        if (
+            $step === self::WIZARD_MAX_STEP
+            && $partnerCui !== ''
+            && $hasMandatoryCompanyProfile
+            && !in_array($status, ['submitted', 'approved'], true)
+        ) {
             $this->ensureRequiredOnboardingContracts($context, $scope, $partnerCui);
         }
         if (in_array($status, ['submitted', 'approved'], true)) {
@@ -440,6 +445,7 @@ class PublicPartnerController
         }
 
         $partnerCui = $this->resolvePartnerCui($context);
+        $this->ensurePdfGenerationAllowed($token, $partnerCui);
         $scope = $this->resolveScope($context, $partnerCui);
         $contract = Database::fetchOne('SELECT * FROM contracts WHERE id = :id LIMIT 1', ['id' => $id]);
         if (!$contract || !$this->contractAllowed($contract, $scope)) {
@@ -478,6 +484,9 @@ class PublicPartnerController
         if ($templateId <= 0) {
             Response::abort(404);
         }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $this->ensurePdfGenerationAllowed($token, $partnerCui);
 
         $template = $this->findRequiredOnboardingTemplateById(
             $templateId,
@@ -520,6 +529,9 @@ class PublicPartnerController
         if ($templateId <= 0) {
             Response::abort(404);
         }
+
+        $partnerCui = $this->resolvePartnerCui($context);
+        $this->ensurePdfGenerationAllowed($token, $partnerCui);
 
         $template = $this->findRequiredOnboardingTemplateById(
             $templateId,
@@ -611,6 +623,7 @@ class PublicPartnerController
         } else {
             $path = (string) ($contract['generated_pdf_path'] ?? '');
             if ($path === '') {
+                $this->ensurePdfGenerationAllowed($token, $partnerCui);
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($contract['id'] ?? 0), 'public');
                 if ($path === '') {
                     $refreshed = Database::fetchOne(
@@ -691,6 +704,7 @@ class PublicPartnerController
         }
 
         $partnerCui = $this->resolvePartnerCui($context);
+        $this->ensurePdfGenerationAllowed($token, $partnerCui);
         $resources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
 
         $archiveEntries = [];
@@ -1724,6 +1738,19 @@ class PublicPartnerController
             && $legalRepresentativeRole !== ''
             && $bankName !== ''
             && $this->isValidIban($iban);
+    }
+
+    private function ensurePdfGenerationAllowed(string $token, string $partnerCui): void
+    {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        if ($partnerCui === '') {
+            Session::flash('error', 'Completeaza mai intai datele firmei (Pasul 2) inainte de generarea documentelor PDF.');
+            Response::redirect('/p/' . $token . '#pas-2');
+        }
+        if (!$this->hasMandatoryCompanyProfile($partnerCui)) {
+            Session::flash('error', 'Nu poti genera PDF pana nu completezi reprezentantul legal, functia, banca si IBAN-ul companiei.');
+            Response::redirect('/p/' . $token . '?cui=' . urlencode($partnerCui) . '#pas-2');
+        }
     }
 
     private function sanitizeCompanyValue(string $value): string
