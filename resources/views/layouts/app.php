@@ -179,7 +179,7 @@ if ($isPlatformUser) {
         'icon' => 'utilizatori',
         'active' => str_starts_with($currentPath, '/admin/utilizatori'),
     ];
-    if ($isInternalStaff) {
+    if ($isSuperAdmin || $isAdminRole || $isContabilRole) {
         $adminItems[] = [
             'label' => 'Fisiere UPA',
             'path' => '/admin/fisiere-upa',
