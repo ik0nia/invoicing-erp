@@ -27,6 +27,7 @@ $isPlatformUser = $user?->isPlatformUser() ?? false;
 $isSupplierUser = $user?->isSupplierUser() ?? false;
 $isOperator = $user?->isOperator() ?? false;
 $isAdminRole = $user?->hasRole('admin') ?? false;
+$isContabilRole = $user?->hasRole('contabil') ?? false;
 $isInternalStaff = $user?->hasRole(['super_admin', 'admin', 'contabil', 'operator']) ?? false;
 $canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
 $userFirstName = '';
@@ -93,14 +94,6 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
     ];
 }
 
-if ($isSuperAdmin || $isAdminRole) {
-    $menuSections['Documente'][] = [
-        'label' => 'Modele de contract',
-        'path' => '/admin/contract-templates',
-        'icon' => 'template',
-        'active' => str_starts_with($currentPath, '/admin/contract-templates'),
-    ];
-}
 if ($isInternalStaff) {
     $menuSections['Documente'][] = [
         'label' => 'Registru documente',
@@ -170,6 +163,14 @@ if ($isPlatformUser) {
             'path' => '/admin/setari',
             'icon' => 'setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
+        ];
+    }
+    if ($isSuperAdmin || $isAdminRole || $isContabilRole) {
+        $adminItems[] = [
+            'label' => 'Modele de contract',
+            'path' => '/admin/contract-templates',
+            'icon' => 'template',
+            'active' => str_starts_with($currentPath, '/admin/contract-templates'),
         ];
     }
     $adminItems[] = [
