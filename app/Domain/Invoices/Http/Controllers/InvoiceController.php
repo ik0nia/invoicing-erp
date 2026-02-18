@@ -1337,6 +1337,7 @@ class InvoiceController
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packageStats = $this->packageStats($lines, $packages);
         $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
 
         $clientCui = $invoice->selected_client_cui ?? '';
         $clientName = '';
@@ -1357,6 +1358,10 @@ class InvoiceController
                 (string) $invoice->supplier_cui,
                 (string) $clientCui
             );
+        }
+        if ($hasDiscountPricing) {
+            // XML discount invoices already contain final sale prices on lines.
+            $commissionPercent = null;
         }
 
         $totalWithout = 0.0;
@@ -1411,6 +1416,7 @@ class InvoiceController
             'clientName' => $clientName,
             'clientCompany' => $clientCompany,
             'commissionPercent' => $commissionPercent,
+            'hasDiscountPricing' => $hasDiscountPricing,
         ], 'layouts/print');
     }
 
