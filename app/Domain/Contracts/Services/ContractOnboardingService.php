@@ -50,7 +50,7 @@ class ContractOnboardingService
                     'doc_kind' => $docKind,
                 ], JSON_UNESCAPED_UNICODE);
                 $number = null;
-                $registryScope = $this->resolveRegistryScope($linkType, $supplierCui, $clientCui);
+                $registryScope = $this->resolveRegistryScope($linkType, $supplierCui, $clientCui, $template);
                 try {
                     $number = $this->numberService->allocateNumber($docType, [
                         'registry_scope' => $registryScope,
@@ -321,11 +321,19 @@ class ContractOnboardingService
         return 'c.doc_type = :contract_doc_type';
     }
 
-    private function resolveRegistryScope(string $linkType, ?string $supplierCui, ?string $clientCui): string
+    private function resolveRegistryScope(string $linkType, ?string $supplierCui, ?string $clientCui, ?array $template = null): string
     {
         $linkType = strtolower(trim($linkType));
         $supplierCui = preg_replace('/\D+/', '', (string) $supplierCui);
         $clientCui = preg_replace('/\D+/', '', (string) $clientCui);
+        $appliesTo = strtolower(trim((string) (($template['applies_to'] ?? ''))));
+
+        if ($appliesTo === 'supplier') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        if ($appliesTo === 'client') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
 
         if ($linkType === 'supplier') {
             return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;

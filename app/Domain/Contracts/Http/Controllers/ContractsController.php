@@ -99,7 +99,7 @@ class ContractsController
         $numberService = new DocumentNumberService();
         $number = null;
         $numberWarning = null;
-        $registryScope = $this->resolveRegistryScope($supplierCui, $clientCui, $template);
+        $registryScope = $this->resolveRegistryScope($partnerCui, $supplierCui, $clientCui, $template);
         try {
             $number = $numberService->allocateNumber($docType, [
                 'registry_scope' => $registryScope,
@@ -700,23 +700,93 @@ class ContractsController
         return $series !== '' ? ($series . '-' . $padded) : $padded;
     }
 
-    private function resolveRegistryScope(string $supplierCui, string $clientCui, ?array $template): string
+    private function resolveRegistryScope(string $partnerCui, string $supplierCui, string $clientCui, ?array $template): string
     {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
         $supplierCui = preg_replace('/\D+/', '', $supplierCui);
         $clientCui = preg_replace('/\D+/', '', $clientCui);
-
-        if ($clientCui !== '') {
-            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
-        }
-        if ($supplierCui !== '') {
-            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
-        }
         $appliesTo = strtolower(trim((string) ($template['applies_to'] ?? '')));
+
         if ($appliesTo === 'supplier') {
             return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
         }
+        if ($appliesTo === 'client') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+
+        if ($clientCui !== '' && $supplierCui === '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+        if ($supplierCui !== '' && $clientCui === '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        if ($clientCui !== '' && $supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+
+        $partnerScopeHint = $this->partnerRegistryScopeHint($partnerCui);
+        if ($partnerScopeHint !== null) {
+            return $partnerScopeHint;
+        }
+
+        if ($supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        if ($clientCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
 
         return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+    }
+
+    private function partnerRegistryScopeHint(string $partnerCui): ?string
+    {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        if ($partnerCui === '') {
+            return null;
+        }
+
+        if (
+            Database::tableExists('partners')
+            && Database::columnExists('partners', 'is_supplier')
+            && Database::columnExists('partners', 'is_client')
+        ) {
+            $partnerRow = Database::fetchOne(
+                'SELECT is_supplier, is_client FROM partners WHERE cui = :cui LIMIT 1',
+                ['cui' => $partnerCui]
+            );
+            if ($partnerRow) {
+                $isSupplier = !empty($partnerRow['is_supplier']);
+                $isClient = !empty($partnerRow['is_client']);
+                if ($isSupplier && !$isClient) {
+                    return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+                }
+                if ($isClient && !$isSupplier) {
+                    return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+                }
+                if ($isSupplier && $isClient) {
+                    // Prefer supplier scope for mixed-role partners when no explicit relation is set.
+                    return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+                }
+            }
+        }
+
+        if (Database::tableExists('companies') && Database::columnExists('companies', 'tip_companie')) {
+            $companyRow = Database::fetchOne(
+                'SELECT tip_companie FROM companies WHERE cui = :cui LIMIT 1',
+                ['cui' => $partnerCui]
+            );
+            $companyType = strtolower(trim((string) ($companyRow['tip_companie'] ?? '')));
+            if (in_array($companyType, ['furnizor', 'supplier'], true)) {
+                return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+            }
+            if ($companyType === 'client') {
+                return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+            }
+        }
+
+        return null;
     }
 
     private function resolveCompanyNamesByCuis(array $contracts): array
