@@ -605,21 +605,42 @@ class EnrollmentLinksController
                     ]
                 );
             } elseif ($type === 'supplier' && $partnerCui !== '') {
-                $contractsDeleted = (int) (Database::fetchValue(
-                    'SELECT COUNT(*)
-                     FROM contracts
-                     WHERE (partner_cui = :partner OR supplier_cui = :partner)
-                       AND required_onboarding = 1',
-                    ['partner' => $partnerCui]
-                ) ?? 0);
-                Database::execute(
-                    'DELETE FROM contracts
-                     WHERE (partner_cui = :partner OR supplier_cui = :partner)
-                       AND required_onboarding = 1',
-                    [
-                        'partner' => $partnerCui,
-                    ]
-                );
+                $hasClientCui = Database::columnExists('contracts', 'client_cui');
+                if ($hasClientCui) {
+                    $contractsDeleted = (int) (Database::fetchValue(
+                        'SELECT COUNT(*)
+                         FROM contracts
+                         WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                           AND (client_cui IS NULL OR client_cui = "")
+                           AND required_onboarding = 1',
+                        ['partner' => $partnerCui]
+                    ) ?? 0);
+                    Database::execute(
+                        'DELETE FROM contracts
+                         WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                           AND (client_cui IS NULL OR client_cui = "")
+                           AND required_onboarding = 1',
+                        [
+                            'partner' => $partnerCui,
+                        ]
+                    );
+                } else {
+                    $contractsDeleted = (int) (Database::fetchValue(
+                        'SELECT COUNT(*)
+                         FROM contracts
+                         WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                           AND required_onboarding = 1',
+                        ['partner' => $partnerCui]
+                    ) ?? 0);
+                    Database::execute(
+                        'DELETE FROM contracts
+                         WHERE (partner_cui = :partner OR supplier_cui = :partner)
+                           AND required_onboarding = 1',
+                        [
+                            'partner' => $partnerCui,
+                        ]
+                    );
+                }
             } elseif ($type === 'client' && $partnerCui !== '') {
                 $effectiveSupplier = $relationSupplier !== '' ? $relationSupplier : $supplierCui;
                 if ($effectiveSupplier !== '') {

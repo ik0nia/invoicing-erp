@@ -1187,6 +1187,16 @@ class PublicPartnerController
         }
 
         if ($scope['type'] === 'supplier') {
+            $hasClientCui = Database::columnExists('contracts', 'client_cui');
+            if ($hasClientCui) {
+                return Database::fetchAll(
+                    'SELECT * FROM contracts
+                     WHERE partner_cui = :partner
+                        OR (supplier_cui = :supplier AND (client_cui IS NULL OR client_cui = ""))
+                     ORDER BY ' . $orderBy,
+                    ['partner' => $scope['supplier_cui'], 'supplier' => $scope['supplier_cui']]
+                );
+            }
             return Database::fetchAll(
                 'SELECT * FROM contracts WHERE partner_cui = :partner OR supplier_cui = :supplier ORDER BY ' . $orderBy,
                 ['partner' => $scope['supplier_cui'], 'supplier' => $scope['supplier_cui']]
@@ -1280,8 +1290,16 @@ class PublicPartnerController
                 && (string) ($row['client_cui'] ?? '') === $scope['client_cui'];
         }
         if ($scope['type'] === 'supplier') {
-            return (string) ($row['supplier_cui'] ?? '') === $scope['supplier_cui']
+            $belongsToSupplier = (string) ($row['supplier_cui'] ?? '') === $scope['supplier_cui']
                 || (string) ($row['partner_cui'] ?? '') === $scope['supplier_cui'];
+            if (!$belongsToSupplier) {
+                return false;
+            }
+            if (!array_key_exists('client_cui', $row)) {
+                return true;
+            }
+
+            return trim((string) ($row['client_cui'] ?? '')) === '';
         }
 
         return (string) ($row['client_cui'] ?? '') === $scope['client_cui']
