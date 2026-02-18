@@ -707,8 +707,8 @@
                         <td class="px-3 py-2 text-right">
                             <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($contract['id'] ?? 0) . '&kind=generated') ?>" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M12 20V8" />
-                                    <path d="m7 13 5-5 5 5" />
+                                    <path d="M12 4v12" />
+                                    <path d="m7 11 5 5 5-5" />
                                     <path d="M5 20h14" />
                                 </svg>
                                 Ctr. nesemnat
@@ -717,8 +717,8 @@
                         <td class="px-3 py-2 text-slate-600">
                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-800">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M12 20V8" />
-                                    <path d="m7 13 5-5 5 5" />
+                                    <path d="M12 4v12" />
+                                    <path d="m7 11 5 5 5-5" />
                                     <path d="M5 20h14" />
                                 </svg>
                                 Ctr. Semnat
