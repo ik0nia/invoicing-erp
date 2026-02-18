@@ -1,6 +1,7 @@
 <?php
     $title = 'Dashboard';
     $canAccessSaga = $canAccessSaga ?? false;
+    $isOperator = !empty($isOperator);
     $showEnrollmentPendingCard = !empty($showEnrollmentPendingCard);
     $pendingEnrollmentSummary = is_array($pendingEnrollmentSummary ?? null) ? $pendingEnrollmentSummary : [];
     $showCommissionDailyChart = !empty($showCommissionDailyChart);
@@ -110,36 +111,38 @@
             </div>
         </div>
     <?php else: ?>
-        <div class="mt-6 grid gap-4 lg:grid-cols-4">
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="text-sm font-medium text-slate-700">Total facturat luna curenta</div>
-                <div class="mt-2 text-2xl font-semibold text-slate-900">
-                    <?= number_format((float) ($monthIssuedTotal ?? 0), 2, '.', ' ') ?> RON
+        <?php if (!$isOperator): ?>
+            <div class="mt-6 grid gap-4 lg:grid-cols-4">
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="text-sm font-medium text-slate-700">Total facturat luna curenta</div>
+                    <div class="mt-2 text-2xl font-semibold text-slate-900">
+                        <?= number_format((float) ($monthIssuedTotal ?? 0), 2, '.', ' ') ?> RON
+                    </div>
+                    <div class="text-xs text-slate-500"><?= (int) ($monthIssuedCount ?? 0) ?> facturi emise.</div>
                 </div>
-                <div class="text-xs text-slate-500"><?= (int) ($monthIssuedCount ?? 0) ?> facturi emise.</div>
-            </div>
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="text-sm font-medium text-slate-700">Incasari luna curenta</div>
-                <div class="mt-2 text-2xl font-semibold text-emerald-700">
-                    <?= number_format((float) ($monthCollectedTotal ?? 0), 2, '.', ' ') ?> RON
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="text-sm font-medium text-slate-700">Incasari luna curenta</div>
+                    <div class="mt-2 text-2xl font-semibold text-emerald-700">
+                        <?= number_format((float) ($monthCollectedTotal ?? 0), 2, '.', ' ') ?> RON
+                    </div>
+                    <div class="text-xs text-slate-500">Total incasat de la clienti.</div>
                 </div>
-                <div class="text-xs text-slate-500">Total incasat de la clienti.</div>
-            </div>
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="text-sm font-medium text-slate-700">Plati furnizori luna curenta</div>
-                <div class="mt-2 text-2xl font-semibold text-blue-700">
-                    <?= number_format((float) ($monthPaidTotal ?? 0), 2, '.', ' ') ?> RON
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="text-sm font-medium text-slate-700">Plati furnizori luna curenta</div>
+                    <div class="mt-2 text-2xl font-semibold text-blue-700">
+                        <?= number_format((float) ($monthPaidTotal ?? 0), 2, '.', ' ') ?> RON
+                    </div>
+                    <div class="text-xs text-slate-500">Total plati efectuate.</div>
                 </div>
-                <div class="text-xs text-slate-500">Total plati efectuate.</div>
-            </div>
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
-                <div class="mt-2 text-2xl font-semibold text-amber-700">
-                    <?= (int) ($uncollectedCount ?? 0) ?>
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
+                    <div class="mt-2 text-2xl font-semibold text-amber-700">
+                        <?= (int) ($uncollectedCount ?? 0) ?>
+                    </div>
+                    <div class="text-xs text-slate-500">Facturi emise cu sold restant.</div>
                 </div>
-                <div class="text-xs text-slate-500">Facturi emise cu sold restant.</div>
             </div>
-        </div>
+        <?php endif; ?>
 
         <?php if ($showCommissionDailyChart): ?>
             <?php
@@ -273,7 +276,7 @@
                 <?php endif; ?>
             </div>
         <?php else: ?>
-            <div class="mt-6 grid gap-4 lg:grid-cols-2">
+            <div class="mt-6 grid gap-4 <?= $isOperator ? 'lg:grid-cols-1' : 'lg:grid-cols-2' ?>">
                 <div class="rounded border border-slate-200 bg-slate-50 p-4">
                     <div class="flex items-center justify-between gap-2">
                         <div class="text-sm font-medium text-slate-700">Ultimele 10 facturi introduse</div>
@@ -311,37 +314,39 @@
                     <?php endif; ?>
                 </div>
 
-                <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
-                        <a
-                            href="<?= App\Support\Url::to('admin/incasari') ?>"
-                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
-                        >
-                            Vezi incasari
-                        </a>
+                <?php if (!$isOperator): ?>
+                    <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="text-sm font-medium text-slate-700">Facturi neincasate integral</div>
+                            <a
+                                href="<?= App\Support\Url::to('admin/incasari') ?>"
+                                class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                            >
+                                Vezi incasari
+                            </a>
+                        </div>
+                        <?php if (empty($uncollectedInvoices ?? [])): ?>
+                            <div class="mt-3 text-sm text-slate-500">Nu exista facturi restante.</div>
+                        <?php else: ?>
+                            <ul class="mt-3 space-y-2 text-sm">
+                                <?php foreach (array_slice($uncollectedInvoices, 0, 10) as $invoice): ?>
+                                    <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <span class="font-semibold text-slate-800"><?= htmlspecialchars($invoice['invoice_number']) ?></span>
+                                            <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
+                                        </div>
+                                        <div class="text-xs text-slate-600">
+                                            <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?> → <?= htmlspecialchars($invoice['client_name'] ?? '—') ?>
+                                        </div>
+                                        <div class="text-xs text-slate-600">
+                                            Rest: <?= number_format((float) ($invoice['remaining'] ?? 0), 2, '.', ' ') ?> RON
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
                     </div>
-                    <?php if (empty($uncollectedInvoices ?? [])): ?>
-                        <div class="mt-3 text-sm text-slate-500">Nu exista facturi restante.</div>
-                    <?php else: ?>
-                        <ul class="mt-3 space-y-2 text-sm">
-                            <?php foreach (array_slice($uncollectedInvoices, 0, 10) as $invoice): ?>
-                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
-                                    <div class="flex flex-wrap items-center justify-between gap-2">
-                                        <span class="font-semibold text-slate-800"><?= htmlspecialchars($invoice['invoice_number']) ?></span>
-                                        <span class="text-xs text-slate-500"><?= htmlspecialchars($invoice['issue_date'] ?? '') ?></span>
-                                    </div>
-                                    <div class="text-xs text-slate-600">
-                                        <?= htmlspecialchars($invoice['supplier_name'] ?? '') ?> → <?= htmlspecialchars($invoice['client_name'] ?? '—') ?>
-                                    </div>
-                                    <div class="text-xs text-slate-600">
-                                        Rest: <?= number_format((float) ($invoice['remaining'] ?? 0), 2, '.', ' ') ?> RON
-                                    </div>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php endif; ?>
-                </div>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 

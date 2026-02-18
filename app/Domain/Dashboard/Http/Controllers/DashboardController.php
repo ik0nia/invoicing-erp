@@ -22,6 +22,7 @@ class DashboardController
         }
 
         $isPlatform = $user->isPlatformUser();
+        $isOperator = $user->isOperator();
         $isSupplierUser = $user->isSupplierUser();
         $canAccessSaga = $user->hasRole(['super_admin', 'contabil']);
         if (!$isPlatform && !$isSupplierUser) {
@@ -70,6 +71,7 @@ class DashboardController
                 Response::view('admin/dashboard/index', [
                     'user' => $user,
                     'isPlatform' => $isPlatform,
+                    'isOperator' => $isOperator,
                     'isSupplierUser' => $isSupplierUser,
                     'latestInvoices' => $latestInvoices,
                     'supplierLatestInvoices' => $supplierLatestInvoices,
@@ -298,6 +300,7 @@ class DashboardController
         Response::view('admin/dashboard/index', [
             'user' => $user,
             'isPlatform' => $isPlatform,
+            'isOperator' => $isOperator,
             'isSupplierUser' => $isSupplierUser,
             'canAccessSaga' => $canAccessSaga,
             'latestInvoices' => $latestInvoices,
