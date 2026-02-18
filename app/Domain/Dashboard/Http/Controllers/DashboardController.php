@@ -42,8 +42,7 @@ class DashboardController
         $uncollectedCount = 0;
         $monthStart = date('Y-m-01');
         $monthEnd = date('Y-m-t');
-        $showEnrollmentPendingCard = $isPlatform;
-        $pendingEnrollmentSummary = $showEnrollmentPendingCard
+        $pendingEnrollmentSummary = $isPlatform
             ? $this->pendingEnrollmentSummary()
             : [
                 'total' => 0,
@@ -52,6 +51,7 @@ class DashboardController
                 'submitted_today' => 0,
                 'association_pending' => 0,
             ];
+        $showEnrollmentPendingCard = $isPlatform && (int) ($pendingEnrollmentSummary['total'] ?? 0) > 0;
         $showCommissionDailyChart = $isPlatform && $user->hasRole(['super_admin', 'admin']);
         $commissionDailyChart = [
             'days' => [],
