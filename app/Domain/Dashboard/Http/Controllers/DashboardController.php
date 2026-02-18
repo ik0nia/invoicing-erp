@@ -41,6 +41,24 @@ class DashboardController
         $uncollectedCount = 0;
         $monthStart = date('Y-m-01');
         $monthEnd = date('Y-m-t');
+        $showEnrollmentPendingCard = $isPlatform;
+        $pendingEnrollmentSummary = $showEnrollmentPendingCard
+            ? $this->pendingEnrollmentSummary()
+            : [
+                'total' => 0,
+                'suppliers' => 0,
+                'clients' => 0,
+                'submitted_today' => 0,
+                'association_pending' => 0,
+            ];
+        $showCommissionDailyChart = $isPlatform && $user->hasRole(['super_admin', 'admin']);
+        $commissionDailyChart = [
+            'days' => [],
+            'max' => 0.0,
+            'total' => 0.0,
+            'month_label' => date('m.Y', strtotime($monthStart)),
+            'has_data' => false,
+        ];
         $supplierFilter = '';
         $supplierPlaceholders = '';
         $params = [];
@@ -64,6 +82,10 @@ class DashboardController
                     'monthPaidTotal' => $monthPaidTotal,
                     'uncollectedInvoices' => $uncollectedInvoices,
                     'uncollectedCount' => $uncollectedCount,
+                    'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
+                    'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+                    'showCommissionDailyChart' => $showCommissionDailyChart,
+                    'commissionDailyChart' => $commissionDailyChart,
                 ]);
                 return;
             }
@@ -181,6 +203,9 @@ class DashboardController
             );
 
             $commissionMap = $this->commissionMap($monthIssuedRows);
+            if ($showCommissionDailyChart) {
+                $commissionDailyChart = $this->buildDailyCommissionChart($monthIssuedRows, $commissionMap, $monthStart);
+            }
 
             foreach ($monthIssuedRows as $row) {
                 $commission = $this->resolveCommission($row, $commissionMap);
@@ -286,7 +311,135 @@ class DashboardController
             'monthPaidTotal' => $monthPaidTotal,
             'uncollectedInvoices' => $uncollectedInvoices,
             'uncollectedCount' => $uncollectedCount,
+            'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
+            'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+            'showCommissionDailyChart' => $showCommissionDailyChart,
+            'commissionDailyChart' => $commissionDailyChart,
         ]);
+    }
+
+    private function pendingEnrollmentSummary(): array
+    {
+        $summary = [
+            'total' => 0,
+            'suppliers' => 0,
+            'clients' => 0,
+            'submitted_today' => 0,
+            'association_pending' => 0,
+        ];
+        if (!Database::tableExists('enrollment_links') || !Database::columnExists('enrollment_links', 'onboarding_status')) {
+            return $summary;
+        }
+
+        $whereParts = ['onboarding_status = :submitted'];
+        $params = ['submitted' => 'submitted'];
+        if (Database::columnExists('enrollment_links', 'status')) {
+            $whereParts[] = '(status IS NULL OR status = "" OR status = :active)';
+            $params['active'] = 'active';
+        }
+        $whereSql = implode(' AND ', $whereParts);
+        $typeSelect = Database::columnExists('enrollment_links', 'type') ? 'type' : "''";
+
+        $rows = Database::fetchAll(
+            'SELECT ' . $typeSelect . ' AS link_type, COUNT(*) AS total
+             FROM enrollment_links
+             WHERE ' . $whereSql . '
+             GROUP BY link_type',
+            $params
+        );
+
+        foreach ($rows as $row) {
+            $count = (int) ($row['total'] ?? 0);
+            $type = trim((string) ($row['link_type'] ?? ''));
+            $summary['total'] += $count;
+            if ($type === 'supplier') {
+                $summary['suppliers'] += $count;
+            } elseif ($type === 'client') {
+                $summary['clients'] += $count;
+            }
+        }
+
+        if (Database::columnExists('enrollment_links', 'submitted_at')) {
+            $summary['submitted_today'] = (int) (Database::fetchValue(
+                'SELECT COUNT(*)
+                 FROM enrollment_links
+                 WHERE ' . $whereSql . '
+                   AND DATE(submitted_at) = :today',
+                array_merge($params, ['today' => date('Y-m-d')])
+            ) ?? 0);
+        }
+
+        if (Database::tableExists('association_requests') && Database::columnExists('association_requests', 'status')) {
+            $summary['association_pending'] = (int) (Database::fetchValue(
+                'SELECT COUNT(*) FROM association_requests WHERE status = :status',
+                ['status' => 'pending']
+            ) ?? 0);
+        }
+
+        return $summary;
+    }
+
+    private function buildDailyCommissionChart(array $monthIssuedRows, array $commissionMap, string $monthStart): array
+    {
+        $daysInMonth = (int) date('t', strtotime($monthStart));
+        if ($daysInMonth <= 0) {
+            $daysInMonth = (int) date('t');
+        }
+
+        $dailyTotals = [];
+        for ($day = 1; $day <= $daysInMonth; $day++) {
+            $dailyTotals[$day] = 0.0;
+        }
+
+        foreach ($monthIssuedRows as $row) {
+            $invoiceDate = trim((string) ($row['invoice_date'] ?? $row['issue_date'] ?? ''));
+            if ($invoiceDate === '') {
+                continue;
+            }
+            $timestamp = strtotime($invoiceDate);
+            if ($timestamp === false) {
+                continue;
+            }
+            $dayNo = (int) date('j', $timestamp);
+            if ($dayNo < 1 || $dayNo > $daysInMonth) {
+                continue;
+            }
+
+            $commission = $this->resolveCommission($row, $commissionMap);
+            $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
+            $supplierTotal = (float) ($row['total_with_vat'] ?? 0.0);
+            $commissionAmount = round($clientTotal - $supplierTotal, 2);
+            if ($commissionAmount < 0.0) {
+                $commissionAmount = 0.0;
+            }
+            $dailyTotals[$dayNo] += $commissionAmount;
+        }
+
+        $days = [];
+        $maxValue = 0.0;
+        $total = 0.0;
+        foreach ($dailyTotals as $dayNo => $amount) {
+            $value = round((float) $amount, 2);
+            if (abs($value) < 0.005) {
+                $value = 0.0;
+            }
+            if ($value > $maxValue) {
+                $maxValue = $value;
+            }
+            $total += $value;
+            $days[] = [
+                'day' => (int) $dayNo,
+                'value' => $value,
+            ];
+        }
+
+        return [
+            'days' => $days,
+            'max' => round($maxValue, 2),
+            'total' => round($total, 2),
+            'month_label' => date('m.Y', strtotime($monthStart)),
+            'has_data' => $maxValue > 0.0,
+        ];
     }
 
     private function collectClientCuis(array ...$rows): array

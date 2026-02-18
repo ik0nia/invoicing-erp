@@ -1,6 +1,10 @@
 <?php
     $title = 'Dashboard';
     $canAccessSaga = $canAccessSaga ?? false;
+    $showEnrollmentPendingCard = !empty($showEnrollmentPendingCard);
+    $pendingEnrollmentSummary = is_array($pendingEnrollmentSummary ?? null) ? $pendingEnrollmentSummary : [];
+    $showCommissionDailyChart = !empty($showCommissionDailyChart);
+    $commissionDailyChart = is_array($commissionDailyChart ?? null) ? $commissionDailyChart : [];
 ?>
 
 <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -8,6 +12,40 @@
     <p class="mt-2 text-sm text-slate-500">
         Bine ai venit<?= isset($user) ? ', ' . htmlspecialchars($user->name) : '' ?>.
     </p>
+
+    <?php if ($showEnrollmentPendingCard): ?>
+        <?php
+            $pendingTotal = (int) ($pendingEnrollmentSummary['total'] ?? 0);
+            $pendingSuppliers = (int) ($pendingEnrollmentSummary['suppliers'] ?? 0);
+            $pendingClients = (int) ($pendingEnrollmentSummary['clients'] ?? 0);
+            $pendingToday = (int) ($pendingEnrollmentSummary['submitted_today'] ?? 0);
+            $pendingAssociations = (int) ($pendingEnrollmentSummary['association_pending'] ?? 0);
+        ?>
+        <div class="mt-4 rounded border border-amber-200 bg-amber-50 p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div class="text-sm font-medium text-amber-900">Inrolari in asteptare</div>
+                    <div class="mt-1 text-2xl font-semibold text-amber-800"><?= $pendingTotal ?></div>
+                    <div class="text-xs text-amber-700">
+                        Furnizori: <?= $pendingSuppliers ?> |
+                        Clienti: <?= $pendingClients ?> |
+                        Trimise azi: <?= $pendingToday ?>
+                    </div>
+                    <?php if ($pendingAssociations > 0): ?>
+                        <div class="mt-1 text-xs text-amber-700">
+                            Solicitari asociere in asteptare: <?= $pendingAssociations ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <a
+                    href="<?= App\Support\Url::to('admin/inrolari') ?>"
+                    class="inline-flex items-center rounded border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                >
+                    Vezi inrolarile
+                </a>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <?php if (!empty($isSupplierUser)): ?>
         <div class="mt-6 grid gap-4 lg:grid-cols-3">
@@ -102,6 +140,61 @@
                 <div class="text-xs text-slate-500">Facturi emise cu sold restant.</div>
             </div>
         </div>
+
+        <?php if ($showCommissionDailyChart): ?>
+            <?php
+                $chartDays = is_array($commissionDailyChart['days'] ?? null) ? $commissionDailyChart['days'] : [];
+                $chartMax = (float) ($commissionDailyChart['max'] ?? 0.0);
+                $chartTotal = (float) ($commissionDailyChart['total'] ?? 0.0);
+                $chartMonthLabel = (string) ($commissionDailyChart['month_label'] ?? '');
+                $chartHasData = !empty($commissionDailyChart['has_data']);
+                $daysCount = count($chartDays);
+            ?>
+            <div class="mt-6 rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="text-sm font-medium text-slate-700">
+                        Comision zilnic (luna <?= htmlspecialchars($chartMonthLabel !== '' ? $chartMonthLabel : date('m.Y')) ?>)
+                    </div>
+                    <div class="text-xs font-semibold text-blue-700">
+                        Total comision: <?= number_format($chartTotal, 2, '.', ' ') ?> RON
+                    </div>
+                </div>
+                <?php if (empty($chartDays) || !$chartHasData || $chartMax <= 0.0): ?>
+                    <div class="mt-3 text-sm text-slate-500">Nu exista comision inregistrat pentru luna curenta.</div>
+                <?php else: ?>
+                    <div class="mt-4 overflow-x-auto">
+                        <div class="min-w-[760px]">
+                            <div class="flex h-40 items-end gap-1 rounded border border-slate-200 bg-white px-2 py-2">
+                                <?php foreach ($chartDays as $point): ?>
+                                    <?php
+                                        $dayNo = (int) ($point['day'] ?? 0);
+                                        $value = (float) ($point['value'] ?? 0.0);
+                                        $height = $chartMax > 0.0 ? (int) round(($value / $chartMax) * 120) : 0;
+                                        if ($value > 0.0 && $height < 6) {
+                                            $height = 6;
+                                        }
+                                        $showTick = $dayNo === 1 || $dayNo === $daysCount || $dayNo % 2 === 0;
+                                    ?>
+                                    <div class="flex min-w-0 flex-1 flex-col items-center justify-end">
+                                        <div
+                                            class="<?= $value > 0.0 ? 'bg-blue-500' : 'bg-slate-200' ?> w-full rounded-t"
+                                            style="height: <?= $height ?>px"
+                                            title="Ziua <?= $dayNo ?>: <?= number_format($value, 2, '.', ' ') ?> RON"
+                                        ></div>
+                                        <div class="mt-1 h-3 text-[10px] leading-3 text-slate-500">
+                                            <?= $showTick ? (string) $dayNo : '' ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-[11px] text-slate-500">
+                        Barele arata comisionul zilnic calculat ca diferenta dintre total client si total furnizor pentru facturile emise.
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
         <div class="mt-6 grid gap-4 lg:grid-cols-2">
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
