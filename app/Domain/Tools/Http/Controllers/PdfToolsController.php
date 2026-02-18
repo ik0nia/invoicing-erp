@@ -124,7 +124,7 @@ class PdfToolsController
     {
         Auth::requireLogin();
         $user = Auth::user();
-        if (!$user || !($user->hasRole('super_admin') || $user->hasRole('admin'))) {
+        if (!$user || !$user->hasRole(['super_admin', 'admin', 'operator'])) {
             Response::abort(403, 'Acces interzis.');
         }
     }

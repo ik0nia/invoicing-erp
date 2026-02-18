@@ -113,15 +113,6 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
     ];
 }
 
-if ($isInternalStaff) {
-    $menuSections['Documente'][] = [
-        'label' => 'Registru documente',
-        'path' => '/admin/registru-documente',
-        'icon' => 'registru',
-        'active' => str_starts_with($currentPath, '/admin/registru-documente'),
-    ];
-}
-
 if ($isPlatformUser) {
     if (!$isOperator) {
         $menuSections['Facturare'][] = [
