@@ -511,11 +511,13 @@
         <thead class="bg-slate-50 text-slate-600">
             <tr>
                 <th class="px-3 py-2">Nr. registru</th>
+                <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Relatie</th>
                 <th class="px-3 py-2">Titlu</th>
-                <th class="px-3 py-2">Data contract</th>
                 <th class="px-3 py-2">Status</th>
+                <th class="px-3 py-2">Creat</th>
                 <th class="px-3 py-2">Incarcare document</th>
+                <th class="px-3 py-2 text-right">Nesemnat</th>
                 <th class="px-3 py-2">Descarcare</th>
                 <th class="px-3 py-2"></th>
             </tr>
@@ -523,7 +525,7 @@
         <tbody id="contracts-table-body">
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="10" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -566,6 +568,14 @@
                                 ? date('d.m.Y', $contractTimestamp)
                                 : $contractDateRaw;
                         }
+                        $createdAtRaw = trim((string) ($contract['created_at'] ?? ''));
+                        $createdAtDisplay = '—';
+                        if ($createdAtRaw !== '') {
+                            $createdAtTimestamp = strtotime($createdAtRaw);
+                            $createdAtDisplay = $createdAtTimestamp !== false
+                                ? date('d.m.Y H:i', $createdAtTimestamp)
+                                : $createdAtRaw;
+                        }
                         $relationLines = [];
                         $relationCompanies = [];
                         if ($relationSupplierName !== '') {
@@ -604,6 +614,7 @@
                                 <span class="text-amber-700">Fara numar</span>
                             <?php endif; ?>
                         </td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php if (empty($relationLines)): ?>
                                 —
@@ -617,12 +628,12 @@
                             <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
-                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($contractDateDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                 <?= htmlspecialchars($statusLabel) ?>
                             </span>
                         </td>
+                        <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($createdAtDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($uploadTargetCompanyCui !== ''): ?>
                                 <button
@@ -637,6 +648,11 @@
                             <?php else: ?>
                                 <span class="text-xs text-slate-400">—</span>
                             <?php endif; ?>
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            <a href="<?= App\Support\Url::to('admin/contracts/download?id=' . (int) ($contract['id'] ?? 0) . '&kind=generated') ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">
+                                Descarca
+                            </a>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
@@ -662,7 +678,7 @@
                     </tr>
                 <?php endforeach; ?>
                 <tr id="contracts-empty-filtered-row" class="hidden">
-                    <td colspan="8" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="10" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte pentru filtrele selectate.
                     </td>
                 </tr>
