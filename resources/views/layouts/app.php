@@ -2,6 +2,7 @@
 
 use App\Domain\Settings\Services\SettingsService;
 use App\Support\Auth;
+use App\Support\Database;
 
 $settings = new SettingsService();
 $brandingLogo = (string) $settings->get('branding.logo_path', '');
@@ -30,6 +31,23 @@ $isAdminRole = $user?->hasRole('admin') ?? false;
 $isContabilRole = $user?->hasRole('contabil') ?? false;
 $isInternalStaff = $user?->hasRole(['super_admin', 'admin', 'contabil', 'operator']) ?? false;
 $canAccessSaga = $user?->hasRole(['super_admin', 'contabil']) ?? false;
+$hasPendingEnrollmentLinks = false;
+if (
+    $isInternalStaff
+    && Database::tableExists('enrollment_links')
+    && Database::columnExists('enrollment_links', 'onboarding_status')
+) {
+    $whereParts = ['onboarding_status = :submitted'];
+    $params = ['submitted' => 'submitted'];
+    if (Database::columnExists('enrollment_links', 'status')) {
+        $whereParts[] = '(status IS NULL OR status = "" OR status = :active)';
+        $params['active'] = 'active';
+    }
+    $hasPendingEnrollmentLinks = (int) (Database::fetchValue(
+        'SELECT COUNT(*) FROM enrollment_links WHERE ' . implode(' AND ', $whereParts),
+        $params
+    ) ?? 0) > 0;
+}
 $userFirstName = '';
 if ($user && !empty($user->name)) {
     $parts = preg_split('/\s+/', trim((string) $user->name));
@@ -78,6 +96,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'label' => 'Inrolari in asteptare',
             'path' => '/admin/inrolari',
             'icon' => 'inrolari',
+            'highlight' => $hasPendingEnrollmentLinks,
             'active' => str_starts_with($currentPath, '/admin/inrolari'),
         ];
     }
@@ -197,7 +216,7 @@ if ($isPlatformUser) {
     }
     $menuSections['Administrare'] = $adminItems;
 
-    if ($isSuperAdmin || $isAdminRole) {
+    if ($isSuperAdmin || $isAdminRole || $isOperator) {
         $menuSections['Utile'] = [
             [
                 'label' => 'Prelucrare PDF aviz',
@@ -391,10 +410,20 @@ $menuIcon = static function (string $icon): string {
                         </div>
                         <ul class="space-y-1">
                             <?php foreach ($items as $item): ?>
+                                <?php
+                                    $itemClasses = 'text-slate-700 hover:bg-slate-100 hover:text-slate-900';
+                                    if (!empty($item['highlight'])) {
+                                        $itemClasses = !empty($item['active'])
+                                            ? 'bg-orange-100 text-orange-800 ring-1 ring-orange-300'
+                                            : 'bg-orange-50 text-orange-700 hover:bg-orange-100 hover:text-orange-800';
+                                    } elseif (!empty($item['active'])) {
+                                        $itemClasses = 'bg-blue-100 text-blue-800';
+                                    }
+                                ?>
                                 <li>
                                     <a
                                         href="<?= App\Support\Url::to($item['path']) ?>"
-                                        class="flex items-center gap-2 rounded-md px-2.5 py-1.5 font-medium transition-colors <?= $item['active'] ? 'bg-blue-100 text-blue-800' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900' ?>"
+                                        class="flex items-center gap-2 rounded-md px-2.5 py-1.5 font-medium transition-colors <?= $itemClasses ?>"
                                     >
                                         <?php $iconName = (string) ($item['icon'] ?? 'dot'); ?>
                                         <span class="menu-icon inline-flex h-4 w-4 shrink-0 items-center justify-center">
