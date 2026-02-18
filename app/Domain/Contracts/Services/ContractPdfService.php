@@ -34,13 +34,19 @@ class ContractPdfService
         $title = (string) ($contract['title'] ?? 'Contract');
         $templateId = isset($contract['template_id']) ? (int) $contract['template_id'] : 0;
         $templateHtml = '';
+        $templateAppliesTo = '';
 
         if ($templateId > 0 && Database::tableExists('contract_templates')) {
+            $templateSelect = ['html_content'];
+            if (Database::columnExists('contract_templates', 'applies_to')) {
+                $templateSelect[] = 'applies_to';
+            }
             $template = Database::fetchOne(
-                'SELECT html_content FROM contract_templates WHERE id = :id LIMIT 1',
+                'SELECT ' . implode(', ', $templateSelect) . ' FROM contract_templates WHERE id = :id LIMIT 1',
                 ['id' => $templateId]
             );
             $templateHtml = (string) ($template['html_content'] ?? '');
+            $templateAppliesTo = trim((string) ($template['applies_to'] ?? ''));
         }
 
         if ($templateHtml === '') {
@@ -68,6 +74,8 @@ class ContractPdfService
                 'doc_no' => (int) ($contract['doc_no'] ?? 0),
                 'doc_series' => (string) ($contract['doc_series'] ?? ''),
                 'doc_full_no' => (string) ($contract['doc_full_no'] ?? ''),
+                'required_onboarding' => isset($contract['required_onboarding']) ? (int) $contract['required_onboarding'] : 0,
+                'template_applies_to' => $templateAppliesTo,
             ]
         );
 

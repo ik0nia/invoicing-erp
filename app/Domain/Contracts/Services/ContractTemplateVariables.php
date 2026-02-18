@@ -265,6 +265,10 @@ class ContractTemplateVariables
     ): array {
         $referenceNo = '';
         $referenceDate = '';
+        $templateAppliesTo = strtolower(trim((string) ($contractContext['template_applies_to'] ?? '')));
+        $requiredOnboarding = isset($contractContext['required_onboarding'])
+            ? (int) $contractContext['required_onboarding']
+            : null;
         if ($docType === 'contract') {
             $referenceNo = trim($currentDocFullNo);
             $referenceDate = trim($currentContractDateDisplay);
@@ -274,7 +278,9 @@ class ContractTemplateVariables
             $partnerCui,
             $supplierCui,
             $clientCui,
-            isset($contractContext['contract_id']) ? (int) $contractContext['contract_id'] : 0
+            isset($contractContext['contract_id']) ? (int) $contractContext['contract_id'] : 0,
+            $templateAppliesTo,
+            $requiredOnboarding
         );
         if ($primary) {
             if ($referenceNo === '') {
@@ -303,14 +309,21 @@ class ContractTemplateVariables
         ?string $partnerCui,
         ?string $supplierCui,
         ?string $clientCui,
-        int $currentContractId
+        int $currentContractId,
+        string $templateAppliesTo = '',
+        ?int $requiredOnboarding = null
     ): array {
         if (!Database::tableExists('contracts')) {
             return [];
         }
 
+        $templateAppliesTo = strtolower(trim($templateAppliesTo));
         $scope = $this->resolvePrimaryCompanyScope($partnerCui, $supplierCui, $clientCui);
-        if ($scope['mode'] === 'none') {
+        $supplierScopeCui = $this->normalizeCui($supplierCui);
+        if ($supplierScopeCui === '') {
+            $supplierScopeCui = $this->normalizeCui($partnerCui);
+        }
+        if ($scope['mode'] === 'none' && !($templateAppliesTo === 'supplier' && $supplierScopeCui !== '')) {
             return [];
         }
 
@@ -328,13 +341,22 @@ class ContractTemplateVariables
             $params['contract_doc_kind'] = 'contract';
         }
 
-        if ($scope['mode'] === 'partner') {
+        if ($templateAppliesTo === 'supplier' && $supplierScopeCui !== '') {
+            $sql .= ' AND (c.partner_cui = :supplier_company OR c.supplier_cui = :supplier_company)';
+            $params['supplier_company'] = $supplierScopeCui;
+            if (Database::columnExists('contracts', 'client_cui')) {
+                $sql .= ' AND (c.client_cui IS NULL OR c.client_cui = "")';
+            }
+        } elseif ($scope['mode'] === 'partner') {
             $sql .= ' AND (c.partner_cui = :company OR c.client_cui = :company OR c.supplier_cui = :company)';
             $params['company'] = $scope['company_cui'];
         } elseif ($scope['mode'] === 'relation') {
             $sql .= ' AND c.supplier_cui = :supplier AND c.client_cui = :client';
             $params['supplier'] = $scope['supplier_cui'];
             $params['client'] = $scope['client_cui'];
+        }
+        if ($requiredOnboarding === 1 && Database::columnExists('contracts', 'required_onboarding')) {
+            $sql .= ' AND c.required_onboarding = 1';
         }
 
         if ($currentContractId > 0) {
