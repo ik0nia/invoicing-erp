@@ -17,6 +17,10 @@
     $logoUrl = $resolveLogoUrl($brandingLogo);
     $logoDarkUrl = $resolveLogoUrl($brandingLogoDark);
     $hasDualLogos = $logoUrl !== null && $logoDarkUrl !== null && $logoUrl !== $logoDarkUrl;
+$guestContainerClass = trim((string) ($guestContainerClass ?? 'max-w-5xl'));
+if ($guestContainerClass === '') {
+    $guestContainerClass = 'max-w-5xl';
+}
 ?>
 <!DOCTYPE html>
 <html lang="ro">
@@ -24,12 +28,18 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= htmlspecialchars($title ?? 'ERP Intern') ?></title>
+    <script>
+        window.tailwind = window.tailwind || {};
+        window.tailwind.config = {
+            darkMode: 'class',
+        };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         (function () {
             try {
                 if (localStorage.getItem('dark-mode') === '1') {
-                    document.documentElement.classList.add('dark-mode');
+                    document.documentElement.classList.add('dark-mode', 'dark');
                 }
             } catch (e) {}
         })();
@@ -99,7 +109,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900">
     <header class="border-b border-slate-200 bg-white">
-        <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+        <div class="mx-auto flex <?= htmlspecialchars($guestContainerClass) ?> items-center justify-between px-6 py-4">
             <a href="<?= App\Support\Url::to('/') ?>" class="inline-flex items-center gap-3">
                 <?php if ($hasDualLogos): ?>
                     <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo ERP" class="brand-logo-light h-9 w-auto">
@@ -122,7 +132,7 @@
         </div>
     </header>
 
-    <main class="mx-auto max-w-5xl px-6 py-8">
+    <main class="mx-auto <?= htmlspecialchars($guestContainerClass) ?> px-6 py-8">
         <?php include BASE_PATH . '/resources/views/partials/flash.php'; ?>
         <?= $content ?? '' ?>
     </main>
@@ -134,6 +144,7 @@
             }
             const setDark = (enabled) => {
                 document.documentElement.classList.toggle('dark-mode', enabled);
+                document.documentElement.classList.toggle('dark', enabled);
                 try {
                     localStorage.setItem('dark-mode', enabled ? '1' : '0');
                 } catch (e) {}

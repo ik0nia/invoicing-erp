@@ -103,7 +103,7 @@
     $wizardProgressPercent = (int) round(($completedStepsCount / max(1, $maxStep)) * 100);
 ?>
 
-<div class="mx-auto w-full max-w-6xl space-y-5">
+<div class="mx-auto w-full max-w-7xl space-y-5">
 
     <?php if ($error !== ''): ?>
         <div class="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-200">

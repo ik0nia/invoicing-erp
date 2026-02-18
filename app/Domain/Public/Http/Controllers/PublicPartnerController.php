@@ -39,10 +39,12 @@ class PublicPartnerController
             if ($anyContext && ($anyContext['link']['status'] ?? '') === 'disabled') {
                 Response::view('public/partner_portal', [
                     'error' => 'Link dezactivat. Contactati administratorul.',
+                    'guestContainerClass' => 'max-w-7xl',
                 ], 'layouts/guest');
             }
             Response::view('public/partner_portal', [
                 'error' => 'Link invalid sau expirat.',
+                'guestContainerClass' => 'max-w-7xl',
             ], 'layouts/guest');
         }
 
@@ -122,6 +124,7 @@ class PublicPartnerController
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
             'token' => $token,
             'contactDepartments' => self::CONTACT_DEPARTMENTS,
+            'guestContainerClass' => 'max-w-7xl',
         ], 'layouts/guest');
     }
 
