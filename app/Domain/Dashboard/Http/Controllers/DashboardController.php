@@ -9,6 +9,9 @@ use App\Support\Response;
 
 class DashboardController
 {
+    private array $invoiceSalesGrossCache = [];
+    private array $invoicePackageSalesGrossCache = [];
+
     public function index(): void
     {
         Auth::requireLogin();
@@ -19,6 +22,7 @@ class DashboardController
         }
 
         $isPlatform = $user->isPlatformUser();
+        $isOperator = $user->isOperator();
         $isSupplierUser = $user->isSupplierUser();
         $canAccessSaga = $user->hasRole(['super_admin', 'contabil']);
         if (!$isPlatform && !$isSupplierUser) {
@@ -36,8 +40,31 @@ class DashboardController
         $monthPaidTotal = 0.0;
         $uncollectedInvoices = [];
         $uncollectedCount = 0;
+        $pendingContracts = [];
         $monthStart = date('Y-m-01');
         $monthEnd = date('Y-m-t');
+        $pendingEnrollmentSummary = $isPlatform
+            ? $this->pendingEnrollmentSummary()
+            : [
+                'total' => 0,
+                'suppliers' => 0,
+                'clients' => 0,
+                'submitted_today' => 0,
+                'association_pending' => 0,
+            ];
+        $showEnrollmentPendingCard = $isPlatform && (int) ($pendingEnrollmentSummary['total'] ?? 0) > 0;
+        $showPendingContractsCard = $isPlatform;
+        if ($showPendingContractsCard) {
+            $pendingContracts = $this->loadContractsNotApproved(30);
+        }
+        $showCommissionDailyChart = $isPlatform && $user->hasRole(['super_admin', 'admin']);
+        $commissionDailyChart = [
+            'days' => [],
+            'max' => 0.0,
+            'total' => 0.0,
+            'month_label' => date('m.Y', strtotime($monthStart)),
+            'has_data' => false,
+        ];
         $supplierFilter = '';
         $supplierPlaceholders = '';
         $params = [];
@@ -49,6 +76,7 @@ class DashboardController
                 Response::view('admin/dashboard/index', [
                     'user' => $user,
                     'isPlatform' => $isPlatform,
+                    'isOperator' => $isOperator,
                     'isSupplierUser' => $isSupplierUser,
                     'latestInvoices' => $latestInvoices,
                     'supplierLatestInvoices' => $supplierLatestInvoices,
@@ -61,6 +89,12 @@ class DashboardController
                     'monthPaidTotal' => $monthPaidTotal,
                     'uncollectedInvoices' => $uncollectedInvoices,
                     'uncollectedCount' => $uncollectedCount,
+                    'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
+                    'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+                    'showPendingContractsCard' => $showPendingContractsCard,
+                    'pendingContracts' => $pendingContracts,
+                    'showCommissionDailyChart' => $showCommissionDailyChart,
+                    'commissionDailyChart' => $commissionDailyChart,
                 ]);
                 return;
             }
@@ -98,7 +132,7 @@ class DashboardController
             if (Database::tableExists('payment_in_allocations') && Database::tableExists('payment_out_allocations')) {
                 $supplierDueRows = Database::fetchAll(
                     'SELECT i.id, i.invoice_number, i.issue_date, i.supplier_cui, i.selected_client_cui, i.customer_name,
-                            i.commission_percent,
+                            i.commission_percent, i.total_with_vat,
                             COALESCE(SUM(a.amount), 0) AS collected,
                             COALESCE(SUM(o.amount), 0) AS paid
                      FROM invoices_in i
@@ -133,9 +167,9 @@ class DashboardController
                     continue;
                 }
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $collectedNet = $commission !== 0.0
-                    ? $this->applyCommission($collected, -abs($commission))
-                    : $collected;
+                $totalSupplier = (float) ($row['total_with_vat'] ?? 0.0);
+                $totalClient = $this->invoiceClientTotalForRow($row, $commission);
+                $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, $commission);
                 $paid = (float) $row['paid'];
                 $available = max(0, $collectedNet - $paid);
                 if ($available <= 0) {
@@ -169,7 +203,7 @@ class DashboardController
             }
 
             $monthIssuedRows = Database::fetchAll(
-                'SELECT supplier_cui, selected_client_cui, commission_percent, total_with_vat,
+                'SELECT id, supplier_cui, selected_client_cui, commission_percent, total_with_vat,
                         COALESCE(fgo_date, issue_date) AS invoice_date, fgo_number
                  FROM invoices_in
                  WHERE COALESCE(fgo_date, issue_date) BETWEEN :start AND :end
@@ -178,12 +212,13 @@ class DashboardController
             );
 
             $commissionMap = $this->commissionMap($monthIssuedRows);
+            if ($showCommissionDailyChart) {
+                $commissionDailyChart = $this->buildDailyCommissionChart($monthIssuedRows, $commissionMap, $monthStart);
+            }
 
             foreach ($monthIssuedRows as $row) {
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $clientTotal = $commission !== 0.0
-                    ? $this->applyCommission((float) $row['total_with_vat'], $commission)
-                    : (float) $row['total_with_vat'];
+                $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
                 $monthIssuedTotal += $clientTotal;
                 $monthIssuedCount++;
             }
@@ -221,9 +256,7 @@ class DashboardController
 
             foreach ($uncollectedRows as $row) {
                 $commission = $this->resolveCommission($row, $commissionMap);
-                $clientTotal = $commission !== 0.0
-                    ? $this->applyCommission((float) $row['total_with_vat'], $commission)
-                    : (float) $row['total_with_vat'];
+                $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
                 $collected = (float) $row['collected'];
                 if ($collected + 0.01 >= $clientTotal) {
                     continue;
@@ -274,6 +307,7 @@ class DashboardController
         Response::view('admin/dashboard/index', [
             'user' => $user,
             'isPlatform' => $isPlatform,
+            'isOperator' => $isOperator,
             'isSupplierUser' => $isSupplierUser,
             'canAccessSaga' => $canAccessSaga,
             'latestInvoices' => $latestInvoices,
@@ -287,7 +321,137 @@ class DashboardController
             'monthPaidTotal' => $monthPaidTotal,
             'uncollectedInvoices' => $uncollectedInvoices,
             'uncollectedCount' => $uncollectedCount,
+            'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
+            'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+            'showPendingContractsCard' => $showPendingContractsCard,
+            'pendingContracts' => $pendingContracts,
+            'showCommissionDailyChart' => $showCommissionDailyChart,
+            'commissionDailyChart' => $commissionDailyChart,
         ]);
+    }
+
+    private function pendingEnrollmentSummary(): array
+    {
+        $summary = [
+            'total' => 0,
+            'suppliers' => 0,
+            'clients' => 0,
+            'submitted_today' => 0,
+            'association_pending' => 0,
+        ];
+        if (!Database::tableExists('enrollment_links') || !Database::columnExists('enrollment_links', 'onboarding_status')) {
+            return $summary;
+        }
+
+        $whereParts = ['onboarding_status = :submitted'];
+        $params = ['submitted' => 'submitted'];
+        if (Database::columnExists('enrollment_links', 'status')) {
+            $whereParts[] = '(status IS NULL OR status = "" OR status = :active)';
+            $params['active'] = 'active';
+        }
+        $whereSql = implode(' AND ', $whereParts);
+        $typeSelect = Database::columnExists('enrollment_links', 'type') ? 'type' : "''";
+
+        $rows = Database::fetchAll(
+            'SELECT ' . $typeSelect . ' AS link_type, COUNT(*) AS total
+             FROM enrollment_links
+             WHERE ' . $whereSql . '
+             GROUP BY link_type',
+            $params
+        );
+
+        foreach ($rows as $row) {
+            $count = (int) ($row['total'] ?? 0);
+            $type = trim((string) ($row['link_type'] ?? ''));
+            $summary['total'] += $count;
+            if ($type === 'supplier') {
+                $summary['suppliers'] += $count;
+            } elseif ($type === 'client') {
+                $summary['clients'] += $count;
+            }
+        }
+
+        if (Database::columnExists('enrollment_links', 'submitted_at')) {
+            $summary['submitted_today'] = (int) (Database::fetchValue(
+                'SELECT COUNT(*)
+                 FROM enrollment_links
+                 WHERE ' . $whereSql . '
+                   AND DATE(submitted_at) = :today',
+                array_merge($params, ['today' => date('Y-m-d')])
+            ) ?? 0);
+        }
+
+        if (Database::tableExists('association_requests') && Database::columnExists('association_requests', 'status')) {
+            $summary['association_pending'] = (int) (Database::fetchValue(
+                'SELECT COUNT(*) FROM association_requests WHERE status = :status',
+                ['status' => 'pending']
+            ) ?? 0);
+        }
+
+        return $summary;
+    }
+
+    private function buildDailyCommissionChart(array $monthIssuedRows, array $commissionMap, string $monthStart): array
+    {
+        $daysInMonth = (int) date('t', strtotime($monthStart));
+        if ($daysInMonth <= 0) {
+            $daysInMonth = (int) date('t');
+        }
+
+        $dailyTotals = [];
+        for ($day = 1; $day <= $daysInMonth; $day++) {
+            $dailyTotals[$day] = 0.0;
+        }
+
+        foreach ($monthIssuedRows as $row) {
+            $invoiceDate = trim((string) ($row['invoice_date'] ?? $row['issue_date'] ?? ''));
+            if ($invoiceDate === '') {
+                continue;
+            }
+            $timestamp = strtotime($invoiceDate);
+            if ($timestamp === false) {
+                continue;
+            }
+            $dayNo = (int) date('j', $timestamp);
+            if ($dayNo < 1 || $dayNo > $daysInMonth) {
+                continue;
+            }
+
+            $commission = $this->resolveCommission($row, $commissionMap);
+            $clientTotal = $this->invoiceClientTotalForRow($row, $commission);
+            $supplierTotal = (float) ($row['total_with_vat'] ?? 0.0);
+            $commissionAmount = round($clientTotal - $supplierTotal, 2);
+            if ($commissionAmount < 0.0) {
+                $commissionAmount = 0.0;
+            }
+            $dailyTotals[$dayNo] += $commissionAmount;
+        }
+
+        $days = [];
+        $maxValue = 0.0;
+        $total = 0.0;
+        foreach ($dailyTotals as $dayNo => $amount) {
+            $value = round((float) $amount, 2);
+            if (abs($value) < 0.005) {
+                $value = 0.0;
+            }
+            if ($value > $maxValue) {
+                $maxValue = $value;
+            }
+            $total += $value;
+            $days[] = [
+                'day' => (int) $dayNo,
+                'value' => $value,
+            ];
+        }
+
+        return [
+            'days' => $days,
+            'max' => round($maxValue, 2),
+            'total' => round($total, 2),
+            'month_label' => date('m.Y', strtotime($monthStart)),
+            'has_data' => $maxValue > 0.0,
+        ];
     }
 
     private function collectClientCuis(array ...$rows): array
@@ -303,6 +467,109 @@ class DashboardController
         }
 
         return array_keys($cuis);
+    }
+
+    private function loadContractsNotApproved(int $limit = 30): array
+    {
+        if (!Database::tableExists('contracts') || !Database::columnExists('contracts', 'status')) {
+            return [];
+        }
+
+        $limit = max(1, min(100, $limit));
+        $rows = Database::fetchAll(
+            'SELECT id, title, doc_type, doc_no, doc_series, doc_full_no, contract_date, status,
+                    supplier_cui, client_cui, partner_cui, created_at
+             FROM contracts
+             WHERE status IS NULL OR status = "" OR LOWER(status) <> :approved
+             ORDER BY created_at DESC, id DESC
+             LIMIT ' . $limit,
+            ['approved' => 'approved']
+        );
+        if (empty($rows)) {
+            return [];
+        }
+
+        $cuiSet = [];
+        foreach ($rows as $row) {
+            foreach (['supplier_cui', 'client_cui', 'partner_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($row[$column] ?? ''));
+                if ($cui !== '') {
+                    $cuiSet[$cui] = true;
+                }
+            }
+        }
+        $companyNames = [];
+        if (!empty($cuiSet)) {
+            $rawCompanyNames = $this->partnerMap(array_keys($cuiSet));
+            foreach ($rawCompanyNames as $cui => $name) {
+                $normalized = preg_replace('/\D+/', '', (string) $cui);
+                $label = trim((string) $name);
+                if ($normalized !== '' && $label !== '') {
+                    $companyNames[$normalized] = $label;
+                }
+            }
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+            $clientCui = preg_replace('/\D+/', '', (string) ($row['client_cui'] ?? ''));
+            $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
+
+            $supplierName = $supplierCui !== '' ? trim((string) ($companyNames[$supplierCui] ?? '')) : '';
+            $clientName = $clientCui !== '' ? trim((string) ($companyNames[$clientCui] ?? '')) : '';
+            $partnerName = $partnerCui !== '' ? trim((string) ($companyNames[$partnerCui] ?? '')) : '';
+
+            $relationLabel = '—';
+            if ($supplierName !== '' && $clientName !== '') {
+                $relationLabel = $supplierName . ' → ' . $clientName;
+            } elseif ($partnerName !== '') {
+                $relationLabel = $partnerName;
+            } elseif ($supplierName !== '') {
+                $relationLabel = 'Furnizor: ' . $supplierName;
+            } elseif ($clientName !== '') {
+                $relationLabel = 'Client: ' . $clientName;
+            } elseif ($supplierCui !== '' && $clientCui !== '') {
+                $relationLabel = $supplierCui . ' → ' . $clientCui;
+            } elseif ($partnerCui !== '') {
+                $relationLabel = $partnerCui;
+            } elseif ($supplierCui !== '') {
+                $relationLabel = $supplierCui;
+            } elseif ($clientCui !== '') {
+                $relationLabel = $clientCui;
+            }
+
+            $result[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'title' => trim((string) ($row['title'] ?? '')),
+                'doc_type' => trim((string) ($row['doc_type'] ?? '')),
+                'doc_no_display' => $this->contractNumberDisplay($row),
+                'contract_date' => trim((string) ($row['contract_date'] ?? '')),
+                'status' => trim((string) ($row['status'] ?? '')),
+                'relation_label' => $relationLabel,
+                'created_at' => trim((string) ($row['created_at'] ?? '')),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function contractNumberDisplay(array $row): string
+    {
+        $fullNo = trim((string) ($row['doc_full_no'] ?? ''));
+        if ($fullNo !== '') {
+            return $fullNo;
+        }
+
+        $docNo = (int) ($row['doc_no'] ?? 0);
+        if ($docNo <= 0) {
+            return '';
+        }
+
+        $series = trim((string) ($row['doc_series'] ?? ''));
+        $paddedNo = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+
+        return $series !== '' ? ($series . '-' . $paddedNo) : $paddedNo;
     }
 
     private function partnerMap(array $cuis): array
@@ -404,17 +671,36 @@ class DashboardController
 
     private function resolveCommission(array $row, array $commissionMap): float
     {
-        if (isset($row['commission_percent']) && $row['commission_percent'] !== null) {
-            return (float) $row['commission_percent'];
+        $commission = isset($row['commission_percent']) && $row['commission_percent'] !== null
+            ? (float) $row['commission_percent']
+            : null;
+
+        if ($commission === null) {
+            $supplier = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+            $client = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
+            if ($supplier !== '' && $client !== '' && isset($commissionMap[$supplier][$client])) {
+                $commission = (float) $commissionMap[$supplier][$client];
+            }
         }
 
-        $supplier = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
-        $client = preg_replace('/\D+/', '', (string) ($row['selected_client_cui'] ?? ''));
-        if ($supplier !== '' && $client !== '' && isset($commissionMap[$supplier][$client])) {
-            return (float) $commissionMap[$supplier][$client];
+        $discountCommission = $this->discountCommissionForInvoiceRow($row);
+        if ($discountCommission !== null) {
+            $invoiceId = (int) ($row['id'] ?? 0);
+            if ($invoiceId > 0 && ($commission === null || abs($commission - $discountCommission) >= 0.000001)) {
+                Database::execute(
+                    'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                    [
+                        'commission' => $discountCommission,
+                        'now' => date('Y-m-d H:i:s'),
+                        'id' => $invoiceId,
+                    ]
+                );
+            }
+
+            return $discountCommission;
         }
 
-        return 0.0;
+        return (float) ($commission ?? 0.0);
     }
 
     private function applyCommission(float $amount, float $percent): float
@@ -425,5 +711,152 @@ class DashboardController
         }
 
         return round($amount / $factor, 2);
+    }
+
+    private function invoiceClientTotalForRow(array $row, float $commission): float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceId <= 0) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($invoiceGross > 0.0 && $salesGross > ($invoiceGross + 0.009)) {
+            return round($salesGross, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals($invoiceId);
+        if (empty($packageTotals)) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
+    private function collectedNetForSupplier(float $collected, float $totalClient, float $totalSupplier, float $commission): float
+    {
+        if ($totalClient > 0.0 && $collected + 0.01 >= $totalClient) {
+            return round($totalSupplier, 2);
+        }
+
+        if ($commission !== 0.0) {
+            return $this->applyCommission($collected, -abs($commission));
+        }
+
+        return round($collected, 2);
+    }
+
+    private function discountCommissionForInvoiceRow(array $row): ?float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_in_lines')) {
+            return null;
+        }
+
+        $adjustmentCommission = $this->latestAdjustmentCommissionPercent($invoiceId);
+        if ($adjustmentCommission !== null && $adjustmentCommission > 0.0) {
+            return $adjustmentCommission;
+        }
+
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceGross <= 0.0) {
+            return null;
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($salesGross <= ($invoiceGross + 0.009)) {
+            return null;
+        }
+
+        $percent = (($salesGross / $invoiceGross) - 1.0) * 100.0;
+        if ($percent <= 0.0) {
+            return null;
+        }
+
+        return round($percent, 6);
+    }
+
+    private function latestAdjustmentCommissionPercent(int $invoiceId): ?float
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        $value = Database::fetchValue(
+            'SELECT commission_percent
+             FROM invoice_adjustments
+             WHERE invoice_in_id = :invoice
+               AND commission_percent IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 1',
+            ['invoice' => $invoiceId]
+        );
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function invoiceSalesGrossTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesGrossCache[$invoiceId])) {
+            return (float) $this->invoiceSalesGrossCache[$invoiceId];
+        }
+
+        $value = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0) FROM invoice_in_lines WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+        $this->invoiceSalesGrossCache[$invoiceId] = $value;
+
+        return $value;
+    }
+
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
     }
 }

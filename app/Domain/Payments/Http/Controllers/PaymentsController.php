@@ -15,6 +15,9 @@ use App\Support\Session;
 
 class PaymentsController
 {
+    private array $invoiceSalesGrossCache = [];
+    private array $invoicePackageSalesGrossCache = [];
+
     public function indexIn(): void
     {
         Auth::requireAdminWithoutOperator();
@@ -947,13 +950,8 @@ class PaymentsController
             if ($this->hasStorno($row)) {
                 continue;
             }
-            $commission = $row['commission_percent'] ?? null;
-            if ($commission === null) {
-                $assoc = Commission::forSupplierClient($row['supplier_cui'], $clientCui);
-                $commission = $assoc ? $assoc->commission : 0.0;
-            }
-
-            $totalClient = $this->applyCommission((float) $row['total_with_vat'], (float) $commission);
+            $commission = $this->resolveCommissionForInvoiceRow($row, $clientCui);
+            $totalClient = $this->invoiceClientTotalForRow($row, $commission);
             $collected = (float) $row['collected'];
 
             $invoices[] = [
@@ -991,19 +989,14 @@ class PaymentsController
             if ($this->hasStorno($row)) {
                 continue;
             }
-            $commission = $row['commission_percent'] ?? null;
-            if ($commission === null && !empty($row['selected_client_cui'])) {
-                $assoc = Commission::forSupplierClient($supplierCui, $row['selected_client_cui']);
-                $commission = $assoc ? $assoc->commission : 0.0;
-            }
+            $commission = $this->resolveCommissionForInvoiceRow($row);
 
             $totalSupplier = (float) $row['total_with_vat'];
             $paid = (float) $row['paid'];
             $collected = (float) $row['collected'];
-            $commissionValue = (float) ($commission ?? 0.0);
-            $collectedNet = $commissionValue !== 0.0
-                ? $this->applyCommission($collected, -abs($commissionValue))
-                : $collected;
+            $commissionValue = (float) $commission;
+            $totalClient = $this->invoiceClientTotalForRow($row, $commissionValue);
+            $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, $commissionValue);
             $available = max(0, $collectedNet - $paid);
             $balance = max(0, $totalSupplier - $paid);
             if ($available > $balance) {
@@ -1340,20 +1333,12 @@ class PaymentsController
             $invoiceId = (int) $row['id'];
             $supplierCui = (string) $row['supplier_cui'];
             $supplierName = (string) ($row['supplier_name'] ?? $supplierCui);
-            $commission = $row['commission_percent'];
-
-            if ($commission === null && !empty($row['selected_client_cui'])) {
-                $assoc = Commission::forSupplierClient($supplierCui, (string) $row['selected_client_cui']);
-                $commission = $assoc ? $assoc->commission : 0.0;
-            }
-
-            $commission = (float) ($commission ?? 0.0);
+            $commission = $this->resolveCommissionForInvoiceRow($row);
             $collected = (float) ($collectedMap[$invoiceId] ?? 0.0);
             $paid = (float) ($paidMap[$invoiceId] ?? 0.0);
-
-            $collectedNet = $commission !== 0.0
-                ? $this->applyCommission($collected, -abs($commission))
-                : $collected;
+            $totalSupplier = (float) ($row['total_with_vat'] ?? 0.0);
+            $totalClient = $this->invoiceClientTotalForRow($row, $commission);
+            $collectedNet = $this->collectedNetForSupplier($collected, $totalClient, $totalSupplier, (float) $commission);
 
             if (!isset($summary[$supplierCui])) {
                 $summary[$supplierCui] = [
@@ -1393,6 +1378,189 @@ class PaymentsController
         }
 
         return round($amount / $factor, 2);
+    }
+
+    private function invoiceClientTotalForRow(array $row, float $commission): float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceId <= 0) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($invoiceGross > 0.0 && $salesGross > ($invoiceGross + 0.009)) {
+            return round($salesGross, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals($invoiceId);
+        if (empty($packageTotals)) {
+            return $this->applyCommission($invoiceGross, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
+    private function collectedNetForSupplier(float $collected, float $totalClient, float $totalSupplier, float $commission): float
+    {
+        if ($totalClient > 0.0 && $collected + 0.01 >= $totalClient) {
+            return round($totalSupplier, 2);
+        }
+
+        if ($commission !== 0.0) {
+            return $this->applyCommission($collected, -abs($commission));
+        }
+
+        return round($collected, 2);
+    }
+
+    private function resolveCommissionForInvoiceRow(array $row, ?string $forcedClientCui = null): float
+    {
+        $commission = isset($row['commission_percent']) && $row['commission_percent'] !== null
+            ? (float) $row['commission_percent']
+            : null;
+
+        $clientCui = $forcedClientCui;
+        if ($clientCui === null) {
+            $clientCui = (string) ($row['selected_client_cui'] ?? '');
+        }
+
+        if ($commission === null && $clientCui !== '') {
+            $assoc = Commission::forSupplierClient((string) ($row['supplier_cui'] ?? ''), $clientCui);
+            $commission = $assoc ? (float) $assoc->commission : 0.0;
+        }
+
+        $discountCommission = $this->discountCommissionForInvoiceRow($row);
+        if ($discountCommission !== null) {
+            $invoiceId = (int) ($row['id'] ?? 0);
+            if ($invoiceId > 0 && ($commission === null || abs($commission - $discountCommission) >= 0.000001)) {
+                Database::execute(
+                    'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                    [
+                        'commission' => $discountCommission,
+                        'now' => date('Y-m-d H:i:s'),
+                        'id' => $invoiceId,
+                    ]
+                );
+            }
+
+            return $discountCommission;
+        }
+
+        return (float) ($commission ?? 0.0);
+    }
+
+    private function discountCommissionForInvoiceRow(array $row): ?float
+    {
+        $invoiceId = (int) ($row['id'] ?? 0);
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_in_lines')) {
+            return null;
+        }
+
+        $adjustmentCommission = $this->latestAdjustmentCommissionPercent($invoiceId);
+        if ($adjustmentCommission !== null && $adjustmentCommission > 0.0) {
+            return $adjustmentCommission;
+        }
+
+        $invoiceGross = (float) ($row['total_with_vat'] ?? 0.0);
+        if ($invoiceGross <= 0.0) {
+            return null;
+        }
+
+        $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+        if ($salesGross <= ($invoiceGross + 0.009)) {
+            return null;
+        }
+
+        $percent = (($salesGross / $invoiceGross) - 1.0) * 100.0;
+        if ($percent <= 0.0) {
+            return null;
+        }
+
+        return round($percent, 6);
+    }
+
+    private function latestAdjustmentCommissionPercent(int $invoiceId): ?float
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        $value = Database::fetchValue(
+            'SELECT commission_percent
+             FROM invoice_adjustments
+             WHERE invoice_in_id = :invoice
+               AND commission_percent IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 1',
+            ['invoice' => $invoiceId]
+        );
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function invoiceSalesGrossTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesGrossCache[$invoiceId])) {
+            return (float) $this->invoiceSalesGrossCache[$invoiceId];
+        }
+
+        $value = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0) FROM invoice_in_lines WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+        $this->invoiceSalesGrossCache[$invoiceId] = $value;
+
+        return $value;
+    }
+
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
     }
 
     private function parseNumber(mixed $value): ?float

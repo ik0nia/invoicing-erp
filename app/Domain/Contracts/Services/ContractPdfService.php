@@ -34,13 +34,19 @@ class ContractPdfService
         $title = (string) ($contract['title'] ?? 'Contract');
         $templateId = isset($contract['template_id']) ? (int) $contract['template_id'] : 0;
         $templateHtml = '';
+        $templateAppliesTo = '';
 
         if ($templateId > 0 && Database::tableExists('contract_templates')) {
+            $templateSelect = ['html_content'];
+            if (Database::columnExists('contract_templates', 'applies_to')) {
+                $templateSelect[] = 'applies_to';
+            }
             $template = Database::fetchOne(
-                'SELECT html_content FROM contract_templates WHERE id = :id LIMIT 1',
+                'SELECT ' . implode(', ', $templateSelect) . ' FROM contract_templates WHERE id = :id LIMIT 1',
                 ['id' => $templateId]
             );
             $templateHtml = (string) ($template['html_content'] ?? '');
+            $templateAppliesTo = trim((string) ($template['applies_to'] ?? ''));
         }
 
         if ($templateHtml === '') {
@@ -68,6 +74,8 @@ class ContractPdfService
                 'doc_no' => (int) ($contract['doc_no'] ?? 0),
                 'doc_series' => (string) ($contract['doc_series'] ?? ''),
                 'doc_full_no' => (string) ($contract['doc_full_no'] ?? ''),
+                'required_onboarding' => isset($contract['required_onboarding']) ? (int) $contract['required_onboarding'] : 0,
+                'template_applies_to' => $templateAppliesTo,
             ]
         );
 
@@ -98,7 +106,8 @@ class ContractPdfService
             @mkdir($outputDir, 0775, true);
         }
 
-        $pdfName = 'contract-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.pdf';
+        $docTypePrefix = $this->resolveContractFilePrefix($contract);
+        $pdfName = $docTypePrefix . '-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.pdf';
         $pdfAbsolute = $outputDir . '/' . $pdfName;
         $generator = '';
         $binary = $this->resolveWkhtmltopdfPath();
@@ -118,7 +127,7 @@ class ContractPdfService
 
         if ($generator === '' || !is_file($pdfAbsolute) || filesize($pdfAbsolute) === 0) {
             @unlink($pdfAbsolute);
-            $this->storeHtmlFallback($contractId, $html);
+            $this->storeHtmlFallback($contractId, $html, $contract);
             if ($dompdfTried && $generator === '' && ($dompdfStatus['reason'] ?? '') === 'ready') {
                 $dompdfStatus['reason'] = 'generation_failed';
             }
@@ -577,15 +586,23 @@ class ContractPdfService
         return date('Y-m-d');
     }
 
-    private function storeHtmlFallback(int $contractId, string $html): void
+    private function storeHtmlFallback(int $contractId, string $html, array $contract = []): void
     {
+        if (empty($contract) && $contractId > 0 && Database::tableExists('contracts')) {
+            $row = Database::fetchOne('SELECT doc_type FROM contracts WHERE id = :id LIMIT 1', ['id' => $contractId]);
+            if (is_array($row)) {
+                $contract = $row;
+            }
+        }
+        $docTypePrefix = $this->resolveContractFilePrefix($contract);
+
         $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
         $dir = $basePath . '/storage/uploads/contracts/generated';
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
 
-        $filename = 'contract-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.html';
+        $filename = $docTypePrefix . '-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.html';
         $absolute = $dir . '/' . $filename;
         if (file_put_contents($absolute, $html) === false) {
             return;
@@ -602,6 +619,27 @@ class ContractPdfService
                 'id' => $contractId,
             ]
         );
+    }
+
+    private function resolveContractFilePrefix(array $contract): string
+    {
+        $rawDocType = trim((string) ($contract['doc_type'] ?? ''));
+        if ($rawDocType === '') {
+            $rawDocType = 'contract';
+        }
+
+        $prefix = preg_replace('/\s+/', '-', $rawDocType);
+        $prefix = preg_replace('/[^a-z0-9_-]/i', '-', (string) $prefix);
+        $prefix = strtolower(trim((string) $prefix, '-'));
+        if (strlen($prefix) > 60) {
+            $prefix = substr($prefix, 0, 60);
+            $prefix = trim($prefix, '-');
+        }
+        if ($prefix === '') {
+            $prefix = 'contract';
+        }
+
+        return $prefix;
     }
 
     private function wrapPrintableDocument(string $renderedHtml): string

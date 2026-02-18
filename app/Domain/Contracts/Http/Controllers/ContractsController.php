@@ -2,6 +2,7 @@
 
 namespace App\Domain\Contracts\Http\Controllers;
 
+use App\Domain\Companies\Models\Company;
 use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Users\Models\UserSupplierAccess;
@@ -96,10 +97,15 @@ class ContractsController
                 Response::redirect('/admin/contracts');
             }
         }
+        $pdfValidationError = $this->validatePdfGenerationPrerequisites($partnerCui, $supplierCui, $clientCui);
+        if ($pdfValidationError !== null) {
+            Session::flash('error', $pdfValidationError);
+            Response::redirect('/admin/contracts');
+        }
         $numberService = new DocumentNumberService();
         $number = null;
         $numberWarning = null;
-        $registryScope = $this->resolveRegistryScope($supplierCui, $clientCui, $template);
+        $registryScope = $this->resolveRegistryScope($partnerCui, $supplierCui, $clientCui, $template);
         try {
             $number = $numberService->allocateNumber($docType, [
                 'registry_scope' => $registryScope,
@@ -231,6 +237,97 @@ class ContractsController
         Response::redirect('/admin/contracts');
     }
 
+    public function uploadSignedCompanies(): void
+    {
+        $this->requireGenerateRole();
+
+        $contracts = $this->contractsForSignedUpload();
+        if (empty($contracts)) {
+            $this->json([
+                'success' => true,
+                'items' => [],
+            ]);
+        }
+
+        $companyCounts = [];
+        foreach ($contracts as $contract) {
+            $seenForContract = [];
+            foreach (['supplier_cui', 'client_cui', 'partner_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($contract[$column] ?? ''));
+                if ($cui === '' || isset($seenForContract[$cui])) {
+                    continue;
+                }
+                $seenForContract[$cui] = true;
+                $companyCounts[$cui] = (int) ($companyCounts[$cui] ?? 0) + 1;
+            }
+        }
+
+        if (empty($companyCounts)) {
+            $this->json([
+                'success' => true,
+                'items' => [],
+            ]);
+        }
+
+        $cuis = array_keys($companyCounts);
+        $namesByCui = $this->fetchCompanyNamesByCuis($cuis);
+        $items = [];
+        foreach ($cuis as $cui) {
+            $items[] = [
+                'cui' => $cui,
+                'name' => trim((string) ($namesByCui[$cui] ?? $cui)),
+                'contracts_count' => (int) ($companyCounts[$cui] ?? 0),
+            ];
+        }
+        usort($items, static function (array $left, array $right): int {
+            $leftName = strtolower((string) ($left['name'] ?? ''));
+            $rightName = strtolower((string) ($right['name'] ?? ''));
+            if ($leftName === $rightName) {
+                return strcmp((string) ($left['cui'] ?? ''), (string) ($right['cui'] ?? ''));
+            }
+
+            return strcmp($leftName, $rightName);
+        });
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
+    public function uploadSignedContracts(): void
+    {
+        $this->requireGenerateRole();
+
+        $companyCui = preg_replace('/\D+/', '', (string) ($_GET['company_cui'] ?? ''));
+        if ($companyCui === '') {
+            $this->json([
+                'success' => false,
+                'message' => 'Selectati firma pentru filtrarea documentelor.',
+                'items' => [],
+            ]);
+        }
+
+        $contracts = $this->contractsForSignedUpload($companyCui);
+        $namesByCui = $this->resolveCompanyNamesByCuis($contracts);
+        $items = [];
+        foreach ($contracts as $contract) {
+            $id = (int) ($contract['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $items[] = [
+                'id' => $id,
+                'label' => $this->buildUploadSignedContractLabel($contract, $namesByCui),
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
     public function approve(): void
     {
         Auth::requireInternalStaff();
@@ -293,6 +390,10 @@ class ContractsController
         } elseif ($kind === 'generated') {
             $path = (string) ($row['generated_pdf_path'] ?? '');
             if ($path === '') {
+                $pdfValidationError = $this->validatePdfGenerationPrerequisitesFromContractRow($row);
+                if ($pdfValidationError !== null) {
+                    Response::abort(422, $pdfValidationError);
+                }
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
                 if ($path === '') {
                     $refreshed = Database::fetchOne(
@@ -311,6 +412,10 @@ class ContractsController
                 $path = (string) ($row['generated_pdf_path'] ?? '');
             }
             if ($path === '') {
+                $pdfValidationError = $this->validatePdfGenerationPrerequisitesFromContractRow($row);
+                if ($pdfValidationError !== null) {
+                    Response::abort(422, $pdfValidationError);
+                }
                 $path = (new ContractPdfService())->generatePdfForContract((int) ($row['id'] ?? 0));
                 if ($path === '') {
                     $refreshed = Database::fetchOne(
@@ -407,6 +512,91 @@ class ContractsController
         header('Content-Length: ' . filesize($path));
         readfile($path);
         exit;
+    }
+
+    private function contractsForSignedUpload(?string $companyCui = null): array
+    {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        $sql = 'SELECT id,
+                       title,
+                       doc_no,
+                       doc_series,
+                       doc_full_no,
+                       contract_date,
+                       status,
+                       supplier_cui,
+                       client_cui,
+                       partner_cui,
+                       created_at
+                FROM contracts';
+        $params = [];
+        $companyCui = $companyCui !== null ? preg_replace('/\D+/', '', (string) $companyCui) : null;
+        if ($companyCui !== null && $companyCui !== '') {
+            $sql .= ' WHERE supplier_cui = :company_cui
+                          OR client_cui = :company_cui
+                          OR partner_cui = :company_cui';
+            $params['company_cui'] = $companyCui;
+        }
+        $sql .= ' ORDER BY created_at DESC, id DESC';
+
+        return Database::fetchAll($sql, $params);
+    }
+
+    private function buildUploadSignedContractLabel(array $contract, array $companyNamesByCui): string
+    {
+        $title = trim((string) ($contract['title'] ?? ''));
+        if ($title === '') {
+            $title = 'Document #' . (int) ($contract['id'] ?? 0);
+        }
+
+        $parts = [$title];
+        $docNo = $this->formatContractNumber($contract);
+        if ($docNo !== '') {
+            $parts[] = '[' . $docNo . ']';
+        }
+
+        $dateRaw = trim((string) ($contract['contract_date'] ?? ''));
+        if ($dateRaw !== '') {
+            $timestamp = strtotime($dateRaw);
+            $dateDisplay = $timestamp !== false ? date('d.m.Y', $timestamp) : $dateRaw;
+            $parts[] = $dateDisplay;
+        }
+
+        $relation = $this->uploadSignedContractRelationLabel($contract, $companyNamesByCui);
+        if ($relation !== '') {
+            $parts[] = $relation;
+        }
+
+        return implode(' - ', $parts);
+    }
+
+    private function uploadSignedContractRelationLabel(array $contract, array $companyNamesByCui): string
+    {
+        $supplierCui = preg_replace('/\D+/', '', (string) ($contract['supplier_cui'] ?? ''));
+        $clientCui = preg_replace('/\D+/', '', (string) ($contract['client_cui'] ?? ''));
+        $partnerCui = preg_replace('/\D+/', '', (string) ($contract['partner_cui'] ?? ''));
+
+        $supplierName = $supplierCui !== '' ? trim((string) ($companyNamesByCui[$supplierCui] ?? $supplierCui)) : '';
+        $clientName = $clientCui !== '' ? trim((string) ($companyNamesByCui[$clientCui] ?? $clientCui)) : '';
+        $partnerName = $partnerCui !== '' ? trim((string) ($companyNamesByCui[$partnerCui] ?? $partnerCui)) : '';
+
+        if ($supplierName !== '' && $clientName !== '') {
+            return $supplierName . ' -> ' . $clientName;
+        }
+        if ($partnerName !== '') {
+            return $partnerName;
+        }
+        if ($supplierName !== '') {
+            return 'Furnizor: ' . $supplierName;
+        }
+        if ($clientName !== '') {
+            return 'Client: ' . $clientName;
+        }
+
+        return '';
     }
 
     private function resolveTemplateDocType(?array $template, string $docKind): string
@@ -524,23 +714,93 @@ class ContractsController
         return $series !== '' ? ($series . '-' . $padded) : $padded;
     }
 
-    private function resolveRegistryScope(string $supplierCui, string $clientCui, ?array $template): string
+    private function resolveRegistryScope(string $partnerCui, string $supplierCui, string $clientCui, ?array $template): string
     {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
         $supplierCui = preg_replace('/\D+/', '', $supplierCui);
         $clientCui = preg_replace('/\D+/', '', $clientCui);
-
-        if ($clientCui !== '') {
-            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
-        }
-        if ($supplierCui !== '') {
-            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
-        }
         $appliesTo = strtolower(trim((string) ($template['applies_to'] ?? '')));
+
         if ($appliesTo === 'supplier') {
             return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
         }
+        if ($appliesTo === 'client') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+
+        if ($clientCui !== '' && $supplierCui === '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+        if ($supplierCui !== '' && $clientCui === '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        if ($clientCui !== '' && $supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
+
+        $partnerScopeHint = $this->partnerRegistryScopeHint($partnerCui);
+        if ($partnerScopeHint !== null) {
+            return $partnerScopeHint;
+        }
+
+        if ($supplierCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        if ($clientCui !== '') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
 
         return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+    }
+
+    private function partnerRegistryScopeHint(string $partnerCui): ?string
+    {
+        $partnerCui = preg_replace('/\D+/', '', $partnerCui);
+        if ($partnerCui === '') {
+            return null;
+        }
+
+        if (
+            Database::tableExists('partners')
+            && Database::columnExists('partners', 'is_supplier')
+            && Database::columnExists('partners', 'is_client')
+        ) {
+            $partnerRow = Database::fetchOne(
+                'SELECT is_supplier, is_client FROM partners WHERE cui = :cui LIMIT 1',
+                ['cui' => $partnerCui]
+            );
+            if ($partnerRow) {
+                $isSupplier = !empty($partnerRow['is_supplier']);
+                $isClient = !empty($partnerRow['is_client']);
+                if ($isSupplier && !$isClient) {
+                    return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+                }
+                if ($isClient && !$isSupplier) {
+                    return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+                }
+                if ($isSupplier && $isClient) {
+                    // Prefer supplier scope for mixed-role partners when no explicit relation is set.
+                    return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+                }
+            }
+        }
+
+        if (Database::tableExists('companies') && Database::columnExists('companies', 'tip_companie')) {
+            $companyRow = Database::fetchOne(
+                'SELECT tip_companie FROM companies WHERE cui = :cui LIMIT 1',
+                ['cui' => $partnerCui]
+            );
+            $companyType = strtolower(trim((string) ($companyRow['tip_companie'] ?? '')));
+            if (in_array($companyType, ['furnizor', 'supplier'], true)) {
+                return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+            }
+            if ($companyType === 'client') {
+                return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+            }
+        }
+
+        return null;
     }
 
     private function resolveCompanyNamesByCuis(array $contracts): array
@@ -619,5 +879,108 @@ class ContractsController
         }
 
         return $result;
+    }
+
+    private function json(array $payload, int $statusCode = 200): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    private function validatePdfGenerationPrerequisitesFromContractRow(array $row): ?string
+    {
+        return $this->validatePdfGenerationPrerequisites(
+            (string) ($row['partner_cui'] ?? ''),
+            (string) ($row['supplier_cui'] ?? ''),
+            (string) ($row['client_cui'] ?? '')
+        );
+    }
+
+    private function validatePdfGenerationPrerequisites(string $partnerCui, string $supplierCui, string $clientCui): ?string
+    {
+        $companyCuis = $this->contractCompanyCuis($partnerCui, $supplierCui, $clientCui);
+        if (empty($companyCuis)) {
+            return 'Nu poti genera PDF fara sa selectezi cel putin o firma (CUI).';
+        }
+
+        $missing = [];
+        foreach ($companyCuis as $cui) {
+            if (!$this->hasMandatoryCompanyProfile($cui)) {
+                $missing[] = $cui;
+            }
+        }
+
+        if (!empty($missing)) {
+            return 'Nu poti genera PDF pana nu completezi reprezentantul legal, functia, banca si IBAN-ul pentru firmele: '
+                . implode(', ', $missing)
+                . '.';
+        }
+
+        return null;
+    }
+
+    private function contractCompanyCuis(string $partnerCui, string $supplierCui, string $clientCui): array
+    {
+        $result = [];
+        foreach ([$partnerCui, $supplierCui, $clientCui] as $cui) {
+            $normalized = preg_replace('/\D+/', '', (string) $cui);
+            if ($normalized === '') {
+                continue;
+            }
+            $result[$normalized] = true;
+        }
+
+        return array_keys($result);
+    }
+
+    private function hasMandatoryCompanyProfile(string $cui): bool
+    {
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '' || !Database::tableExists('companies')) {
+            return false;
+        }
+
+        $company = Company::findByCui($cui);
+        if (!$company) {
+            return false;
+        }
+
+        $legalRepresentativeName = $this->sanitizeCompanyValue((string) ($company->legal_representative_name !== '' ? $company->legal_representative_name : ($company->representative_name ?? '')));
+        $legalRepresentativeRole = $this->sanitizeCompanyValue((string) ($company->legal_representative_role !== '' ? $company->legal_representative_role : ($company->representative_function ?? '')));
+        $bankName = $this->sanitizeCompanyValue((string) ($company->bank_name ?? $company->banca ?? ''));
+        $iban = $this->sanitizeIban((string) ($company->iban ?? $company->bank_account ?? ''));
+
+        return $legalRepresentativeName !== ''
+            && $legalRepresentativeRole !== ''
+            && $bankName !== ''
+            && $this->isValidIban($iban);
+    }
+
+    private function sanitizeCompanyValue(string $value): string
+    {
+        $value = trim(strip_tags($value));
+        $value = preg_replace('/\s+/', ' ', $value);
+
+        return trim((string) $value);
+    }
+
+    private function sanitizeIban(string $value): string
+    {
+        $value = strtoupper(trim((string) $value));
+        $value = preg_replace('/\s+/', '', $value);
+        $value = preg_replace('/[^A-Z0-9]/', '', (string) $value);
+
+        return (string) $value;
+    }
+
+    private function isValidIban(string $iban): bool
+    {
+        $iban = $this->sanitizeIban($iban);
+        $length = strlen($iban);
+
+        return $length >= 15 && $length <= 34;
     }
 }

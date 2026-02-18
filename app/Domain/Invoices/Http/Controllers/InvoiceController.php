@@ -35,6 +35,9 @@ class InvoiceController
     private PackageLockService $packageLockService;
     private SagaStatusService $sagaStatusService;
     private PackageTotalsService $packageTotalsService;
+    private array $invoiceSalesGrossCache = [];
+    private array $invoiceSalesNetCache = [];
+    private array $invoicePackageSalesGrossCache = [];
 
     public function __construct()
     {
@@ -75,6 +78,14 @@ class InvoiceController
             $lines = InvoiceInLine::forInvoice($invoiceId);
             $packages = Package::forInvoice($invoiceId);
             $packageStats = $this->packageStats($lines, $packages);
+            $packageGrossTotal = 0.0;
+            foreach ($packageStats as $stat) {
+                $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
+            }
+            $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+            if ($hasDiscountPricing) {
+                $this->syncDiscountCommissionPercent($invoice, $packageGrossTotal);
+            }
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
@@ -124,6 +135,10 @@ class InvoiceController
                     }
                 }
             }
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                // Discount invoices are sold at product price; configured client commission is ignored.
+                $commissionPercent = 0.0;
+            }
 
             $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
             $collectedTotal = 0.0;
@@ -170,8 +185,16 @@ class InvoiceController
             }
 
             $commissionBase = $invoice->commission_percent ?? $commissionPercent;
-            if ($commissionBase !== null) {
-                $clientTotal = $this->commissionService->applyCommission($invoice->total_with_vat, (float) $commissionBase);
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                $commissionBase = 0.0;
+            }
+            if ($hasDiscountPricing && $selectedClientCui !== '') {
+                $clientTotal = round($packageGrossTotal, 2);
+            } elseif ($commissionBase !== null) {
+                $clientTotal = $this->clientTotalFromPackageStats($packageStats, (float) $commissionBase);
+                if ($clientTotal === null) {
+                    $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commissionBase);
+                }
             }
             $canRefacereInvoice = $this->canRefacereInvoice($user);
             $refacerePackages = $canRefacereInvoice
@@ -214,6 +237,7 @@ class InvoiceController
                 'canRefacereInvoice' => $canRefacereInvoice,
                 'refacerePackages' => $refacerePackages,
                 'invoiceAdjustments' => $invoiceAdjustments,
+                'hasDiscountPricing' => $hasDiscountPricing,
             ]);
         }
 
@@ -614,10 +638,6 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
-        if (!$this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
-            Session::flash('error', 'Pachetele nu sunt confirmate.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId);
-        }
 
         if (empty($_FILES['supplier_file']) || $_FILES['supplier_file']['error'] !== UPLOAD_ERR_OK) {
             Session::flash('error', 'Te rog incarca un fisier valid.');
@@ -1053,7 +1073,7 @@ class InvoiceController
 
         $packages = Database::fetchAll(
             "SELECT p.id, p.package_no, p.label, p.vat_percent, p.invoice_in_id{$statusSelect},
-                    i.invoice_number, i.issue_date, i.selected_client_cui, i.supplier_cui, i.commission_percent
+                    i.invoice_number, i.issue_date, i.total_with_vat, i.selected_client_cui, i.supplier_cui, i.commission_percent
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              JOIN (
@@ -1317,6 +1337,7 @@ class InvoiceController
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packageStats = $this->packageStats($lines, $packages);
         $linesByPackage = $this->groupLinesByPackage($lines, $packages);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
 
         $clientCui = $invoice->selected_client_cui ?? '';
         $clientName = '';
@@ -1337,6 +1358,10 @@ class InvoiceController
                 (string) $invoice->supplier_cui,
                 (string) $clientCui
             );
+        }
+        if ($hasDiscountPricing) {
+            // XML discount invoices already contain final sale prices on lines.
+            $commissionPercent = null;
         }
 
         $totalWithout = 0.0;
@@ -1391,6 +1416,7 @@ class InvoiceController
             'clientName' => $clientName,
             'clientCompany' => $clientCompany,
             'commissionPercent' => $commissionPercent,
+            'hasDiscountPricing' => $hasDiscountPricing,
         ], 'layouts/print');
     }
 
@@ -1502,10 +1528,43 @@ class InvoiceController
             Response::redirect('/admin/facturi/import');
         }
 
+        $xmlTempPath = (string) ($file['tmp_name'] ?? '');
+        if (trim((string) ($data['supplier_cui'] ?? '')) === '') {
+            $supplierCuiFallback = $this->extractSupplierCuiFromXmlFile($xmlTempPath);
+            if ($supplierCuiFallback !== '') {
+                $data['supplier_cui'] = $supplierCuiFallback;
+            }
+        }
+        if (trim((string) ($data['supplier_name'] ?? '')) === '') {
+            $supplierNameFallback = $this->extractSupplierNameFromXmlFile($xmlTempPath);
+            if ($supplierNameFallback !== '') {
+                $data['supplier_name'] = $supplierNameFallback;
+            }
+        }
+        if (trim((string) ($data['customer_name'] ?? '')) === '') {
+            $customerNameFallback = $this->extractCustomerNameFromXmlFile($xmlTempPath);
+            if ($customerNameFallback !== '') {
+                $data['customer_name'] = $customerNameFallback;
+            }
+        }
         $data['supplier_name'] = CompanyName::normalize((string) ($data['supplier_name'] ?? ''));
         $data['customer_name'] = CompanyName::normalize((string) ($data['customer_name'] ?? ''));
+        $data['supplier_cui'] = preg_replace('/\D+/', '', (string) ($data['supplier_cui'] ?? ''));
+        $data['customer_cui'] = preg_replace('/\D+/', '', (string) ($data['customer_cui'] ?? ''));
+        $data['supplier_name'] = $this->resolvePartyName($data['supplier_cui'], $data['supplier_name']);
+        $data['customer_name'] = $this->resolvePartyName($data['customer_cui'], $data['customer_name']);
+        if ($data['supplier_name'] === '' && $data['supplier_cui'] !== '') {
+            $data['supplier_name'] = $data['supplier_cui'];
+        }
+        if ($data['customer_name'] === '' && $data['customer_cui'] !== '') {
+            $data['customer_name'] = $data['customer_cui'];
+        }
 
         $this->ensureSupplierAccess($data['supplier_cui'] ?? '');
+        if (!$this->supplierExistsInPlatform((string) ($data['supplier_cui'] ?? ''))) {
+            Session::flash('error', 'Furnizorul din XML nu exista in lista de furnizori din platforma.');
+            Response::redirect('/admin/facturi/import');
+        }
 
         if ($this->invoiceExists($data['supplier_cui'], $data['invoice_series'], $data['invoice_no'], $data['invoice_number'])) {
             Session::flash('error', 'Factura a fost deja importata pentru acest furnizor.');
@@ -1544,14 +1603,18 @@ class InvoiceController
             $invoice = InvoiceIn::find($invoice->id);
         }
 
-        Partner::createIfMissing($data['supplier_cui'], $data['supplier_name']);
-        Partner::createIfMissing($data['customer_cui'], $data['customer_name']);
+        $this->syncInvoicePartyPartner($data['supplier_cui'], $data['supplier_name'], true, false);
+        $this->syncInvoicePartyPartner($data['customer_cui'], $data['customer_name'], false, true);
 
         foreach ($data['lines'] as $line) {
             InvoiceInLine::create($invoice->id, $line);
         }
 
         $this->generatePackages($invoice->id);
+        $invoiceFresh = InvoiceIn::find($invoice->id);
+        if ($invoiceFresh && $this->invoiceHasDiscountPricing($invoiceFresh)) {
+            $this->syncDiscountCommissionPercent($invoiceFresh);
+        }
         $this->invoiceAuditService->recordImportXml($invoice);
 
         Session::flash('status', 'Factura a fost importata.');
@@ -1606,8 +1669,8 @@ class InvoiceController
         $supplierName = CompanyName::normalize($supplierName);
         $customerName = CompanyName::normalize($customerName);
 
-        if ($invoiceSeries === '' || $invoiceNo === '') {
-            $errors[] = 'Completeaza seria si numarul facturii.';
+        if ($invoiceNo === '') {
+            $errors[] = 'Completeaza numarul facturii.';
         }
         if ($supplierName === '' || $supplierCui === '') {
             $errors[] = 'Completeaza furnizorul (denumire si CUI).';
@@ -1733,8 +1796,8 @@ class InvoiceController
             );
         }
 
-        Partner::createIfMissing($supplierCui, $supplierName);
-        Partner::createIfMissing($customerCui, $customerName);
+        $this->syncInvoicePartyPartner($supplierCui, $supplierName, true, false);
+        $this->syncInvoicePartyPartner($customerCui, $customerName, false, true);
 
         foreach ($lines as $line) {
             InvoiceInLine::create($invoice->id, $line);
@@ -2018,21 +2081,6 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($clientCui));
         }
 
-        $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-        if (!$commission) {
-            Session::flash('error', 'Nu exista comision pentru acest client.');
-            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
-        }
-
-        Database::execute(
-            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
-            [
-                'commission' => $commission->commission,
-                'now' => date('Y-m-d H:i:s'),
-                'id' => $invoice->id,
-            ]
-        );
-
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packages = Package::forInvoice($invoiceId);
         if (empty($packages)) {
@@ -2041,6 +2089,32 @@ class InvoiceController
         }
 
         $packageStats = $this->packageStats($lines, $packages);
+        $packageGrossTotal = 0.0;
+        foreach ($packageStats as $stat) {
+            $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
+        }
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+
+        if ($hasDiscountPricing) {
+            $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $packageGrossTotal);
+        } else {
+            $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+            if (!$commission) {
+                Session::flash('error', 'Nu exista comision pentru acest client.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+            }
+            $commissionPercent = (float) $commission->commission;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+            [
+                'commission' => $commissionPercent,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+
         $content = [];
 
         foreach ($packages as $package) {
@@ -2049,7 +2123,9 @@ class InvoiceController
             }
 
             $stat = $packageStats[$package->id];
-            $total = $this->commissionService->applyCommission($stat['total_vat'], $commission->commission);
+            $total = $hasDiscountPricing
+                ? round((float) ($stat['total_vat'] ?? 0.0), 2)
+                : $this->commissionService->applyCommission((float) ($stat['total_vat'] ?? 0.0), $commissionPercent);
 
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
@@ -2598,16 +2674,20 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($selectedClientCui));
         }
 
-        $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
-            ? (float) $adjustment['commission_percent']
-            : null;
-        if ($commissionPercent === null) {
-            $commission = Commission::forSupplierClient($invoice->supplier_cui, $selectedClientCui);
-            if (!$commission) {
-                Session::flash('error', 'Nu exista comision pentru acest client.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
+        $commissionPercent = 0.0;
+        if (!$hasDiscountPricing) {
+            $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
+                ? (float) $adjustment['commission_percent']
+                : null;
+            if ($commissionPercent === null) {
+                $commission = Commission::forSupplierClient($invoice->supplier_cui, $selectedClientCui);
+                if (!$commission) {
+                    Session::flash('error', 'Nu exista comision pentru acest client.');
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+                }
+                $commissionPercent = (float) $commission->commission;
             }
-            $commissionPercent = (float) $commission->commission;
         }
 
         $packageIds = [];
@@ -2628,7 +2708,9 @@ class InvoiceController
         }
 
         $packagesById = $this->fetchPackagesByIds($packageIds);
-        $totalsByPackage = $this->packageTotalsForIds($packageIds);
+        $totalsByPackage = $hasDiscountPricing
+            ? $this->packageSalesTotalsForIds($packageIds)
+            : $this->packageTotalsForIds($packageIds);
         $content = [];
         foreach (['storno_package_id', 'replacement_package_id'] as $column) {
             foreach ($adjustmentRows as $row) {
@@ -2641,7 +2723,9 @@ class InvoiceController
                 if (abs($packageTotalVat) < 0.0001) {
                     continue;
                 }
-                $packageClientTotal = $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
+                $packageClientTotal = $hasDiscountPricing
+                    ? round($packageTotalVat, 2)
+                    : $this->commissionService->applyCommission($packageTotalVat, $commissionPercent);
                 $label = $this->packageLabel($package);
                 $content[] = [
                     'Denumire' => $label,
@@ -2826,21 +2910,36 @@ class InvoiceController
 
         $unitPrice = (float) $line->unit_price;
         $taxPercent = (float) $line->tax_percent;
+        $costUnitPrice = null;
+        if ($line->cost_line_total !== null && $currentQty > 0.00001) {
+            $costUnitPrice = (float) $line->cost_line_total / $currentQty;
+        }
 
         $remainingTotal = round($remainingQty * $unitPrice, 2);
         $remainingTotalVat = round($remainingTotal * (1 + $taxPercent / 100), 2);
+        $remainingCostTotal = $costUnitPrice !== null ? round($remainingQty * $costUnitPrice, 2) : null;
+        $remainingCostTotalVat = $remainingCostTotal !== null
+            ? round($remainingCostTotal * (1 + $taxPercent / 100), 2)
+            : null;
 
         $splitTotal = round($splitQty * $unitPrice, 2);
         $splitTotalVat = round($splitTotal * (1 + $taxPercent / 100), 2);
+        $splitCostTotal = $costUnitPrice !== null ? round($splitQty * $costUnitPrice, 2) : null;
+        $splitCostTotalVat = $splitCostTotal !== null
+            ? round($splitCostTotal * (1 + $taxPercent / 100), 2)
+            : null;
 
         Database::execute(
             'UPDATE invoice_in_lines
-             SET quantity = :qty, line_total = :total, line_total_vat = :total_vat
+             SET quantity = :qty, line_total = :total, line_total_vat = :total_vat,
+                 cost_line_total = :cost_total, cost_line_total_vat = :cost_total_vat
              WHERE id = :id',
             [
                 'qty' => $remainingQty,
                 'total' => $remainingTotal,
                 'total_vat' => $remainingTotalVat,
+                'cost_total' => $remainingCostTotal,
+                'cost_total_vat' => $remainingCostTotalVat,
                 'id' => $line->id,
             ]
         );
@@ -2866,6 +2965,8 @@ class InvoiceController
                 line_total,
                 tax_percent,
                 line_total_vat,
+                cost_line_total,
+                cost_line_total_vat,
                 package_id,
                 created_at
             ) VALUES (
@@ -2878,6 +2979,8 @@ class InvoiceController
                 :line_total,
                 :tax_percent,
                 :line_total_vat,
+                :cost_line_total,
+                :cost_line_total_vat,
                 :package_id,
                 :created_at
             )',
@@ -2891,6 +2994,8 @@ class InvoiceController
                 'line_total' => $splitTotal,
                 'tax_percent' => $taxPercent,
                 'line_total_vat' => $splitTotalVat,
+                'cost_line_total' => $splitCostTotal,
+                'cost_line_total_vat' => $splitCostTotalVat,
                 'package_id' => $line->package_id,
                 'created_at' => date('Y-m-d H:i:s'),
             ]
@@ -3554,6 +3659,8 @@ class InvoiceController
                     line_total DECIMAL(12,2) NOT NULL DEFAULT 0,
                     tax_percent DECIMAL(6,2) NOT NULL DEFAULT 0,
                     line_total_vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    cost_line_total DECIMAL(12,2) NULL,
+                    cost_line_total_vat DECIMAL(12,2) NULL,
                     created_at DATETIME NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
             );
@@ -3682,6 +3789,12 @@ class InvoiceController
         }
         if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'stock_saga')) {
             Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN stock_saga DECIMAL(12,3) NULL AFTER cod_saga');
+        }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cost_line_total')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cost_line_total DECIMAL(12,2) NULL AFTER line_total_vat');
+        }
+        if (Database::tableExists('invoice_in_lines') && !Database::columnExists('invoice_in_lines', 'cost_line_total_vat')) {
+            Database::execute('ALTER TABLE invoice_in_lines ADD COLUMN cost_line_total_vat DECIMAL(12,2) NULL AFTER cost_line_total');
         }
         if (!Database::tableExists('saga_products')) {
             Database::execute(
@@ -3840,6 +3953,24 @@ class InvoiceController
         }
 
         return $totals;
+    }
+
+    private function clientTotalFromPackageStats(array $packageStats, float $commissionPercent): ?float
+    {
+        if (empty($packageStats)) {
+            return null;
+        }
+
+        $total = 0.0;
+        foreach ($packageStats as $stat) {
+            $value = (float) ($stat['total_vat'] ?? 0.0);
+            if (abs($value) < 0.0001) {
+                continue;
+            }
+            $total += $this->commissionService->applyCommission($value, $commissionPercent);
+        }
+
+        return round($total, 2);
     }
 
     private function lastConfirmedPackageNo(): int
@@ -4119,6 +4250,8 @@ class InvoiceController
                     'quantity' => $quantity,
                     'unit_code' => (string) ($line->unit_code ?? ''),
                     'unit_price' => (float) ($line->unit_price ?? 0.0),
+                    'cost_line_total' => $line->cost_line_total,
+                    'cost_line_total_vat' => $line->cost_line_total_vat,
                     'tax_percent' => (float) ($line->tax_percent ?? 0.0),
                     'line_total_vat' => (float) ($line->line_total_vat ?? 0.0),
                     'cod_saga' => $line->cod_saga ?? null,
@@ -4302,6 +4435,8 @@ class InvoiceController
         $hasSagaStatus = Database::columnExists('packages', 'saga_status');
         $hasCodSaga = Database::columnExists('invoice_in_lines', 'cod_saga');
         $hasStockSaga = Database::columnExists('invoice_in_lines', 'stock_saga');
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
         $now = date('Y-m-d H:i:s');
 
         $createdPackages = 0;
@@ -4315,6 +4450,27 @@ class InvoiceController
         $targetTotalVat = round($sourceTotalVat - $decreaseTotalVat, 2);
         if ($targetTotalVat < 0) {
             $targetTotalVat = 0.0;
+        }
+        $isDiscountPricingAtAdjustment = $this->invoiceHasDiscountPricing($invoice);
+        $storedAdjustmentCommissionPercent = $invoice->commission_percent !== null
+            ? (float) $invoice->commission_percent
+            : null;
+        $discountRecalcCommissionPercent = null;
+        if ($isDiscountPricingAtAdjustment) {
+            $discountRecalcCommissionPercent = $storedAdjustmentCommissionPercent;
+        }
+        if (($discountRecalcCommissionPercent === null || $discountRecalcCommissionPercent <= 0.0) && $isDiscountPricingAtAdjustment) {
+            $salesGrossBeforeAdjustment = $this->invoiceSalesGrossTotal((int) $invoice->id);
+            $computedPercent = $this->discountPricingCommissionPercent(
+                (float) ($invoice->total_with_vat ?? 0.0),
+                $salesGrossBeforeAdjustment
+            );
+            if ($computedPercent > 0.0) {
+                $discountRecalcCommissionPercent = $computedPercent;
+            }
+        }
+        if ($isDiscountPricingAtAdjustment && $discountRecalcCommissionPercent !== null && $discountRecalcCommissionPercent > 0.0) {
+            $storedAdjustmentCommissionPercent = $discountRecalcCommissionPercent;
         }
 
         $adjustmentId = 0;
@@ -4355,7 +4511,7 @@ class InvoiceController
                     'source_fgo_series' => (string) ($invoice->fgo_series ?? ''),
                     'source_fgo_number' => (string) ($invoice->fgo_number ?? ''),
                     'selected_client_cui' => (string) ($invoice->selected_client_cui ?? ''),
-                    'commission_percent' => $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null,
+                    'commission_percent' => $storedAdjustmentCommissionPercent,
                     'source_total_with_vat' => $sourceTotalVat,
                     'target_total_with_vat' => $targetTotalVat,
                     'decrease_total_with_vat' => $decreaseTotalVat,
@@ -4410,7 +4566,9 @@ class InvoiceController
                         $this->buildStornoLineNo((string) ($line['line_no'] ?? '')),
                         $now,
                         $hasCodSaga,
-                        $hasStockSaga
+                        $hasStockSaga,
+                        $hasCostNet,
+                        $hasCostGross
                     );
                     $createdLines++;
                 }
@@ -4460,7 +4618,9 @@ class InvoiceController
                         $this->buildRefacereLineNo((string) ($line['line_no'] ?? '')),
                         $now,
                         $hasCodSaga,
-                        $hasStockSaga
+                        $hasStockSaga,
+                        $hasCostNet,
+                        $hasCostGross
                     );
                     $createdLines++;
                     $createdReplacementLines++;
@@ -4519,7 +4679,7 @@ class InvoiceController
             if ($createdPackages > 0) {
                 $this->setLastConfirmedPackageNo($nextPackageNo - 1);
             }
-            $totals = $this->recalculateInvoiceTotals((int) $invoice->id, $now);
+            $totals = $this->recalculateInvoiceTotals((int) $invoice->id, $now, $discountRecalcCommissionPercent);
 
             $pdo->commit();
 
@@ -4586,12 +4746,27 @@ class InvoiceController
         string $lineNo,
         string $now,
         bool $hasCodSaga,
-        bool $hasStockSaga
+        bool $hasStockSaga,
+        bool $hasCostNet,
+        bool $hasCostGross
     ): void {
         $unitPrice = (float) ($lineData['unit_price'] ?? 0.0);
         $taxPercent = (float) ($lineData['tax_percent'] ?? 0.0);
         $lineTotal = round($quantity * $unitPrice, 2);
         $lineTotalVat = round($lineTotal * (1 + ($taxPercent / 100)), 2);
+        $sourceQty = (float) ($lineData['quantity'] ?? 0.0);
+        $costLineTotal = null;
+        $costLineTotalVat = null;
+        if ($hasCostNet && isset($lineData['cost_line_total']) && $lineData['cost_line_total'] !== null && abs($sourceQty) > 0.00001) {
+            $costUnit = (float) $lineData['cost_line_total'] / $sourceQty;
+            $costLineTotal = round($quantity * $costUnit, 2);
+        }
+        if ($hasCostGross && isset($lineData['cost_line_total_vat']) && $lineData['cost_line_total_vat'] !== null && abs($sourceQty) > 0.00001) {
+            $costVatUnit = (float) $lineData['cost_line_total_vat'] / $sourceQty;
+            $costLineTotalVat = round($quantity * $costVatUnit, 2);
+        } elseif ($hasCostGross && $costLineTotal !== null) {
+            $costLineTotalVat = round($costLineTotal * (1 + ($taxPercent / 100)), 2);
+        }
 
         $params = [
             'invoice_in_id' => $invoiceId,
@@ -4603,6 +4778,8 @@ class InvoiceController
             'line_total' => $lineTotal,
             'tax_percent' => $taxPercent,
             'line_total_vat' => $lineTotalVat,
+            'cost_line_total' => $costLineTotal,
+            'cost_line_total_vat' => $costLineTotalVat,
             'package_id' => $packageId,
             'created_at' => $now,
         ];
@@ -4611,10 +4788,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name, cod_saga, stock_saga,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name, :cod_saga, :stock_saga,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 array_merge($params, [
                     'cod_saga' => $lineData['cod_saga'] ?? null,
@@ -4625,10 +4802,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name, cod_saga,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name, :cod_saga,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 array_merge($params, [
                     'cod_saga' => $lineData['cod_saga'] ?? null,
@@ -4638,10 +4815,10 @@ class InvoiceController
             Database::execute(
                 'INSERT INTO invoice_in_lines (
                     invoice_in_id, line_no, product_name,
-                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, package_id, created_at
+                    quantity, unit_code, unit_price, line_total, tax_percent, line_total_vat, cost_line_total, cost_line_total_vat, package_id, created_at
                 ) VALUES (
                     :invoice_in_id, :line_no, :product_name,
-                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :package_id, :created_at
+                    :quantity, :unit_code, :unit_price, :line_total, :tax_percent, :line_total_vat, :cost_line_total, :cost_line_total_vat, :package_id, :created_at
                 )',
                 $params
             );
@@ -4660,19 +4837,23 @@ class InvoiceController
         return strlen($lineNo) > 32 ? substr($lineNo, 0, 32) : $lineNo;
     }
 
-    private function recalculateInvoiceTotals(int $invoiceId, string $now): array
+    private function recalculateInvoiceTotals(int $invoiceId, string $now, ?float $discountCommissionPercent = null): array
     {
-        $totals = Database::fetchOne(
-            'SELECT
-                COALESCE(SUM(line_total), 0) AS total_without_vat,
-                COALESCE(SUM(line_total_vat), 0) AS total_with_vat
-             FROM invoice_in_lines
-             WHERE invoice_in_id = :invoice',
-            ['invoice' => $invoiceId]
-        ) ?? [];
-
-        $totalWithoutVat = round((float) ($totals['total_without_vat'] ?? 0.0), 2);
-        $totalWithVat = round((float) ($totals['total_with_vat'] ?? 0.0), 2);
+        if ($discountCommissionPercent !== null) {
+            $salesNet = $this->invoiceSalesNetTotal($invoiceId);
+            $salesGross = $this->invoiceSalesGrossTotal($invoiceId);
+            $percent = abs((float) $discountCommissionPercent);
+            $totalWithoutVat = $percent > 0.0
+                ? $this->commissionService->applyCommission($salesNet, -$percent)
+                : round($salesNet, 2);
+            $totalWithVat = $percent > 0.0
+                ? $this->commissionService->applyCommission($salesGross, -$percent)
+                : round($salesGross, 2);
+        } else {
+            $totals = $this->packageTotalsService->calculateInvoiceTotals($invoiceId);
+            $totalWithoutVat = round((float) ($totals['sum_net'] ?? 0.0), 2);
+            $totalWithVat = round((float) ($totals['sum_gross'] ?? 0.0), 2);
+        }
         $totalVat = round($totalWithVat - $totalWithoutVat, 2);
 
         Database::execute(
@@ -4903,6 +5084,287 @@ class InvoiceController
         return $totals;
     }
 
+    private function packageSalesTotalsForIds(array $packageIds): array
+    {
+        if (empty($packageIds) || !Database::tableExists('invoice_in_lines')) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach (array_values($packageIds) as $index => $packageId) {
+            $key = 'p' . $index;
+            $placeholders[] = ':' . $key;
+            $params[$key] = (int) $packageId;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id,
+                    COUNT(*) AS line_count,
+                    COALESCE(SUM(line_total), 0) AS total,
+                    COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE package_id IN (' . implode(',', $placeholders) . ')
+             GROUP BY package_id',
+            $params
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $totals[(int) ($row['package_id'] ?? 0)] = [
+                'line_count' => (int) ($row['line_count'] ?? 0),
+                'total' => (float) ($row['total'] ?? 0),
+                'total_vat' => (float) ($row['total_vat'] ?? 0),
+            ];
+        }
+
+        return $totals;
+    }
+
+    private function invoiceHasDiscountPricing(InvoiceIn $invoice, ?float $salesGrossTotal = null): bool
+    {
+        $invoiceGross = (float) ($invoice->total_with_vat ?? 0.0);
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        }
+
+        return $salesGrossTotal > ($invoiceGross + 0.009);
+    }
+
+    private function invoiceSalesGrossTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesGrossCache[$invoiceId])) {
+            return (float) $this->invoiceSalesGrossCache[$invoiceId];
+        }
+
+        $value = (float) Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total_vat), 0)
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        );
+        $this->invoiceSalesGrossCache[$invoiceId] = $value;
+
+        return $value;
+    }
+
+    private function invoiceSalesNetTotal(int $invoiceId): float
+    {
+        if (isset($this->invoiceSalesNetCache[$invoiceId])) {
+            return (float) $this->invoiceSalesNetCache[$invoiceId];
+        }
+
+        $value = (float) (Database::fetchValue(
+            'SELECT COALESCE(SUM(line_total), 0)
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice',
+            ['invoice' => $invoiceId]
+        ) ?? 0.0);
+        $this->invoiceSalesNetCache[$invoiceId] = $value;
+
+        return $value;
+    }
+
+    private function invoicePackageSalesGrossTotals(int $invoiceId): array
+    {
+        if (isset($this->invoicePackageSalesGrossCache[$invoiceId])) {
+            return $this->invoicePackageSalesGrossCache[$invoiceId];
+        }
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            $this->invoicePackageSalesGrossCache[$invoiceId] = [];
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id, COALESCE(SUM(line_total_vat), 0) AS total_vat
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
+        }
+        $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
+    }
+
+    private function invoiceClientTotalWithCommission(InvoiceIn $invoice, float $commission, ?float $salesGrossTotal = null): float
+    {
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        }
+        if ($this->invoiceHasDiscountPricing($invoice, $salesGrossTotal)) {
+            return round((float) $salesGrossTotal, 2);
+        }
+
+        $packageTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
+        if (empty($packageTotals)) {
+            return $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commission);
+        }
+
+        $total = 0.0;
+        foreach ($packageTotals as $packageGross) {
+            if (abs((float) $packageGross) < 0.0001) {
+                continue;
+            }
+            $total += $this->commissionService->applyCommission((float) $packageGross, $commission);
+        }
+
+        return round($total, 2);
+    }
+
+    private function discountPricingCommissionPercent(float $invoiceGrossTotal, float $salesGrossTotal): float
+    {
+        if ($invoiceGrossTotal <= 0.0 || $salesGrossTotal <= 0.0) {
+            return 0.0;
+        }
+        if ($salesGrossTotal <= ($invoiceGrossTotal + 0.009)) {
+            return 0.0;
+        }
+
+        $percent = (($salesGrossTotal / $invoiceGrossTotal) - 1.0) * 100.0;
+
+        return round($percent, 6);
+    }
+
+    private function syncDiscountCommissionPercent(InvoiceIn $invoice, ?float $salesGrossTotal = null): ?float
+    {
+        if ($salesGrossTotal === null) {
+            $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        }
+        if (!$this->invoiceHasDiscountPricing($invoice, $salesGrossTotal)) {
+            return null;
+        }
+
+        $adjustmentCommissionPercent = $this->latestAdjustmentCommissionPercent((int) $invoice->id);
+        if ($adjustmentCommissionPercent !== null && $adjustmentCommissionPercent > 0.0) {
+            $this->syncInvoiceTotalsByCommission($invoice, $adjustmentCommissionPercent, $salesGrossTotal);
+            $currentCommission = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+            if ($currentCommission !== null && abs($currentCommission - $adjustmentCommissionPercent) < 0.000001) {
+                return $adjustmentCommissionPercent;
+            }
+
+            Database::execute(
+                'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                [
+                    'commission' => $adjustmentCommissionPercent,
+                    'now' => date('Y-m-d H:i:s'),
+                    'id' => $invoice->id,
+                ]
+            );
+            $invoice->commission_percent = $adjustmentCommissionPercent;
+
+            return $adjustmentCommissionPercent;
+        }
+
+        $commissionPercent = $this->discountPricingCommissionPercent(
+            (float) ($invoice->total_with_vat ?? 0.0),
+            (float) $salesGrossTotal
+        );
+        if ($commissionPercent <= 0.0) {
+            return null;
+        }
+
+        $currentCommission = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+        if ($currentCommission !== null && abs($currentCommission - $commissionPercent) < 0.000001) {
+            return $commissionPercent;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+            [
+                'commission' => $commissionPercent,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+        $invoice->commission_percent = $commissionPercent;
+
+        return $commissionPercent;
+    }
+
+    private function latestAdjustmentCommissionPercent(int $invoiceId): ?float
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('invoice_adjustments')) {
+            return null;
+        }
+
+        $value = Database::fetchValue(
+            'SELECT commission_percent
+             FROM invoice_adjustments
+             WHERE invoice_in_id = :invoice
+               AND commission_percent IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 1',
+            ['invoice' => $invoiceId]
+        );
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (float) $value;
+    }
+
+    private function syncInvoiceTotalsByCommission(InvoiceIn $invoice, float $commissionPercent, float $salesGrossTotal): void
+    {
+        if ((int) ($invoice->id ?? 0) <= 0) {
+            return;
+        }
+
+        $salesNetTotal = $this->invoiceSalesNetTotal((int) $invoice->id);
+        $percent = abs($commissionPercent);
+        if ($percent <= 0.0) {
+            return;
+        }
+
+        $targetWithoutVat = $this->commissionService->applyCommission($salesNetTotal, -$percent);
+        $targetWithVat = $this->commissionService->applyCommission($salesGrossTotal, -$percent);
+        $targetVat = round($targetWithVat - $targetWithoutVat, 2);
+
+        $currentWithoutVat = (float) ($invoice->total_without_vat ?? 0.0);
+        $currentWithVat = (float) ($invoice->total_with_vat ?? 0.0);
+        if (
+            abs($currentWithoutVat - $targetWithoutVat) < 0.009
+            && abs($currentWithVat - $targetWithVat) < 0.009
+        ) {
+            return;
+        }
+
+        Database::execute(
+            'UPDATE invoices_in
+             SET total_without_vat = :without_vat,
+                 total_vat = :vat,
+                 total_with_vat = :with_vat,
+                 updated_at = :now
+             WHERE id = :id',
+            [
+                'without_vat' => $targetWithoutVat,
+                'vat' => $targetVat,
+                'with_vat' => $targetWithVat,
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoice->id,
+            ]
+        );
+        $invoice->total_without_vat = $targetWithoutVat;
+        $invoice->total_vat = $targetVat;
+        $invoice->total_with_vat = $targetWithVat;
+    }
+
     private function ensurePackageAutoIncrement(): void
     {
         $count = (int) Database::fetchValue('SELECT COUNT(*) FROM packages');
@@ -5006,9 +5468,17 @@ class InvoiceController
     {
         $commission = $this->commissionForInvoice($invoice, $commissionMap);
         $clientTotal = null;
+        $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $salesGrossTotal);
+        if ($hasDiscountPricing) {
+            $discountCommission = $this->syncDiscountCommissionPercent($invoice, $salesGrossTotal);
+            if ($discountCommission !== null) {
+                $commission = $discountCommission;
+            }
+        }
 
         if ($commission !== null) {
-            $clientTotal = $this->commissionService->applyCommission((float) $invoice->total_with_vat, (float) $commission);
+            $clientTotal = $this->invoiceClientTotalWithCommission($invoice, (float) $commission, $salesGrossTotal);
         }
 
         $clientStatus = $this->clientStatus($clientTotal, $collected);
@@ -5445,6 +5915,324 @@ class InvoiceController
         }
 
         return $items;
+    }
+
+    private function supplierExistsInPlatform(string $supplierCui): bool
+    {
+        $normalized = preg_replace('/\D+/', '', $supplierCui);
+        $diagnostic = $this->supplierMatchDiagnostics($supplierCui, $normalized);
+        return !empty($diagnostic['matched']);
+    }
+
+    private function extractSupplierCuiFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractSupplierCuiFromXmlContent($contents);
+    }
+
+    private function extractSupplierNameFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractPartyNameFromXmlContent($contents, 'AccountingSupplierParty');
+    }
+
+    private function extractCustomerNameFromXmlFile(string $filePath): string
+    {
+        if ($filePath === '' || !is_file($filePath)) {
+            return '';
+        }
+
+        $contents = @file_get_contents($filePath);
+        if (!is_string($contents) || trim($contents) === '') {
+            return '';
+        }
+
+        return $this->extractPartyNameFromXmlContent($contents, 'AccountingCustomerParty');
+    }
+
+    private function extractSupplierCuiFromXmlContent(string $contents): string
+    {
+        $supplierBlock = $contents;
+        if (preg_match('/<\s*(?:[A-Za-z0-9_\-]+:)?AccountingSupplierParty\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?AccountingSupplierParty\s*>/si', $contents, $blockMatch)) {
+            $supplierBlock = (string) ($blockMatch[1] ?? $contents);
+        }
+
+        $patterns = [
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyTaxScheme\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyIdentification\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?ID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?ID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?EndpointID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?EndpointID\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?CompanyID\s*>/si',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match_all($pattern, $supplierBlock, $matches)) {
+                continue;
+            }
+
+            foreach (($matches[1] ?? []) as $value) {
+                $rawValue = trim((string) html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                if ($rawValue === '') {
+                    continue;
+                }
+
+                $digits = preg_replace('/\D+/', '', $rawValue);
+                if ($digits === '') {
+                    continue;
+                }
+
+                return $rawValue;
+            }
+        }
+
+        return '';
+    }
+
+    private function extractPartyNameFromXmlContent(string $contents, string $partyTag): string
+    {
+        $partyTagPattern = preg_quote($partyTag, '/');
+        $partyBlock = $contents;
+        if (preg_match(
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?' . $partyTagPattern . '\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?' . $partyTagPattern . '\s*>/si',
+            $contents,
+            $blockMatch
+        )) {
+            $partyBlock = (string) ($blockMatch[1] ?? $contents);
+        }
+
+        $patterns = [
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyLegalEntity\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?PartyName\b[^>]*>.*?<\s*(?:[A-Za-z0-9_\-]+:)?Name\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?Name\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?RegistrationName\s*>/si',
+            '/<\s*(?:[A-Za-z0-9_\-]+:)?Name\b[^>]*>(.*?)<\/\s*(?:[A-Za-z0-9_\-]+:)?Name\s*>/si',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match_all($pattern, $partyBlock, $matches)) {
+                continue;
+            }
+
+            foreach (($matches[1] ?? []) as $value) {
+                $name = trim((string) html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+                if ($name !== '') {
+                    return $name;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function resolvePartyName(string $cui, string $providedName): string
+    {
+        $name = CompanyName::normalize($providedName);
+        if ($name !== '') {
+            return $name;
+        }
+
+        $normalizedCui = preg_replace('/\D+/', '', (string) $cui);
+        if ($normalizedCui === '') {
+            return '';
+        }
+
+        $partnerName = $this->lookupNameByNormalizedCui('partners', $normalizedCui);
+        if ($partnerName !== '') {
+            return $partnerName;
+        }
+
+        $companyName = $this->lookupNameByNormalizedCui('companies', $normalizedCui);
+        if ($companyName !== '') {
+            return $companyName;
+        }
+
+        return '';
+    }
+
+    private function lookupNameByNormalizedCui(string $table, string $normalizedCui): string
+    {
+        if (
+            $normalizedCui === ''
+            || !in_array($table, ['partners', 'companies'], true)
+            || !Database::tableExists($table)
+        ) {
+            return '';
+        }
+
+        try {
+            $rows = Database::fetchAll('SELECT cui, denumire FROM ' . $table);
+        } catch (\Throwable $exception) {
+            return '';
+        }
+
+        foreach ($rows as $row) {
+            $candidateCui = preg_replace('/\D+/', '', (string) ($row['cui'] ?? ''));
+            if ($candidateCui !== $normalizedCui) {
+                continue;
+            }
+
+            $name = CompanyName::normalize((string) ($row['denumire'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return '';
+    }
+
+    private function syncInvoicePartyPartner(string $cui, string $name, bool $isSupplier, bool $isClient): void
+    {
+        $normalizedCui = preg_replace('/\D+/', '', (string) $cui);
+        if ($normalizedCui === '' || !Database::tableExists('partners')) {
+            return;
+        }
+
+        $normalizedName = CompanyName::normalize($name);
+        $matchedRawCui = '';
+        $matchedName = '';
+
+        try {
+            $rows = Database::fetchAll('SELECT cui, denumire FROM partners');
+            foreach ($rows as $row) {
+                $candidateRawCui = (string) ($row['cui'] ?? '');
+                $candidateCui = preg_replace('/\D+/', '', $candidateRawCui);
+                if ($candidateCui !== $normalizedCui) {
+                    continue;
+                }
+                $matchedRawCui = $candidateRawCui;
+                $matchedName = CompanyName::normalize((string) ($row['denumire'] ?? ''));
+                break;
+            }
+        } catch (\Throwable $exception) {
+            return;
+        }
+
+        if ($matchedRawCui !== '') {
+            if (
+                $normalizedName !== ''
+                && $normalizedName !== $normalizedCui
+                && ($matchedName === '' || $matchedName === $normalizedCui)
+            ) {
+                Database::execute(
+                    'UPDATE partners SET denumire = :denumire, updated_at = :now WHERE cui = :cui',
+                    [
+                        'denumire' => $normalizedName,
+                        'now' => date('Y-m-d H:i:s'),
+                        'cui' => $matchedRawCui,
+                    ]
+                );
+            }
+
+            if (Database::columnExists('partners', 'is_supplier') && Database::columnExists('partners', 'is_client')) {
+                Partner::updateFlags($matchedRawCui, $isSupplier, $isClient);
+            }
+            return;
+        }
+
+        if ($normalizedName === '' || $normalizedName === $normalizedCui) {
+            return;
+        }
+
+        Partner::createIfMissing($normalizedCui, $normalizedName);
+        if (Database::columnExists('partners', 'is_supplier') && Database::columnExists('partners', 'is_client')) {
+            Partner::updateFlags($normalizedCui, $isSupplier, $isClient);
+        }
+    }
+
+    private function supplierMatchDiagnostics(string $xmlCuiRaw, string $xmlCuiNormalized): array
+    {
+        if ($xmlCuiNormalized === '') {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="" (gol).',
+            ];
+        }
+
+        if (!Database::tableExists('partners')) {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Tabela partners nu exista.',
+            ];
+        }
+
+        if (!Database::columnExists('partners', 'is_supplier')) {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Coloana partners.is_supplier lipseste.',
+            ];
+        }
+
+        try {
+            $rows = Database::fetchAll('SELECT cui, is_supplier FROM partners');
+        } catch (\Throwable $exception) {
+            return [
+                'matched' => false,
+                'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". Eroare DB la citirea partners: ' . $exception->getMessage(),
+            ];
+        }
+
+        $totalRows = count($rows);
+        $supplierRows = 0;
+        $sameCuiRows = [];
+
+        foreach ($rows as $candidate) {
+            $isSupplier = !empty($candidate['is_supplier']);
+            if ($isSupplier) {
+                $supplierRows++;
+            }
+
+            $candidateRaw = (string) ($candidate['cui'] ?? '');
+            $candidateNormalized = preg_replace('/\D+/', '', $candidateRaw);
+
+            if ($candidateNormalized !== $xmlCuiNormalized) {
+                continue;
+            }
+
+            $sameCuiRows[] = [
+                'raw' => $candidateRaw,
+                'is_supplier' => $isSupplier ? '1' : '0',
+            ];
+
+            if ($isSupplier) {
+                return [
+                    'matched' => true,
+                    'message' => '',
+                ];
+            }
+        }
+
+        $sameCuiPreview = 'niciuna';
+        if (!empty($sameCuiRows)) {
+            $chunks = [];
+            foreach (array_slice($sameCuiRows, 0, 8) as $item) {
+                $chunks[] = ($item['raw'] !== '' ? $item['raw'] : '(gol)') . ' [is_supplier=' . $item['is_supplier'] . ']';
+            }
+            $sameCuiPreview = implode('; ', $chunks);
+            if (count($sameCuiRows) > 8) {
+                $sameCuiPreview .= '; ...';
+            }
+        }
+
+        return [
+            'matched' => false,
+            'message' => 'Comparatie CUI: XML raw="' . $xmlCuiRaw . '", XML normalizat="' . $xmlCuiNormalized . '". '
+                . 'Partners total=' . $totalRows . ', cu is_supplier=1: ' . $supplierRows . '. '
+                . 'Potriviri dupa CUI normalizat: ' . $sameCuiPreview . '.',
+        ];
     }
 
     private function manualClientOptions(string $supplierCui, array $allowedSuppliers): array

@@ -36,8 +36,4 @@
             Intra in ERP
         </button>
     </form>
-
-    <div class="mt-4 text-center text-sm text-slate-500">
-        Prima instalare? <a href="<?= App\Support\Url::to('setup') ?>" class="text-blue-700 hover:text-blue-800">Creeaza admin</a>
-    </div>
 </div>

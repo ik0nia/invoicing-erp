@@ -8,7 +8,7 @@ class PackageTotalsService
 {
     public function calculatePackageTotals(int $packageId): array
     {
-        if (!Database::tableExists('invoice_in_lines')) {
+        if (!Database::tableExists('invoice_in_lines') || !Database::tableExists('packages')) {
             return [
                 'sum_net' => 0.0,
                 'sum_gross' => 0.0,
@@ -17,32 +17,51 @@ class PackageTotalsService
             ];
         }
 
-        $row = Database::fetchOne(
-            'SELECT p.vat_percent,
-                    COUNT(l.id) AS line_count,
-                    COALESCE(SUM(l.line_total), 0) AS sum_net,
-                    COALESCE(SUM(l.line_total_vat), 0) AS sum_gross
-             FROM packages p
-             LEFT JOIN invoice_in_lines l ON l.package_id = p.id
-             WHERE p.id = :id
-             GROUP BY p.id',
+        $package = Database::fetchOne(
+            'SELECT vat_percent FROM packages WHERE id = :id LIMIT 1',
+            ['id' => $packageId]
+        );
+        if (!$package) {
+            return [
+                'sum_net' => 0.0,
+                'sum_gross' => 0.0,
+                'vat_percent' => 0.0,
+                'line_count' => 0,
+            ];
+        }
+
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
+        $costNetSelect = $hasCostNet ? ', cost_line_total' : '';
+        $costGrossSelect = $hasCostGross ? ', cost_line_total_vat' : '';
+
+        $rows = Database::fetchAll(
+            'SELECT product_name, line_total, line_total_vat' . $costNetSelect . $costGrossSelect . '
+             FROM invoice_in_lines
+             WHERE package_id = :id',
             ['id' => $packageId]
         );
 
-        if (!$row) {
-            return [
-                'sum_net' => 0.0,
-                'sum_gross' => 0.0,
-                'vat_percent' => 0.0,
-                'line_count' => 0,
-            ];
+        $sumNet = 0.0;
+        $sumGross = 0.0;
+        $lineCount = 0;
+        foreach ($rows as $row) {
+            if ($this->isDiscountLine($row)) {
+                continue;
+            }
+
+            $effectiveNet = $this->effectiveNet($row);
+            $effectiveGross = $this->effectiveGross($row);
+            $lineCount++;
+            $sumNet += $effectiveNet;
+            $sumGross += $effectiveGross;
         }
 
         return [
-            'sum_net' => (float) ($row['sum_net'] ?? 0),
-            'sum_gross' => (float) ($row['sum_gross'] ?? 0),
-            'vat_percent' => (float) ($row['vat_percent'] ?? 0),
-            'line_count' => (int) ($row['line_count'] ?? 0),
+            'sum_net' => round($sumNet, 2),
+            'sum_gross' => round($sumGross, 2),
+            'vat_percent' => (float) ($package['vat_percent'] ?? 0),
+            'line_count' => $lineCount,
         ];
     }
 
@@ -57,20 +76,90 @@ class PackageTotalsService
             ];
         }
 
-        $row = Database::fetchOne(
-            'SELECT COUNT(*) AS line_count,
-                    COALESCE(SUM(line_total), 0) AS sum_net,
-                    COALESCE(SUM(line_total_vat), 0) AS sum_gross
+        $hasCostNet = Database::columnExists('invoice_in_lines', 'cost_line_total');
+        $hasCostGross = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
+        $costNetSelect = $hasCostNet ? ', cost_line_total' : '';
+        $costGrossSelect = $hasCostGross ? ', cost_line_total_vat' : '';
+
+        $rows = Database::fetchAll(
+            'SELECT product_name, line_total, line_total_vat' . $costNetSelect . $costGrossSelect . '
              FROM invoice_in_lines
              WHERE invoice_in_id = :id',
             ['id' => $invoiceId]
         );
 
+        $sumNet = 0.0;
+        $sumGross = 0.0;
+        $lineCount = 0;
+        foreach ($rows as $row) {
+            if ($this->isDiscountLine($row)) {
+                continue;
+            }
+
+            $effectiveNet = $this->effectiveNet($row);
+            $effectiveGross = $this->effectiveGross($row);
+            $lineCount++;
+            $sumNet += $effectiveNet;
+            $sumGross += $effectiveGross;
+        }
+
         return [
-            'sum_net' => (float) ($row['sum_net'] ?? 0),
-            'sum_gross' => (float) ($row['sum_gross'] ?? 0),
+            'sum_net' => round($sumNet, 2),
+            'sum_gross' => round($sumGross, 2),
             'vat_percent' => 0.0,
-            'line_count' => (int) ($row['line_count'] ?? 0),
+            'line_count' => $lineCount,
         ];
+    }
+
+    private function effectiveNet(array $row): float
+    {
+        if (array_key_exists('cost_line_total', $row) && $row['cost_line_total'] !== null) {
+            return (float) $row['cost_line_total'];
+        }
+
+        return (float) ($row['line_total'] ?? 0.0);
+    }
+
+    private function effectiveGross(array $row): float
+    {
+        if (array_key_exists('cost_line_total_vat', $row) && $row['cost_line_total_vat'] !== null) {
+            return (float) $row['cost_line_total_vat'];
+        }
+
+        return (float) ($row['line_total_vat'] ?? 0.0);
+    }
+
+    private function isDiscountLine(array $line): bool
+    {
+        $lineTotal = (float) ($line['line_total'] ?? 0.0);
+        $lineTotalVat = (float) ($line['line_total_vat'] ?? 0.0);
+        if ($lineTotal >= -0.00001 && $lineTotalVat >= -0.00001) {
+            return false;
+        }
+
+        $name = $this->normalizeDiscountText((string) ($line['product_name'] ?? ''));
+        if ($name === '') {
+            return false;
+        }
+
+        if (str_contains($name, 'discount') || str_contains($name, 'reduc')) {
+            return true;
+        }
+
+        return preg_match('/\bdisc[a-z]*/', $name) === 1;
+    }
+
+    private function normalizeDiscountText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            return mb_strtolower($value, 'UTF-8');
+        }
+
+        return strtolower($value);
     }
 }

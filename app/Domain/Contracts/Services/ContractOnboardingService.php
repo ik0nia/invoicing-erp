@@ -50,7 +50,7 @@ class ContractOnboardingService
                     'doc_kind' => $docKind,
                 ], JSON_UNESCAPED_UNICODE);
                 $number = null;
-                $registryScope = $this->resolveRegistryScope($linkType, $supplierCui, $clientCui);
+                $registryScope = $this->resolveRegistryScope($linkType, $supplierCui, $clientCui, $template);
                 try {
                     $number = $this->numberService->allocateNumber($docType, [
                         'registry_scope' => $registryScope,
@@ -161,19 +161,16 @@ class ContractOnboardingService
         string $docType
     ): ?array
     {
-        if ($docType === 'contract') {
-            return $this->findExistingPrimaryContract($partnerCui, $supplierCui, $clientCui);
+        if ($linkType === 'supplier') {
+            if ($docType === 'contract') {
+                return $this->findExistingSupplierPrimaryContract($partnerCui);
+            }
+
+            return $this->findExistingSupplierTemplateContract($templateId, $partnerCui);
         }
 
-        if ($linkType === 'supplier') {
-            return Database::fetchOne(
-                'SELECT id FROM contracts WHERE template_id = :template AND (partner_cui = :partner OR supplier_cui = :supplier) LIMIT 1',
-                [
-                    'template' => $templateId,
-                    'partner' => $partnerCui,
-                    'supplier' => $partnerCui,
-                ]
-            );
+        if ($docType === 'contract') {
+            return $this->findExistingPrimaryContract($partnerCui, $supplierCui, $clientCui);
         }
 
         $params = [
@@ -187,6 +184,55 @@ class ContractOnboardingService
             $params['supplier'] = $supplierCui;
         }
         $sql .= ' LIMIT 1';
+
+        return Database::fetchOne($sql, $params);
+    }
+
+    private function findExistingSupplierTemplateContract(int $templateId, string $supplierCui): ?array
+    {
+        $sql = 'SELECT id
+                FROM contracts
+                WHERE template_id = :template
+                  AND (partner_cui = :partner OR supplier_cui = :supplier)';
+        $params = [
+            'template' => $templateId,
+            'partner' => $supplierCui,
+            'supplier' => $supplierCui,
+        ];
+        if (Database::columnExists('contracts', 'client_cui')) {
+            $sql .= ' AND (client_cui IS NULL OR client_cui = "")';
+        }
+        $sql .= ' ORDER BY created_at DESC, id DESC LIMIT 1';
+
+        return Database::fetchOne($sql, $params);
+    }
+
+    private function findExistingSupplierPrimaryContract(string $supplierCui): ?array
+    {
+        $supplierCui = preg_replace('/\D+/', '', $supplierCui);
+        if ($supplierCui === '') {
+            return null;
+        }
+
+        $joinTemplate = Database::tableExists('contract_templates');
+        $sql = 'SELECT c.id FROM contracts c';
+        if ($joinTemplate) {
+            $sql .= ' LEFT JOIN contract_templates t ON t.id = c.template_id';
+        }
+        $sql .= ' WHERE (' . $this->primaryContractConditionSql($joinTemplate) . ')'
+            . ' AND (c.partner_cui = :supplier OR c.supplier_cui = :supplier)';
+        if (Database::columnExists('contracts', 'client_cui')) {
+            $sql .= ' AND (c.client_cui IS NULL OR c.client_cui = "")';
+        }
+        $sql .= ' ORDER BY c.created_at DESC, c.id DESC LIMIT 1';
+
+        $params = [
+            'contract_doc_type' => 'contract',
+            'supplier' => $supplierCui,
+        ];
+        if ($joinTemplate) {
+            $params['contract_doc_kind'] = 'contract';
+        }
 
         return Database::fetchOne($sql, $params);
     }
@@ -275,11 +321,19 @@ class ContractOnboardingService
         return 'c.doc_type = :contract_doc_type';
     }
 
-    private function resolveRegistryScope(string $linkType, ?string $supplierCui, ?string $clientCui): string
+    private function resolveRegistryScope(string $linkType, ?string $supplierCui, ?string $clientCui, ?array $template = null): string
     {
         $linkType = strtolower(trim($linkType));
         $supplierCui = preg_replace('/\D+/', '', (string) $supplierCui);
         $clientCui = preg_replace('/\D+/', '', (string) $clientCui);
+        $appliesTo = strtolower(trim((string) (($template['applies_to'] ?? ''))));
+
+        if ($appliesTo === 'supplier') {
+            return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+        if ($appliesTo === 'client') {
+            return DocumentNumberService::REGISTRY_SCOPE_CLIENT;
+        }
 
         if ($linkType === 'supplier') {
             return DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;

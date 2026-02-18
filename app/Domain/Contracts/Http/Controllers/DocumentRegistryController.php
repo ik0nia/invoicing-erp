@@ -297,11 +297,22 @@ class DocumentRegistryController
         }
 
         $companyNames = $this->fetchCompanyNames(array_keys($cuiSet));
+        $prefillNames = $this->fetchEnrollmentPrefillNamesByCuis(array_keys($cuiSet));
+        foreach ($prefillNames as $cui => $name) {
+            if (!isset($companyNames[$cui])) {
+                $companyNames[$cui] = $name;
+            }
+        }
         foreach ($documents as $index => $document) {
             $companyCui = (string) ($document['registry_company_cui'] ?? '');
-            $documents[$index]['registry_company_name'] = $companyCui !== '' && isset($companyNames[$companyCui])
-                ? $companyNames[$companyCui]
-                : '—';
+            if ($companyCui !== '' && isset($companyNames[$companyCui])) {
+                $documents[$index]['registry_company_name'] = $companyNames[$companyCui];
+            } elseif ($companyCui !== '') {
+                // Better than a dash: show the company CUI when name lookup is missing.
+                $documents[$index]['registry_company_name'] = $companyCui;
+            } else {
+                $documents[$index]['registry_company_name'] = '—';
+            }
         }
 
         return $documents;
@@ -375,5 +386,92 @@ class DocumentRegistryController
         }
 
         return $names;
+    }
+
+    private function fetchEnrollmentPrefillNamesByCuis(array $cuis): array
+    {
+        if (
+            empty($cuis)
+            || !Database::tableExists('enrollment_links')
+            || !Database::columnExists('enrollment_links', 'prefill_json')
+        ) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($cuis as $cui) {
+            $value = preg_replace('/\D+/', '', (string) $cui);
+            if ($value !== '') {
+                $normalized[$value] = true;
+            }
+        }
+        $cuis = array_keys($normalized);
+        if (empty($cuis)) {
+            return [];
+        }
+
+        $candidateColumns = [];
+        foreach (['partner_cui', 'supplier_cui', 'relation_supplier_cui', 'relation_client_cui'] as $column) {
+            if (Database::columnExists('enrollment_links', $column)) {
+                $candidateColumns[] = $column;
+            }
+        }
+        if (empty($candidateColumns)) {
+            return [];
+        }
+
+        $params = [];
+        $whereByColumn = [];
+        $paramIndex = 0;
+        foreach ($candidateColumns as $column) {
+            $placeholders = [];
+            foreach ($cuis as $cui) {
+                $paramName = 'c' . $paramIndex;
+                $paramIndex++;
+                $placeholders[] = ':' . $paramName;
+                $params[$paramName] = $cui;
+            }
+            $whereByColumn[] = $column . ' IN (' . implode(',', $placeholders) . ')';
+        }
+        if (empty($whereByColumn)) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT prefill_json
+             FROM enrollment_links
+             WHERE prefill_json IS NOT NULL
+               AND prefill_json <> ""
+               AND (' . implode(' OR ', $whereByColumn) . ')
+             ORDER BY id DESC
+             LIMIT 5000',
+            $params
+        );
+        if (empty($rows)) {
+            return [];
+        }
+
+        $cuiMap = array_fill_keys($cuis, true);
+        $result = [];
+        foreach ($rows as $row) {
+            $prefillRaw = trim((string) ($row['prefill_json'] ?? ''));
+            if ($prefillRaw === '') {
+                continue;
+            }
+            $decoded = json_decode($prefillRaw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $cui = preg_replace('/\D+/', '', (string) ($decoded['cui'] ?? ''));
+            $name = trim((string) ($decoded['denumire'] ?? ''));
+            if ($cui === '' || $name === '' || !isset($cuiMap[$cui])) {
+                continue;
+            }
+            if (!isset($result[$cui])) {
+                $result[$cui] = $name;
+            }
+        }
+
+        return $result;
     }
 }
