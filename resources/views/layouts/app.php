@@ -83,7 +83,7 @@ if ($isPlatformUser && $canAccessSaga) {
 }
 
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
-    $menuSections['Inrolare'] = [
+    $menuSections['Companii'] = [
         [
             'label' => 'Adauga partener',
             'path' => '/admin/enrollment-links',
@@ -92,7 +92,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
         ],
     ];
     if ($isInternalStaff) {
-        $menuSections['Inrolare'][] = [
+        $menuSections['Companii'][] = [
             'label' => 'Inrolari in asteptare',
             'path' => '/admin/inrolari',
             'icon' => 'inrolari',
@@ -100,6 +100,21 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'active' => str_starts_with($currentPath, '/admin/inrolari'),
         ];
     }
+}
+
+if ($isPlatformUser) {
+    $menuSections['Companii'][] = [
+        'label' => 'Companii',
+        'path' => '/admin/companii',
+        'icon' => 'companii',
+        'active' => str_starts_with($currentPath, '/admin/companii'),
+    ];
+    $menuSections['Companii'][] = [
+        'label' => 'Asocieri clienti',
+        'path' => '/admin/asocieri',
+        'icon' => 'asocieri',
+        'active' => str_starts_with($currentPath, '/admin/asocieri'),
+    ];
 }
 
 if ($isPlatformUser || $isOperator || $isSupplierUser) {
@@ -128,21 +143,6 @@ if ($isPlatformUser) {
             'active' => str_starts_with($currentPath, '/admin/plati'),
         ];
     }
-
-    $menuSections['Companii'] = [
-        [
-            'label' => 'Companii',
-            'path' => '/admin/companii',
-            'icon' => 'companii',
-            'active' => str_starts_with($currentPath, '/admin/companii'),
-        ],
-        [
-            'label' => 'Asocieri clienti',
-            'path' => '/admin/asocieri',
-            'icon' => 'asocieri',
-            'active' => str_starts_with($currentPath, '/admin/asocieri'),
-        ],
-    ];
 
     if (!$isOperator) {
         $menuSections['Rapoarte'] = [
