@@ -4,6 +4,8 @@
     $isOperator = !empty($isOperator);
     $showEnrollmentPendingCard = !empty($showEnrollmentPendingCard);
     $pendingEnrollmentSummary = is_array($pendingEnrollmentSummary ?? null) ? $pendingEnrollmentSummary : [];
+    $showPendingContractsCard = !empty($showPendingContractsCard);
+    $pendingContracts = is_array($pendingContracts ?? null) ? $pendingContracts : [];
     $showCommissionDailyChart = !empty($showCommissionDailyChart);
     $commissionDailyChart = is_array($commissionDailyChart ?? null) ? $commissionDailyChart : [];
 ?>
@@ -44,6 +46,79 @@
                 >
                     Vezi inrolarile
                 </a>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($showPendingContractsCard): ?>
+        <?php
+            $pendingContractsCount = count($pendingContracts);
+            $contractStatusLabels = [
+                'draft' => 'Ciorna',
+                'generated' => 'Generat',
+                'sent' => 'Trimis',
+                'signed_uploaded' => 'Semnat (incarcat)',
+                'approved' => 'Aprobat',
+            ];
+        ?>
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+            <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                        <div class="text-sm font-medium text-slate-700">Contracte fara status Aprobat</div>
+                        <div class="mt-1 text-xs text-slate-500">Total curent: <?= $pendingContractsCount ?></div>
+                    </div>
+                    <a
+                        href="<?= App\Support\Url::to('admin/contracts') ?>"
+                        class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                    >
+                        Vezi contracte
+                    </a>
+                </div>
+
+                <?php if ($pendingContractsCount === 0): ?>
+                    <div class="mt-3 text-sm text-slate-500">Nu exista contracte cu status diferit de Aprobat.</div>
+                <?php else: ?>
+                    <div class="mt-3 max-h-72 overflow-y-auto pr-1">
+                        <ul class="space-y-2 text-sm">
+                            <?php foreach ($pendingContracts as $contract): ?>
+                                <?php
+                                    $statusKey = trim((string) ($contract['status'] ?? ''));
+                                    $statusLabel = $contractStatusLabels[$statusKey]
+                                        ?? ($statusKey !== '' ? ucfirst(str_replace('_', ' ', $statusKey)) : '—');
+                                    $contractDateRaw = trim((string) ($contract['contract_date'] ?? ''));
+                                    $contractDateDisplay = '—';
+                                    if ($contractDateRaw !== '') {
+                                        $contractDateTs = strtotime($contractDateRaw);
+                                        $contractDateDisplay = $contractDateTs !== false ? date('d.m.Y', $contractDateTs) : $contractDateRaw;
+                                    }
+                                    $createdAtRaw = trim((string) ($contract['created_at'] ?? ''));
+                                    $createdAtDisplay = $createdAtRaw !== '' ? $createdAtRaw : '—';
+                                    $docNoDisplay = trim((string) ($contract['doc_no_display'] ?? ''));
+                                    $docTypeDisplay = trim((string) ($contract['doc_type'] ?? ''));
+                                ?>
+                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                    <div class="flex flex-wrap items-start justify-between gap-2">
+                                        <div class="font-semibold text-slate-800">
+                                            <?= htmlspecialchars((string) (($contract['title'] ?? '') !== '' ? $contract['title'] : ('Document #' . (int) ($contract['id'] ?? 0)))) ?>
+                                        </div>
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                                            <?= htmlspecialchars($statusLabel) ?>
+                                        </span>
+                                    </div>
+                                    <div class="mt-1 text-xs text-slate-600">
+                                        <?= htmlspecialchars((string) ($contract['relation_label'] ?? '—')) ?>
+                                    </div>
+                                    <div class="mt-1 text-xs text-slate-500">
+                                        <?= $docNoDisplay !== '' ? ('Nr: ' . htmlspecialchars($docNoDisplay) . ' · ') : '' ?>
+                                        <?= $docTypeDisplay !== '' ? ('Tip: ' . htmlspecialchars($docTypeDisplay) . ' · ') : '' ?>
+                                        Data: <?= htmlspecialchars($contractDateDisplay) ?> · Creat: <?= htmlspecialchars($createdAtDisplay) ?>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     <?php endif; ?>

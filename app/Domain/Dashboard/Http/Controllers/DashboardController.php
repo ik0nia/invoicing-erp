@@ -40,6 +40,7 @@ class DashboardController
         $monthPaidTotal = 0.0;
         $uncollectedInvoices = [];
         $uncollectedCount = 0;
+        $pendingContracts = [];
         $monthStart = date('Y-m-01');
         $monthEnd = date('Y-m-t');
         $pendingEnrollmentSummary = $isPlatform
@@ -52,6 +53,10 @@ class DashboardController
                 'association_pending' => 0,
             ];
         $showEnrollmentPendingCard = $isPlatform && (int) ($pendingEnrollmentSummary['total'] ?? 0) > 0;
+        $showPendingContractsCard = $isPlatform;
+        if ($showPendingContractsCard) {
+            $pendingContracts = $this->loadContractsNotApproved(30);
+        }
         $showCommissionDailyChart = $isPlatform && $user->hasRole(['super_admin', 'admin']);
         $commissionDailyChart = [
             'days' => [],
@@ -86,6 +91,8 @@ class DashboardController
                     'uncollectedCount' => $uncollectedCount,
                     'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
                     'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+                    'showPendingContractsCard' => $showPendingContractsCard,
+                    'pendingContracts' => $pendingContracts,
                     'showCommissionDailyChart' => $showCommissionDailyChart,
                     'commissionDailyChart' => $commissionDailyChart,
                 ]);
@@ -316,6 +323,8 @@ class DashboardController
             'uncollectedCount' => $uncollectedCount,
             'showEnrollmentPendingCard' => $showEnrollmentPendingCard,
             'pendingEnrollmentSummary' => $pendingEnrollmentSummary,
+            'showPendingContractsCard' => $showPendingContractsCard,
+            'pendingContracts' => $pendingContracts,
             'showCommissionDailyChart' => $showCommissionDailyChart,
             'commissionDailyChart' => $commissionDailyChart,
         ]);
@@ -458,6 +467,109 @@ class DashboardController
         }
 
         return array_keys($cuis);
+    }
+
+    private function loadContractsNotApproved(int $limit = 30): array
+    {
+        if (!Database::tableExists('contracts') || !Database::columnExists('contracts', 'status')) {
+            return [];
+        }
+
+        $limit = max(1, min(100, $limit));
+        $rows = Database::fetchAll(
+            'SELECT id, title, doc_type, doc_no, doc_series, doc_full_no, contract_date, status,
+                    supplier_cui, client_cui, partner_cui, created_at
+             FROM contracts
+             WHERE status IS NULL OR status = "" OR LOWER(status) <> :approved
+             ORDER BY created_at DESC, id DESC
+             LIMIT ' . $limit,
+            ['approved' => 'approved']
+        );
+        if (empty($rows)) {
+            return [];
+        }
+
+        $cuiSet = [];
+        foreach ($rows as $row) {
+            foreach (['supplier_cui', 'client_cui', 'partner_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($row[$column] ?? ''));
+                if ($cui !== '') {
+                    $cuiSet[$cui] = true;
+                }
+            }
+        }
+        $companyNames = [];
+        if (!empty($cuiSet)) {
+            $rawCompanyNames = $this->partnerMap(array_keys($cuiSet));
+            foreach ($rawCompanyNames as $cui => $name) {
+                $normalized = preg_replace('/\D+/', '', (string) $cui);
+                $label = trim((string) $name);
+                if ($normalized !== '' && $label !== '') {
+                    $companyNames[$normalized] = $label;
+                }
+            }
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $supplierCui = preg_replace('/\D+/', '', (string) ($row['supplier_cui'] ?? ''));
+            $clientCui = preg_replace('/\D+/', '', (string) ($row['client_cui'] ?? ''));
+            $partnerCui = preg_replace('/\D+/', '', (string) ($row['partner_cui'] ?? ''));
+
+            $supplierName = $supplierCui !== '' ? trim((string) ($companyNames[$supplierCui] ?? '')) : '';
+            $clientName = $clientCui !== '' ? trim((string) ($companyNames[$clientCui] ?? '')) : '';
+            $partnerName = $partnerCui !== '' ? trim((string) ($companyNames[$partnerCui] ?? '')) : '';
+
+            $relationLabel = '—';
+            if ($supplierName !== '' && $clientName !== '') {
+                $relationLabel = $supplierName . ' → ' . $clientName;
+            } elseif ($partnerName !== '') {
+                $relationLabel = $partnerName;
+            } elseif ($supplierName !== '') {
+                $relationLabel = 'Furnizor: ' . $supplierName;
+            } elseif ($clientName !== '') {
+                $relationLabel = 'Client: ' . $clientName;
+            } elseif ($supplierCui !== '' && $clientCui !== '') {
+                $relationLabel = $supplierCui . ' → ' . $clientCui;
+            } elseif ($partnerCui !== '') {
+                $relationLabel = $partnerCui;
+            } elseif ($supplierCui !== '') {
+                $relationLabel = $supplierCui;
+            } elseif ($clientCui !== '') {
+                $relationLabel = $clientCui;
+            }
+
+            $result[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'title' => trim((string) ($row['title'] ?? '')),
+                'doc_type' => trim((string) ($row['doc_type'] ?? '')),
+                'doc_no_display' => $this->contractNumberDisplay($row),
+                'contract_date' => trim((string) ($row['contract_date'] ?? '')),
+                'status' => trim((string) ($row['status'] ?? '')),
+                'relation_label' => $relationLabel,
+                'created_at' => trim((string) ($row['created_at'] ?? '')),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function contractNumberDisplay(array $row): string
+    {
+        $fullNo = trim((string) ($row['doc_full_no'] ?? ''));
+        if ($fullNo !== '') {
+            return $fullNo;
+        }
+
+        $docNo = (int) ($row['doc_no'] ?? 0);
+        if ($docNo <= 0) {
+            return '';
+        }
+
+        $series = trim((string) ($row['doc_series'] ?? ''));
+        $paddedNo = str_pad((string) $docNo, 6, '0', STR_PAD_LEFT);
+
+        return $series !== '' ? ($series . '-' . $paddedNo) : $paddedNo;
     }
 
     private function partnerMap(array $cuis): array
