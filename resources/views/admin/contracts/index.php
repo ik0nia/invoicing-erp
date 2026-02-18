@@ -673,7 +673,7 @@
                                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
                                     <?= htmlspecialchars($statusLabel) ?>
                                 </span>
-                                <?php if ($statusKey !== 'approved' && $canApproveContracts): ?>
+                                <?php if ($statusKey === 'signed_uploaded' && $canApproveContracts): ?>
                                     <form method="POST" action="<?= App\Support\Url::to('admin/contracts/approve') ?>">
                                         <?= App\Support\Csrf::input() ?>
                                         <input type="hidden" name="contract_id" value="<?= (int) $contract['id'] ?>">

@@ -337,12 +337,28 @@ class ContractsController
             Response::redirect('/admin/contracts');
         }
 
+        $contract = Database::fetchOne(
+            'SELECT id, status FROM contracts WHERE id = :id LIMIT 1',
+            ['id' => $id]
+        );
+        if (!$contract) {
+            Session::flash('error', 'Contract inexistent.');
+            Response::redirect('/admin/contracts');
+        }
+
+        $currentStatus = strtolower(trim((string) ($contract['status'] ?? '')));
+        if ($currentStatus !== 'signed_uploaded') {
+            Session::flash('error', 'Contractul poate fi aprobat doar din statusul "Semnat (incarcat)".');
+            Response::redirect('/admin/contracts');
+        }
+
         Database::execute(
-            'UPDATE contracts SET status = :status, updated_at = :now WHERE id = :id',
+            'UPDATE contracts SET status = :status, updated_at = :now WHERE id = :id AND status = :current_status',
             [
                 'status' => 'approved',
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $id,
+                'current_status' => 'signed_uploaded',
             ]
         );
         Audit::record('contract.approved', 'contract', $id, []);
