@@ -270,7 +270,7 @@
             </div>
         <?php endif; ?>
     </div>
-    <?php if (!empty($isPlatform)): ?>
+    <?php if (!empty($isPlatform) && empty($isOperator)): ?>
         <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
             <div class="text-slate-500">Actiuni rapide</div>
             <div class="mt-2 flex flex-wrap gap-2">
