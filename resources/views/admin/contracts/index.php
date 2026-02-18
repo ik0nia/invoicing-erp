@@ -550,13 +550,12 @@
                 <th class="px-3 py-2">Incarcare document</th>
                 <th class="px-3 py-2 text-right">Nesemnat</th>
                 <th class="px-3 py-2">Descarcare</th>
-                <th class="px-3 py-2"></th>
             </tr>
         </thead>
         <tbody id="contracts-table-body">
             <?php if (empty($contracts)): ?>
                 <tr>
-                    <td colspan="10" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="9" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte inca. Dupa confirmarea inrolarii, contractele vor aparea automat aici.
                     </td>
                 </tr>
@@ -670,9 +669,24 @@
                         </td>
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
                         <td class="px-3 py-2 text-slate-600">
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
-                                <?= htmlspecialchars($statusLabel) ?>
-                            </span>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $statusClass ?>">
+                                    <?= htmlspecialchars($statusLabel) ?>
+                                </span>
+                                <?php if ($statusKey !== 'approved' && $canApproveContracts): ?>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/contracts/approve') ?>">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="contract_id" value="<?= (int) $contract['id'] ?>">
+                                        <button
+                                            type="submit"
+                                            class="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
+                                            onclick="return confirm('Sigur doriti sa aprobati contractul? Aceasta actiune confirma validitatea documentului.')"
+                                        >
+                                            Aproba
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
                         </td>
                         <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars($createdAtDisplay) ?></td>
                         <td class="px-3 py-2 text-slate-600">
@@ -698,28 +712,10 @@
                         <td class="px-3 py-2 text-slate-600">
                             <a href="<?= htmlspecialchars($downloadUrl) ?>" class="text-xs font-semibold text-blue-700 hover:text-blue-800">Descarca</a>
                         </td>
-                        <td class="px-3 py-2 text-right">
-                            <?php if (($contract['status'] ?? '') !== 'approved'): ?>
-                                <?php if ($canApproveContracts): ?>
-                                    <form method="POST" action="<?= App\Support\Url::to('admin/contracts/approve') ?>">
-                                        <?= App\Support\Csrf::input() ?>
-                                        <input type="hidden" name="contract_id" value="<?= (int) $contract['id'] ?>">
-                                        <button
-                                            class="text-xs font-semibold text-emerald-600 hover:text-emerald-700"
-                                            onclick="return confirm('Sigur doriti sa aprobati contractul? Aceasta actiune confirma validitatea documentului.')"
-                                        >
-                                            Aproba contractul
-                                        </button>
-                                    </form>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <span class="text-xs text-slate-400">Aprobat</span>
-                            <?php endif; ?>
-                        </td>
                     </tr>
                 <?php endforeach; ?>
                 <tr id="contracts-empty-filtered-row" class="hidden">
-                    <td colspan="10" class="px-3 py-4 text-sm text-slate-500">
+                    <td colspan="9" class="px-3 py-4 text-sm text-slate-500">
                         Nu exista contracte pentru filtrele selectate.
                     </td>
                 </tr>
