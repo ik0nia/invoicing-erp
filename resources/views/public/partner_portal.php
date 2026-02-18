@@ -837,8 +837,18 @@
                                 required
                                 class="mt-3 block w-full rounded border border-slate-300 px-3 py-2 text-sm text-slate-700"
                             >
+                            <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <span id="signed-files-count" class="text-slate-500">Nu ai fisiere selectate.</span>
+                                <button
+                                    id="signed-files-clear"
+                                    type="button"
+                                    class="hidden rounded border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                    Reseteaza lista
+                                </button>
+                            </div>
                             <p class="mt-2 text-xs text-slate-500">
-                                Dupa selectie, pentru fiecare fisier va aparea campul de alegere document.
+                                Poti selecta fisierele de mai multe ori; noile fisiere se adauga in lista de mai jos.
                             </p>
                             <div id="signed-files-mapping" class="mt-4 hidden space-y-3"></div>
                         </div>
@@ -974,11 +984,16 @@
         const submitButton = document.getElementById('signed-upload-submit');
         const modeInputs = Array.from(document.querySelectorAll('input[name="upload_mode"]'));
         const optionsNode = document.getElementById('signed-contract-options');
+        const clearButton = document.getElementById('signed-files-clear');
+        const filesCountNode = document.getElementById('signed-files-count');
         if (!fileInput || !allFileInput || !mappingContainer || !batchPanel || !allInOnePanel || !submitButton || !optionsNode || modeInputs.length === 0) {
             return;
         }
 
         let options = [];
+        const supportsDataTransfer = typeof DataTransfer !== 'undefined';
+        let stagedFiles = [];
+        let nextFileId = 1;
         try {
             const parsed = JSON.parse(optionsNode.textContent || '[]');
             if (Array.isArray(parsed)) {
@@ -1014,29 +1029,93 @@
             return checked ? checked.value : 'batch';
         };
 
-        const renderMapping = () => {
+        const updateNativeFileInput = () => {
+            if (!supportsDataTransfer) {
+                return;
+            }
+            const transfer = new DataTransfer();
+            stagedFiles.forEach((entry) => {
+                if (entry && entry.file instanceof File) {
+                    transfer.items.add(entry.file);
+                }
+            });
+            try {
+                fileInput.files = transfer.files;
+            } catch (error) {
+                // Browser does not allow programmatic FileList assignment.
+            }
+        };
+
+        const updateFilesCount = () => {
+            const count = stagedFiles.length;
+            if (filesCountNode) {
+                if (count <= 0) {
+                    filesCountNode.textContent = 'Nu ai fisiere selectate.';
+                } else if (count === 1) {
+                    filesCountNode.textContent = '1 fisier selectat.';
+                } else {
+                    filesCountNode.textContent = String(count) + ' fisiere selectate.';
+                }
+            }
+            if (clearButton) {
+                clearButton.classList.toggle('hidden', count <= 0);
+            }
+        };
+
+        const removeStagedFile = (fileId) => {
+            stagedFiles = stagedFiles.filter((entry) => entry.id !== fileId);
+            updateNativeFileInput();
+            updateFilesCount();
+            renderMapping();
+        };
+
+        function renderMapping() {
             if (selectedMode() !== 'batch') {
                 mappingContainer.classList.add('hidden');
                 mappingContainer.innerHTML = '';
                 return;
             }
 
-            const files = Array.from(fileInput.files || []);
             mappingContainer.innerHTML = '';
-            if (files.length === 0) {
+            if (stagedFiles.length === 0) {
                 mappingContainer.classList.add('hidden');
                 return;
             }
 
             mappingContainer.classList.remove('hidden');
-            files.forEach((file, index) => {
+            stagedFiles.forEach((entry, index) => {
+                const file = entry.file;
                 const row = document.createElement('div');
                 row.className = 'grid gap-3 rounded border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_320px]';
 
                 const fileInfo = document.createElement('div');
                 fileInfo.className = 'text-sm text-slate-700';
-                fileInfo.innerHTML = '<div class="font-semibold">' + String(index + 1) + '. ' + String(file.name || 'fisier') + '</div>'
-                    + '<div class="text-xs text-slate-500 mt-1">' + formatFileSize(file.size) + '</div>';
+                const fileHeader = document.createElement('div');
+                fileHeader.className = 'flex items-start justify-between gap-2';
+                const fileTitle = document.createElement('div');
+                fileTitle.className = 'font-semibold';
+                fileTitle.textContent = String(index + 1) + '. ' + String(file.name || 'fisier');
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-100';
+                removeButton.textContent = 'Elimina';
+                if (supportsDataTransfer) {
+                    removeButton.addEventListener('click', () => {
+                        removeStagedFile(entry.id);
+                    });
+                } else {
+                    removeButton.disabled = true;
+                    removeButton.classList.add('cursor-not-allowed', 'opacity-50');
+                    removeButton.title = 'Selectia cumulativa nu este disponibila in acest browser.';
+                }
+                fileHeader.appendChild(fileTitle);
+                fileHeader.appendChild(removeButton);
+                fileInfo.appendChild(fileHeader);
+
+                const fileMeta = document.createElement('div');
+                fileMeta.className = 'mt-1 text-xs text-slate-500';
+                fileMeta.textContent = formatFileSize(file.size);
+                fileInfo.appendChild(fileMeta);
 
                 const selectWrap = document.createElement('div');
                 const label = document.createElement('label');
@@ -1047,8 +1126,13 @@
                 select.required = true;
                 select.className = 'block w-full rounded border border-slate-300 px-3 py-2 text-sm';
 
+                const fallbackOption = options.length > 0
+                    ? String(options[Math.min(index, options.length - 1)].id || '')
+                    : '';
+                const preferredValue = entry.contractId !== '' ? String(entry.contractId) : fallbackOption;
                 options.forEach((optionItem, optionIndex) => {
-                    select.appendChild(createOption(optionItem, optionIndex === Math.min(index, options.length - 1)));
+                    const value = String(optionItem.id || '');
+                    select.appendChild(createOption(optionItem, value === preferredValue || (preferredValue === '' && optionIndex === Math.min(index, options.length - 1))));
                 });
                 if (options.length === 0) {
                     const emptyOption = document.createElement('option');
@@ -1057,6 +1141,19 @@
                     emptyOption.selected = true;
                     select.appendChild(emptyOption);
                     select.disabled = true;
+                    entry.contractId = '';
+                } else {
+                    const hasPreferred = options.some((optionItem) => String(optionItem.id || '') === preferredValue);
+                    if (hasPreferred) {
+                        select.value = preferredValue;
+                        entry.contractId = preferredValue;
+                    } else {
+                        select.value = fallbackOption;
+                        entry.contractId = fallbackOption;
+                    }
+                    select.addEventListener('change', () => {
+                        entry.contractId = String(select.value || '');
+                    });
                 }
 
                 selectWrap.appendChild(label);
@@ -1065,6 +1162,48 @@
                 row.appendChild(selectWrap);
                 mappingContainer.appendChild(row);
             });
+        }
+
+        const appendFiles = (files) => {
+            if (!Array.isArray(files) || files.length === 0) {
+                updateFilesCount();
+                renderMapping();
+                return;
+            }
+            if (!supportsDataTransfer) {
+                stagedFiles = files
+                    .filter((file) => file instanceof File)
+                    .map((file) => ({
+                        id: nextFileId++,
+                        file: file,
+                        contractId: '',
+                    }));
+                updateFilesCount();
+                renderMapping();
+                return;
+            }
+            files.forEach((file) => {
+                if (!(file instanceof File)) {
+                    return;
+                }
+                stagedFiles.push({
+                    id: nextFileId++,
+                    file: file,
+                    contractId: '',
+                });
+            });
+            updateNativeFileInput();
+            updateFilesCount();
+            renderMapping();
+        };
+
+        const clearAllStagedFiles = () => {
+            stagedFiles = [];
+            nextFileId = 1;
+            updateNativeFileInput();
+            fileInput.value = '';
+            updateFilesCount();
+            renderMapping();
         };
 
         const syncMode = () => {
@@ -1082,9 +1221,27 @@
             } else {
                 renderMapping();
             }
+            updateFilesCount();
         };
 
-        fileInput.addEventListener('change', renderMapping);
+        fileInput.addEventListener('change', () => {
+            if (!supportsDataTransfer) {
+                stagedFiles = Array.from(fileInput.files || []).map((file) => ({
+                    id: nextFileId++,
+                    file: file,
+                    contractId: '',
+                }));
+                updateFilesCount();
+                renderMapping();
+                return;
+            }
+            const selectedFiles = Array.from(fileInput.files || []);
+            fileInput.value = '';
+            appendFiles(selectedFiles);
+        });
+        if (clearButton) {
+            clearButton.addEventListener('click', clearAllStagedFiles);
+        }
         modeInputs.forEach((input) => {
             input.addEventListener('change', syncMode);
         });
