@@ -165,14 +165,6 @@ if ($isPlatformUser) {
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ];
     }
-    if ($isSuperAdmin || $isAdminRole || $isContabilRole) {
-        $adminItems[] = [
-            'label' => 'Modele de contract',
-            'path' => '/admin/contract-templates',
-            'icon' => 'template',
-            'active' => str_starts_with($currentPath, '/admin/contract-templates'),
-        ];
-    }
     $adminItems[] = [
         'label' => 'Utilizatori',
         'path' => '/admin/utilizatori',
@@ -185,6 +177,14 @@ if ($isPlatformUser) {
             'path' => '/admin/fisiere-upa',
             'icon' => 'fisiere',
             'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
+        ];
+    }
+    if ($isSuperAdmin || $isAdminRole || $isContabilRole) {
+        $adminItems[] = [
+            'label' => 'Modele de contract',
+            'path' => '/admin/contract-templates',
+            'icon' => 'template',
+            'active' => str_starts_with($currentPath, '/admin/contract-templates'),
         ];
     }
     if ($isSuperAdmin) {
