@@ -353,7 +353,7 @@ $menuIcon = static function (string $icon): string {
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900">
-    <div class="min-h-screen lg:flex">
+    <div class="min-h-screen lg:flex lg:h-screen lg:overflow-hidden">
         <div
             id="mobile-overlay"
             class="fixed inset-0 z-30 hidden bg-slate-900/50 lg:hidden"
@@ -361,7 +361,7 @@ $menuIcon = static function (string $icon): string {
         ></div>
         <aside
             id="sidebar"
-            class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out lg:relative lg:h-screen lg:shrink-0 lg:translate-x-0"
             aria-label="Meniu principal"
         >
             <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
@@ -405,7 +405,7 @@ $menuIcon = static function (string $icon): string {
             </nav>
         </aside>
 
-        <div class="flex flex-1 flex-col lg:pl-0">
+        <div class="flex min-h-screen flex-1 flex-col lg:min-h-0 lg:pl-0">
             <header class="border-b border-slate-200 bg-white">
                 <div class="flex items-center justify-between gap-4 px-4 py-4 lg:px-6">
                     <div class="flex items-center gap-3">
@@ -460,7 +460,7 @@ $menuIcon = static function (string $icon): string {
                 </div>
             </header>
 
-            <main class="flex-1 px-4 py-6 lg:px-6 lg:py-8">
+            <main class="flex-1 px-4 py-6 lg:min-h-0 lg:overflow-y-auto lg:px-6 lg:py-8">
                 <?php include BASE_PATH . '/resources/views/partials/flash.php'; ?>
                 <?= $content ?? '' ?>
             </main>
