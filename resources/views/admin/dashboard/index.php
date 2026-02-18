@@ -249,9 +249,9 @@
                     <?php if (empty($chartDays) || !$chartHasData || $chartMax <= 0.0): ?>
                         <div class="mt-3 text-sm text-slate-500">Nu exista comision inregistrat pentru luna curenta.</div>
                     <?php else: ?>
-                        <div class="mt-4 overflow-x-auto overflow-y-visible">
-                            <div class="min-w-[560px]">
-                                <div class="flex h-52 items-end gap-1 rounded border border-slate-200 bg-white px-2 pb-2 pt-8">
+                        <div class="mt-4">
+                            <div class="w-full">
+                                <div class="flex h-52 w-full items-end gap-0.5 overflow-hidden rounded border border-slate-200 bg-white px-2 pb-2 pt-8">
                                     <?php foreach ($chartDays as $point): ?>
                                         <?php
                                             $dayNo = (int) ($point['day'] ?? 0);
@@ -262,7 +262,7 @@
                                             } elseif ($height <= 0) {
                                                 $height = 3;
                                             }
-                                            $showTick = $dayNo === 1 || $dayNo === $daysCount || $dayNo % 2 === 0;
+                                            $showTick = $dayNo === 1 || $dayNo === $daysCount || $dayNo % 5 === 0;
                                         ?>
                                         <div class="group flex min-w-0 flex-1 flex-col items-center justify-end">
                                             <div class="relative flex w-full items-end justify-center">
