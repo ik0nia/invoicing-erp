@@ -103,12 +103,6 @@ if ($isSuperAdmin || $isAdminRole) {
 }
 if ($isInternalStaff) {
     $menuSections['Documente'][] = [
-        'label' => 'Fisiere UPA',
-        'path' => '/admin/fisiere-upa',
-        'icon' => 'fisiere',
-        'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
-    ];
-    $menuSections['Documente'][] = [
         'label' => 'Registru documente',
         'path' => '/admin/registru-documente',
         'icon' => 'registru',
@@ -184,12 +178,22 @@ if ($isPlatformUser) {
         'icon' => 'utilizatori',
         'active' => str_starts_with($currentPath, '/admin/utilizatori'),
     ];
-    $adminItems[] = [
-        'label' => 'Audit Log',
-        'path' => '/admin/audit',
-        'icon' => 'audit',
-        'active' => str_starts_with($currentPath, '/admin/audit'),
-    ];
+    if ($isInternalStaff) {
+        $adminItems[] = [
+            'label' => 'Fisiere UPA',
+            'path' => '/admin/fisiere-upa',
+            'icon' => 'fisiere',
+            'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
+        ];
+    }
+    if ($isSuperAdmin) {
+        $adminItems[] = [
+            'label' => 'Audit Log',
+            'path' => '/admin/audit',
+            'icon' => 'audit',
+            'active' => str_starts_with($currentPath, '/admin/audit'),
+        ];
+    }
     $menuSections['Administrare'] = $adminItems;
 
     if ($isSuperAdmin || $isAdminRole) {
