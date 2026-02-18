@@ -498,6 +498,37 @@
             </div>
         </div>
     </div>
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tip relatie</span>
+        <button
+            type="button"
+            class="rounded-full border border-blue-600 bg-blue-600 px-3 py-1 text-xs font-semibold text-white transition-colors"
+            data-contracts-party-filter="all"
+        >
+            Toate
+        </button>
+        <button
+            type="button"
+            class="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            data-contracts-party-filter="client"
+        >
+            Clienti
+        </button>
+        <button
+            type="button"
+            class="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            data-contracts-party-filter="supplier"
+        >
+            Furnizori
+        </button>
+        <button
+            id="contracts-party-filter-clear"
+            type="button"
+            class="hidden rounded border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Dezactiveaza filtrul
+        </button>
+    </div>
     <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
         <button id="contracts-filter-reset" type="button" class="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
             Reseteaza filtrele
@@ -590,6 +621,17 @@
                             $relationLines[] = ['label' => 'Companie', 'name' => $relationPartnerName];
                             $relationCompanies[] = $relationPartnerName;
                         }
+                        $relationPartyFilters = [];
+                        if ($relationClientCui !== '') {
+                            $relationPartyFilters[] = 'client';
+                        }
+                        if ($relationSupplierCui !== '') {
+                            $relationPartyFilters[] = 'supplier';
+                        }
+                        if (empty($relationPartyFilters)) {
+                            $relationPartyFilters = ['client', 'supplier'];
+                        }
+                        $relationPartyFilters = array_values(array_unique($relationPartyFilters));
                         $relationCompanies = array_values(array_unique(array_filter($relationCompanies, static fn ($value): bool => trim((string) $value) !== '')));
                         $rowSearchText = trim(implode(' ', [
                             (string) $docNoDisplay,
@@ -606,6 +648,7 @@
                         data-filter-status="<?= htmlspecialchars($statusKey) ?>"
                         data-filter-companies="<?= htmlspecialchars(implode('|', $relationCompanies)) ?>"
                         data-filter-date="<?= htmlspecialchars($contractDateRaw) ?>"
+                        data-filter-party="<?= htmlspecialchars(implode('|', $relationPartyFilters)) ?>"
                     >
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($docNoDisplay !== ''): ?>
@@ -698,6 +741,8 @@
         const resetButton = document.getElementById('contracts-filter-reset');
         const summaryNode = document.getElementById('contracts-filter-summary');
         const emptyFilteredRow = document.getElementById('contracts-empty-filtered-row');
+        const partyFilterButtons = Array.from(document.querySelectorAll('[data-contracts-party-filter]'));
+        const partyFilterClearButton = document.getElementById('contracts-party-filter-clear');
         if (!tableBody || !searchInput || !statusSelect || !companySelect || !dateFromInput || !dateToInput || !resetButton || !summaryNode) {
             return;
         }
@@ -733,6 +778,25 @@
                 companySelect.appendChild(option);
             });
 
+        let selectedPartyFilter = 'all';
+        const setPartyFilterButtonState = (button, active) => {
+            button.classList.remove('border-blue-600', 'bg-blue-600', 'text-white', 'border-slate-300', 'bg-white', 'text-slate-700', 'hover:bg-slate-50');
+            if (active) {
+                button.classList.add('border-blue-600', 'bg-blue-600', 'text-white');
+            } else {
+                button.classList.add('border-slate-300', 'bg-white', 'text-slate-700', 'hover:bg-slate-50');
+            }
+        };
+        const syncPartyFilterButtons = () => {
+            partyFilterButtons.forEach((button) => {
+                const value = String(button.getAttribute('data-contracts-party-filter') || '').trim();
+                setPartyFilterButtonState(button, value === selectedPartyFilter);
+            });
+            if (partyFilterClearButton) {
+                partyFilterClearButton.classList.toggle('hidden', selectedPartyFilter === 'all');
+            }
+        };
+
         const applyFilters = () => {
             const searchTerm = normalize(searchInput.value);
             const statusValue = String(statusSelect.value || '').trim();
@@ -746,6 +810,10 @@
                 const rowStatus = String(row.dataset.filterStatus || '').trim();
                 const rowDate = String(row.dataset.filterDate || '').trim();
                 const rowCompanyValues = String(row.dataset.filterCompanies || '')
+                    .split('|')
+                    .map((value) => normalize(value))
+                    .filter((value) => value !== '');
+                const rowPartyValues = String(row.dataset.filterParty || '')
                     .split('|')
                     .map((value) => normalize(value))
                     .filter((value) => value !== '');
@@ -766,6 +834,9 @@
                 if (isVisible && dateTo !== '' && (rowDate === '' || rowDate > dateTo)) {
                     isVisible = false;
                 }
+                if (isVisible && selectedPartyFilter !== 'all' && !rowPartyValues.includes(selectedPartyFilter)) {
+                    isVisible = false;
+                }
 
                 row.classList.toggle('hidden', !isVisible);
                 if (isVisible) {
@@ -784,15 +855,40 @@
         companySelect.addEventListener('change', applyFilters);
         dateFromInput.addEventListener('change', applyFilters);
         dateToInput.addEventListener('change', applyFilters);
+        partyFilterButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const value = String(button.getAttribute('data-contracts-party-filter') || '').trim();
+                if (value === '') {
+                    return;
+                }
+                if (selectedPartyFilter === value && value !== 'all') {
+                    selectedPartyFilter = 'all';
+                } else {
+                    selectedPartyFilter = value;
+                }
+                syncPartyFilterButtons();
+                applyFilters();
+            });
+        });
+        if (partyFilterClearButton) {
+            partyFilterClearButton.addEventListener('click', () => {
+                selectedPartyFilter = 'all';
+                syncPartyFilterButtons();
+                applyFilters();
+            });
+        }
         resetButton.addEventListener('click', () => {
             searchInput.value = '';
             statusSelect.value = '';
             companySelect.value = '';
             dateFromInput.value = '';
             dateToInput.value = '';
+            selectedPartyFilter = 'all';
+            syncPartyFilterButtons();
             applyFilters();
         });
 
+        syncPartyFilterButtons();
         applyFilters();
     })();
 </script>
