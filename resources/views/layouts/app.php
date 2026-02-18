@@ -47,8 +47,9 @@ $menuSections = [];
 
 $menuSections['Facturare'] = [
     [
-            'label' => 'Facturare',
+        'label' => 'Facturare',
         'path' => '/admin/facturi',
+        'icon' => 'facturi',
         'active' => str_starts_with($currentPath, '/admin/facturi'),
     ],
 ];
@@ -57,6 +58,7 @@ if ($isPlatformUser && $canAccessSaga) {
     $menuSections['Facturare'][] = [
         'label' => 'Pachete confirmate',
         'path' => '/admin/pachete-confirmate',
+        'icon' => 'pachete',
         'active' => str_starts_with($currentPath, '/admin/pachete-confirmate'),
     ];
 }
@@ -66,6 +68,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
         [
             'label' => 'Adauga partener',
             'path' => '/admin/enrollment-links',
+            'icon' => 'partener',
             'active' => str_starts_with($currentPath, '/admin/enrollment-links'),
         ],
     ];
@@ -73,6 +76,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
         $menuSections['Inrolare'][] = [
             'label' => 'Inrolari in asteptare',
             'path' => '/admin/inrolari',
+            'icon' => 'inrolari',
             'active' => str_starts_with($currentPath, '/admin/inrolari'),
         ];
     }
@@ -83,6 +87,7 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
         [
             'label' => 'Contracte',
             'path' => '/admin/contracts',
+            'icon' => 'contracte',
             'active' => str_starts_with($currentPath, '/admin/contracts'),
         ],
     ];
@@ -92,6 +97,7 @@ if ($isSuperAdmin || $isAdminRole) {
     $menuSections['Documente'][] = [
         'label' => 'Modele de contract',
         'path' => '/admin/contract-templates',
+        'icon' => 'template',
         'active' => str_starts_with($currentPath, '/admin/contract-templates'),
     ];
 }
@@ -99,11 +105,13 @@ if ($isInternalStaff) {
     $menuSections['Documente'][] = [
         'label' => 'Fisiere UPA',
         'path' => '/admin/fisiere-upa',
+        'icon' => 'fisiere',
         'active' => str_starts_with($currentPath, '/admin/fisiere-upa'),
     ];
     $menuSections['Documente'][] = [
         'label' => 'Registru documente',
         'path' => '/admin/registru-documente',
+        'icon' => 'registru',
         'active' => str_starts_with($currentPath, '/admin/registru-documente'),
     ];
 }
@@ -113,22 +121,26 @@ if ($isPlatformUser) {
         $menuSections['Facturare'][] = [
             'label' => 'Istoric incasari',
             'path' => '/admin/incasari/istoric',
+            'icon' => 'incasari',
             'active' => str_starts_with($currentPath, '/admin/incasari/istoric'),
         ];
         $menuSections['Facturare'][] = [
             'label' => 'Istoric plati',
             'path' => '/admin/plati/istoric',
+            'icon' => 'plati',
             'active' => str_starts_with($currentPath, '/admin/plati/istoric'),
         ];
     } else {
         $menuSections['Facturare'][] = [
             'label' => 'Incasari clienti',
             'path' => '/admin/incasari',
+            'icon' => 'incasari',
             'active' => str_starts_with($currentPath, '/admin/incasari'),
         ];
         $menuSections['Facturare'][] = [
             'label' => 'Plati furnizori',
             'path' => '/admin/plati',
+            'icon' => 'plati',
             'active' => str_starts_with($currentPath, '/admin/plati'),
         ];
     }
@@ -137,11 +149,13 @@ if ($isPlatformUser) {
         [
             'label' => 'Companii',
             'path' => '/admin/companii',
+            'icon' => 'companii',
             'active' => str_starts_with($currentPath, '/admin/companii'),
         ],
         [
             'label' => 'Asocieri clienti',
             'path' => '/admin/asocieri',
+            'icon' => 'asocieri',
             'active' => str_starts_with($currentPath, '/admin/asocieri'),
         ],
     ];
@@ -150,6 +164,7 @@ if ($isPlatformUser) {
         [
             'label' => 'Cashflow lunar',
             'path' => '/admin/rapoarte/cashflow',
+            'icon' => 'rapoarte',
             'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
         ],
     ];
@@ -159,17 +174,20 @@ if ($isPlatformUser) {
         $adminItems[] = [
             'label' => 'Setari',
             'path' => '/admin/setari',
+            'icon' => 'setari',
             'active' => str_starts_with($currentPath, '/admin/setari'),
         ];
     }
     $adminItems[] = [
         'label' => 'Utilizatori',
         'path' => '/admin/utilizatori',
+        'icon' => 'utilizatori',
         'active' => str_starts_with($currentPath, '/admin/utilizatori'),
     ];
     $adminItems[] = [
         'label' => 'Audit Log',
         'path' => '/admin/audit',
+        'icon' => 'audit',
         'active' => str_starts_with($currentPath, '/admin/audit'),
     ];
     $menuSections['Administrare'] = $adminItems;
@@ -179,11 +197,53 @@ if ($isPlatformUser) {
             [
                 'label' => 'Prelucrare PDF aviz',
                 'path' => '/admin/utile/prelucrare-pdf',
+                'icon' => 'pdf',
                 'active' => str_starts_with($currentPath, '/admin/utile/prelucrare-pdf'),
             ],
         ];
     }
 }
+
+$menuIcon = static function (string $icon): string {
+    switch ($icon) {
+        case 'facturi':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75h6.878a2.25 2.25 0 0 1 1.591.659l2.622 2.622a2.25 2.25 0 0 1 .659 1.591V19.5A2.25 2.25 0 0 1 17.25 21.75h-9A2.25 2.25 0 0 1 6 19.5v-13.5A2.25 2.25 0 0 1 8.25 3.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 9.75h6M9 13.5h6M9 17.25h3"/></svg>';
+        case 'pachete':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21 8.25-9-4.5-9 4.5m18 0-9 4.5m9-4.5v7.5L12 20.25m0-7.5-9-4.5m9 4.5v7.5m0-16.5v7.5"/></svg>';
+        case 'partener':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.5a6 6 0 0 0-12 0M9 12a3.75 3.75 0 1 0 0-7.5A3.75 3.75 0 0 0 9 12Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M18 8.25v6m3-3h-6"/></svg>';
+        case 'inrolari':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.25"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5v5.25l3.75 2.25"/></svg>';
+        case 'contracte':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75h6.878a2.25 2.25 0 0 1 1.591.659l2.622 2.622a2.25 2.25 0 0 1 .659 1.591V19.5A2.25 2.25 0 0 1 17.25 21.75h-9A2.25 2.25 0 0 1 6 19.5v-13.5A2.25 2.25 0 0 1 8.25 3.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 10.5h6M9 14.25h6"/></svg>';
+        case 'template':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="4.5" width="15" height="15" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9h7.5M8.25 12.75h7.5M8.25 16.5h4.5"/></svg>';
+        case 'fisiere':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75A2.25 2.25 0 0 1 6 4.5h4.19a2.25 2.25 0 0 1 1.59.659l.62.62a2.25 2.25 0 0 0 1.591.659H18A2.25 2.25 0 0 1 20.25 8.25v9A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25v-10.5Z"/></svg>';
+        case 'registru':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3.75h10.5A2.25 2.25 0 0 1 19.5 6v12A2.25 2.25 0 0 1 17.25 20.25H6.75A2.25 2.25 0 0 1 4.5 18V6a2.25 2.25 0 0 1 2.25-2.25Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 8.25h7.5M8.25 12h7.5M8.25 15.75h4.5"/></svg>';
+        case 'incasari':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 12h7.5M12 8.25v7.5"/></svg>';
+        case 'plati':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 12h7.5"/></svg>';
+        case 'companii':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 20.25h15M6.75 20.25V6a1.5 1.5 0 0 1 1.5-1.5h7.5a1.5 1.5 0 0 1 1.5 1.5v14.25M9.75 9h1.5m-1.5 3h1.5m3-3h1.5m-1.5 3h1.5"/></svg>';
+        case 'asocieri':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.5a6 6 0 0 0-12 0M9 12a3.75 3.75 0 1 0 0-7.5A3.75 3.75 0 0 0 9 12Zm12 7.5a6 6 0 0 0-5.25-5.955M15.75 4.688a3.75 3.75 0 0 1 0 7.124"/></svg>';
+        case 'rapoarte':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5h15M7.5 16.5v-6m4.5 6V7.5m4.5 9v-3"/></svg>';
+        case 'setari':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.02.02a2 2 0 1 1-2.83 2.83l-.02-.02a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.03a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.02.02a2 2 0 1 1-2.83-2.83l.02-.02a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.03a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.02-.02a2 2 0 1 1 2.83-2.83l.02.02a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 1 1 4 0v.03A1.7 1.7 0 0 0 15.08 4a1.7 1.7 0 0 0 1.87-.34l.02-.02a2 2 0 1 1 2.83 2.83l-.02.02a1.7 1.7 0 0 0-.34 1.87V9c0 .69.41 1.31 1.04 1.56H21a2 2 0 1 1 0 4h-.03A1.7 1.7 0 0 0 19.4 15Z"/></svg>';
+        case 'utilizatori':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.5a6 6 0 0 0-12 0M9 12a3.75 3.75 0 1 0 0-7.5A3.75 3.75 0 0 0 9 12Zm10.5 7.5v-1.5A4.5 4.5 0 0 0 15 13.5"/></svg>';
+        case 'audit':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3.75 5.25 6v5.25c0 4.35 2.82 8.16 6.75 9.5 3.93-1.34 6.75-5.15 6.75-9.5V6L12 3.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="m9.75 12 1.5 1.5L14.25 10.5"/></svg>';
+        case 'pdf':
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75h6.878a2.25 2.25 0 0 1 1.591.659l2.622 2.622a2.25 2.25 0 0 1 .659 1.591V19.5A2.25 2.25 0 0 1 17.25 21.75h-9A2.25 2.25 0 0 1 6 19.5v-13.5A2.25 2.25 0 0 1 8.25 3.75Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 14.25h6M9 10.5h3"/></svg>';
+        default:
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/></svg>';
+    }
+};
 ?>
 <!DOCTYPE html>
 <html lang="ro">
@@ -285,6 +345,11 @@ if ($isPlatformUser) {
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
         }
+        .menu-icon svg {
+            width: 1rem;
+            height: 1rem;
+            display: block;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900">
@@ -313,20 +378,24 @@ if ($isPlatformUser) {
                     <?php endif; ?>
                 </a>
             </div>
-            <nav class="px-4 py-6 text-sm space-y-6">
+            <nav class="space-y-4 px-3 py-4 text-sm">
                 <?php foreach ($menuSections as $sectionLabel => $items): ?>
                     <div>
-                        <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <div class="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                             <?= htmlspecialchars($sectionLabel) ?>
                         </div>
-                        <ul class="space-y-2">
+                        <ul class="space-y-1">
                             <?php foreach ($items as $item): ?>
                                 <li>
                                     <a
                                         href="<?= App\Support\Url::to($item['path']) ?>"
-                                        class="flex items-center gap-2 rounded px-3 py-2 font-medium <?= $item['active'] ? 'bg-blue-100 text-blue-800' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100' ?>"
+                                        class="flex items-center gap-2 rounded-md px-2.5 py-1.5 font-medium transition-colors <?= $item['active'] ? 'bg-blue-100 text-blue-800' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900' ?>"
                                     >
-                                        <?= htmlspecialchars($item['label']) ?>
+                                        <?php $iconName = (string) ($item['icon'] ?? 'dot'); ?>
+                                        <span class="menu-icon inline-flex h-4 w-4 shrink-0 items-center justify-center">
+                                            <?= $menuIcon($iconName) ?>
+                                        </span>
+                                        <span class="truncate"><?= htmlspecialchars($item['label']) ?></span>
                                     </a>
                                 </li>
                             <?php endforeach; ?>
