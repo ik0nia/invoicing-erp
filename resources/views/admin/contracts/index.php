@@ -621,17 +621,15 @@
                             $relationLines[] = ['label' => 'Companie', 'name' => $relationPartnerName];
                             $relationCompanies[] = $relationPartnerName;
                         }
-                        $relationPartyFilters = [];
+                        $relationPartyFilter = 'all';
                         if ($relationClientCui !== '') {
-                            $relationPartyFilters[] = 'client';
+                            $relationPartyFilter = 'client';
+                        } elseif ($relationSupplierCui !== '') {
+                            $relationPartyFilter = 'supplier';
+                        } elseif ($relationPartnerCui !== '') {
+                            // Fallback safe: partner-only rows are treated as client-side, so supplier filter stays strict.
+                            $relationPartyFilter = 'client';
                         }
-                        if ($relationSupplierCui !== '') {
-                            $relationPartyFilters[] = 'supplier';
-                        }
-                        if (empty($relationPartyFilters)) {
-                            $relationPartyFilters = ['client', 'supplier'];
-                        }
-                        $relationPartyFilters = array_values(array_unique($relationPartyFilters));
                         $relationCompanies = array_values(array_unique(array_filter($relationCompanies, static fn ($value): bool => trim((string) $value) !== '')));
                         $rowSearchText = trim(implode(' ', [
                             (string) $docNoDisplay,
@@ -648,7 +646,7 @@
                         data-filter-status="<?= htmlspecialchars($statusKey) ?>"
                         data-filter-companies="<?= htmlspecialchars(implode('|', $relationCompanies)) ?>"
                         data-filter-date="<?= htmlspecialchars($contractDateRaw) ?>"
-                        data-filter-party="<?= htmlspecialchars(implode('|', $relationPartyFilters)) ?>"
+                        data-filter-party="<?= htmlspecialchars($relationPartyFilter) ?>"
                     >
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($docNoDisplay !== ''): ?>
@@ -813,10 +811,7 @@
                     .split('|')
                     .map((value) => normalize(value))
                     .filter((value) => value !== '');
-                const rowPartyValues = String(row.dataset.filterParty || '')
-                    .split('|')
-                    .map((value) => normalize(value))
-                    .filter((value) => value !== '');
+                const rowPartyValue = normalize(row.dataset.filterParty || 'all');
 
                 let isVisible = true;
                 if (searchTerm !== '' && !rowText.includes(searchTerm)) {
@@ -834,7 +829,7 @@
                 if (isVisible && dateTo !== '' && (rowDate === '' || rowDate > dateTo)) {
                     isVisible = false;
                 }
-                if (isVisible && selectedPartyFilter !== 'all' && !rowPartyValues.includes(selectedPartyFilter)) {
+                if (isVisible && selectedPartyFilter !== 'all' && rowPartyValue !== selectedPartyFilter) {
                     isVisible = false;
                 }
 
