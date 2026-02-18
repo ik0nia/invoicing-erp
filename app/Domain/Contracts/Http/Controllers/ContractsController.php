@@ -231,6 +231,97 @@ class ContractsController
         Response::redirect('/admin/contracts');
     }
 
+    public function uploadSignedCompanies(): void
+    {
+        $this->requireGenerateRole();
+
+        $contracts = $this->contractsForSignedUpload();
+        if (empty($contracts)) {
+            $this->json([
+                'success' => true,
+                'items' => [],
+            ]);
+        }
+
+        $companyCounts = [];
+        foreach ($contracts as $contract) {
+            $seenForContract = [];
+            foreach (['supplier_cui', 'client_cui', 'partner_cui'] as $column) {
+                $cui = preg_replace('/\D+/', '', (string) ($contract[$column] ?? ''));
+                if ($cui === '' || isset($seenForContract[$cui])) {
+                    continue;
+                }
+                $seenForContract[$cui] = true;
+                $companyCounts[$cui] = (int) ($companyCounts[$cui] ?? 0) + 1;
+            }
+        }
+
+        if (empty($companyCounts)) {
+            $this->json([
+                'success' => true,
+                'items' => [],
+            ]);
+        }
+
+        $cuis = array_keys($companyCounts);
+        $namesByCui = $this->fetchCompanyNamesByCuis($cuis);
+        $items = [];
+        foreach ($cuis as $cui) {
+            $items[] = [
+                'cui' => $cui,
+                'name' => trim((string) ($namesByCui[$cui] ?? $cui)),
+                'contracts_count' => (int) ($companyCounts[$cui] ?? 0),
+            ];
+        }
+        usort($items, static function (array $left, array $right): int {
+            $leftName = strtolower((string) ($left['name'] ?? ''));
+            $rightName = strtolower((string) ($right['name'] ?? ''));
+            if ($leftName === $rightName) {
+                return strcmp((string) ($left['cui'] ?? ''), (string) ($right['cui'] ?? ''));
+            }
+
+            return strcmp($leftName, $rightName);
+        });
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
+    public function uploadSignedContracts(): void
+    {
+        $this->requireGenerateRole();
+
+        $companyCui = preg_replace('/\D+/', '', (string) ($_GET['company_cui'] ?? ''));
+        if ($companyCui === '') {
+            $this->json([
+                'success' => false,
+                'message' => 'Selectati firma pentru filtrarea documentelor.',
+                'items' => [],
+            ]);
+        }
+
+        $contracts = $this->contractsForSignedUpload($companyCui);
+        $namesByCui = $this->resolveCompanyNamesByCuis($contracts);
+        $items = [];
+        foreach ($contracts as $contract) {
+            $id = (int) ($contract['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $items[] = [
+                'id' => $id,
+                'label' => $this->buildUploadSignedContractLabel($contract, $namesByCui),
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
     public function approve(): void
     {
         Auth::requireInternalStaff();
@@ -407,6 +498,91 @@ class ContractsController
         header('Content-Length: ' . filesize($path));
         readfile($path);
         exit;
+    }
+
+    private function contractsForSignedUpload(?string $companyCui = null): array
+    {
+        if (!Database::tableExists('contracts')) {
+            return [];
+        }
+
+        $sql = 'SELECT id,
+                       title,
+                       doc_no,
+                       doc_series,
+                       doc_full_no,
+                       contract_date,
+                       status,
+                       supplier_cui,
+                       client_cui,
+                       partner_cui,
+                       created_at
+                FROM contracts';
+        $params = [];
+        $companyCui = $companyCui !== null ? preg_replace('/\D+/', '', (string) $companyCui) : null;
+        if ($companyCui !== null && $companyCui !== '') {
+            $sql .= ' WHERE supplier_cui = :company_cui
+                          OR client_cui = :company_cui
+                          OR partner_cui = :company_cui';
+            $params['company_cui'] = $companyCui;
+        }
+        $sql .= ' ORDER BY created_at DESC, id DESC';
+
+        return Database::fetchAll($sql, $params);
+    }
+
+    private function buildUploadSignedContractLabel(array $contract, array $companyNamesByCui): string
+    {
+        $title = trim((string) ($contract['title'] ?? ''));
+        if ($title === '') {
+            $title = 'Document #' . (int) ($contract['id'] ?? 0);
+        }
+
+        $parts = [$title];
+        $docNo = $this->formatContractNumber($contract);
+        if ($docNo !== '') {
+            $parts[] = '[' . $docNo . ']';
+        }
+
+        $dateRaw = trim((string) ($contract['contract_date'] ?? ''));
+        if ($dateRaw !== '') {
+            $timestamp = strtotime($dateRaw);
+            $dateDisplay = $timestamp !== false ? date('d.m.Y', $timestamp) : $dateRaw;
+            $parts[] = $dateDisplay;
+        }
+
+        $relation = $this->uploadSignedContractRelationLabel($contract, $companyNamesByCui);
+        if ($relation !== '') {
+            $parts[] = $relation;
+        }
+
+        return implode(' - ', $parts);
+    }
+
+    private function uploadSignedContractRelationLabel(array $contract, array $companyNamesByCui): string
+    {
+        $supplierCui = preg_replace('/\D+/', '', (string) ($contract['supplier_cui'] ?? ''));
+        $clientCui = preg_replace('/\D+/', '', (string) ($contract['client_cui'] ?? ''));
+        $partnerCui = preg_replace('/\D+/', '', (string) ($contract['partner_cui'] ?? ''));
+
+        $supplierName = $supplierCui !== '' ? trim((string) ($companyNamesByCui[$supplierCui] ?? $supplierCui)) : '';
+        $clientName = $clientCui !== '' ? trim((string) ($companyNamesByCui[$clientCui] ?? $clientCui)) : '';
+        $partnerName = $partnerCui !== '' ? trim((string) ($companyNamesByCui[$partnerCui] ?? $partnerCui)) : '';
+
+        if ($supplierName !== '' && $clientName !== '') {
+            return $supplierName . ' -> ' . $clientName;
+        }
+        if ($partnerName !== '') {
+            return $partnerName;
+        }
+        if ($supplierName !== '') {
+            return 'Furnizor: ' . $supplierName;
+        }
+        if ($clientName !== '') {
+            return 'Client: ' . $clientName;
+        }
+
+        return '';
     }
 
     private function resolveTemplateDocType(?array $template, string $docKind): string
@@ -619,5 +795,14 @@ class ContractsController
         }
 
         return $result;
+    }
+
+    private function json(array $payload, int $statusCode = 200): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+        exit;
     }
 }

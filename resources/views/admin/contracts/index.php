@@ -109,33 +109,220 @@
 
 <form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
     <?= App\Support\Csrf::input() ?>
-    <div class="flex flex-wrap items-center gap-3">
-        <select name="contract_id" class="rounded border border-slate-300 px-3 py-2 text-sm" required>
-            <option value="">Selecteaza contract</option>
-            <?php foreach ($contracts as $contract): ?>
-                <?php
-                    $optionDocNo = trim((string) ($contract['doc_full_no'] ?? ''));
-                    if ($optionDocNo === '') {
-                        $optionNo = (int) ($contract['doc_no'] ?? 0);
-                        if ($optionNo > 0) {
-                            $optionSeries = trim((string) ($contract['doc_series'] ?? ''));
-                            $optionNoPadded = str_pad((string) $optionNo, 6, '0', STR_PAD_LEFT);
-                            $optionDocNo = $optionSeries !== '' ? ($optionSeries . '-' . $optionNoPadded) : $optionNoPadded;
-                        }
-                    }
-                ?>
-                <option value="<?= (int) $contract['id'] ?>">
-                    <?= htmlspecialchars((string) ($contract['title'] ?? '')) ?>
-                    <?= $optionDocNo !== '' ? ' [' . htmlspecialchars($optionDocNo) . ']' : '' ?>
-                </option>
-            <?php endforeach; ?>
-        </select>
-        <input type="file" name="file" required class="text-sm text-slate-600">
-        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="signed-upload-company">Firma</label>
+            <select
+                id="signed-upload-company"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/companies') ?>"
+                required
+            >
+                <option value="">Se incarca firmele...</option>
+            </select>
+        </div>
+        <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-slate-700" for="signed-upload-contract">Document</label>
+            <select
+                id="signed-upload-contract"
+                name="contract_id"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/contracts') ?>"
+                disabled
+                required
+            >
+                <option value="">Selectati mai intai firma</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-700" for="signed-upload-file">Fisier semnat</label>
+            <input id="signed-upload-file" type="file" name="file" required class="mt-1 block w-full text-sm text-slate-600">
+        </div>
+    </div>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+        <button id="signed-upload-submit" class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" disabled>
             Incarca contract semnat
         </button>
+        <span id="signed-upload-status" class="text-xs text-slate-500">Alege firma pentru a incarca documentul semnat.</span>
     </div>
 </form>
+
+<script>
+    (function () {
+        const companySelect = document.getElementById('signed-upload-company');
+        const contractSelect = document.getElementById('signed-upload-contract');
+        const submitButton = document.getElementById('signed-upload-submit');
+        const statusNode = document.getElementById('signed-upload-status');
+        if (!companySelect || !contractSelect || !submitButton || !statusNode) {
+            return;
+        }
+
+        const companiesUrl = companySelect.dataset.sourceUrl || '';
+        const contractsUrl = contractSelect.dataset.sourceUrl || '';
+        if (!companiesUrl || !contractsUrl) {
+            return;
+        }
+
+        let companiesRequestId = 0;
+        let contractsRequestId = 0;
+
+        const setStatus = (message, tone) => {
+            statusNode.textContent = message;
+            statusNode.classList.remove('text-slate-500', 'text-rose-600', 'text-emerald-700');
+            if (tone === 'error') {
+                statusNode.classList.add('text-rose-600');
+                return;
+            }
+            if (tone === 'success') {
+                statusNode.classList.add('text-emerald-700');
+                return;
+            }
+            statusNode.classList.add('text-slate-500');
+        };
+
+        const setSubmitEnabled = () => {
+            submitButton.disabled = contractSelect.value === '';
+        };
+
+        const resetContractSelect = (placeholder) => {
+            contractSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = placeholder;
+            contractSelect.appendChild(option);
+            contractSelect.disabled = true;
+            contractSelect.value = '';
+            setSubmitEnabled();
+        };
+
+        const loadCompanies = () => {
+            const currentRequestId = ++companiesRequestId;
+            setStatus('Se incarca firmele cu documente...', 'info');
+            fetch(companiesUrl, {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            })
+                .then((response) => response.json())
+                .then((payload) => {
+                    if (currentRequestId !== companiesRequestId) {
+                        return;
+                    }
+                    companySelect.innerHTML = '';
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = '';
+                    defaultOption.textContent = 'Selecteaza firma';
+                    companySelect.appendChild(defaultOption);
+
+                    const items = payload && payload.success === true && Array.isArray(payload.items)
+                        ? payload.items
+                        : [];
+                    if (items.length === 0) {
+                        setStatus('Nu exista firme cu documente disponibile.', 'error');
+                        resetContractSelect('Nu exista documente disponibile');
+                        return;
+                    }
+
+                    items.forEach((item) => {
+                        const option = document.createElement('option');
+                        const cui = String(item && item.cui ? item.cui : '').trim();
+                        if (cui === '') {
+                            return;
+                        }
+                        const count = Number(item && item.contracts_count ? item.contracts_count : 0);
+                        option.value = cui;
+                        option.textContent = `${String(item && item.name ? item.name : cui)} (${cui})${count > 0 ? ` - ${count} doc.` : ''}`;
+                        companySelect.appendChild(option);
+                    });
+                    setStatus('Selecteaza firma pentru a vedea documentele disponibile.', 'info');
+                })
+                .catch(() => {
+                    if (currentRequestId !== companiesRequestId) {
+                        return;
+                    }
+                    setStatus('Nu am putut incarca lista firmelor.', 'error');
+                    resetContractSelect('Eroare la incarcarea documentelor');
+                });
+        };
+
+        const loadContractsForCompany = (companyCui) => {
+            const currentRequestId = ++contractsRequestId;
+            const url = new URL(contractsUrl, window.location.origin);
+            url.searchParams.set('company_cui', companyCui);
+            setStatus('Se incarca documentele firmei selectate...', 'info');
+            resetContractSelect('Se incarca documentele...');
+
+            fetch(url.toString(), {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            })
+                .then((response) => response.json())
+                .then((payload) => {
+                    if (currentRequestId !== contractsRequestId) {
+                        return;
+                    }
+                    contractSelect.innerHTML = '';
+                    const first = document.createElement('option');
+                    first.value = '';
+                    first.textContent = 'Selecteaza document';
+                    contractSelect.appendChild(first);
+
+                    const items = payload && payload.success === true && Array.isArray(payload.items)
+                        ? payload.items
+                        : [];
+                    if (items.length === 0) {
+                        resetContractSelect('Nu exista documente pentru firma selectata');
+                        setStatus('Firma selectata nu are documente disponibile pentru incarcare.', 'error');
+                        return;
+                    }
+
+                    items.forEach((item) => {
+                        const id = Number(item && item.id ? item.id : 0);
+                        if (!Number.isFinite(id) || id <= 0) {
+                            return;
+                        }
+                        const option = document.createElement('option');
+                        option.value = String(id);
+                        option.textContent = String(item && item.label ? item.label : `Document #${id}`);
+                        contractSelect.appendChild(option);
+                    });
+
+                    contractSelect.disabled = false;
+                    setSubmitEnabled();
+                    setStatus('Selecteaza documentul pentru care incarci fisierul semnat.', 'success');
+                })
+                .catch(() => {
+                    if (currentRequestId !== contractsRequestId) {
+                        return;
+                    }
+                    resetContractSelect('Eroare la incarcarea documentelor');
+                    setStatus('Nu am putut incarca documentele pentru firma selectata.', 'error');
+                });
+        };
+
+        companySelect.addEventListener('change', () => {
+            const companyCui = String(companySelect.value || '').trim();
+            if (companyCui === '') {
+                resetContractSelect('Selectati mai intai firma');
+                setStatus('Alege firma pentru a incarca documentul semnat.', 'info');
+                return;
+            }
+            loadContractsForCompany(companyCui);
+        });
+
+        contractSelect.addEventListener('change', () => {
+            setSubmitEnabled();
+        });
+
+        resetContractSelect('Selectati mai intai firma');
+        loadCompanies();
+    })();
+</script>
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
     <table class="w-full text-left text-sm">
