@@ -23,10 +23,30 @@
     ];
 ?>
 
-<div class="flex items-center justify-between">
+<div class="flex flex-wrap items-center justify-between gap-3">
     <div>
         <h1 class="text-xl font-semibold text-slate-900">Contracte</h1>
         <p class="mt-1 text-sm text-slate-500">Contracte generate si gestionate.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <button
+            id="contracts-open-generate"
+            type="button"
+            class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+            aria-expanded="false"
+            aria-controls="contracts-generate-card"
+        >
+            Genereaza document
+        </button>
+        <button
+            id="contracts-open-upload"
+            type="button"
+            class="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
+            aria-expanded="false"
+            aria-controls="contracts-upload-card"
+        >
+            Incarca document semnat
+        </button>
     </div>
 </div>
 
@@ -37,115 +57,153 @@
     </div>
 <?php endif; ?>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
-    <?= App\Support\Csrf::input() ?>
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="template_id">Model</label>
-            <select id="template_id" name="template_id" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
-                <option value="">(fara model)</option>
-                <?php foreach ($templates as $template): ?>
-                    <option value="<?= (int) $template['id'] ?>">
-                        <?= htmlspecialchars((string) ($template['name'] ?? '')) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+<div id="contracts-generate-card" class="mt-4 hidden">
+    <form method="POST" action="<?= App\Support\Url::to('admin/contracts/generate') ?>" class="rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
+        <?= App\Support\Csrf::input() ?>
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="template_id">Model</label>
+                <select id="template_id" name="template_id" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">(fara model)</option>
+                    <?php foreach ($templates as $template): ?>
+                        <option value="<?= (int) $template['id'] ?>">
+                            <?= htmlspecialchars((string) ($template['name'] ?? '')) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="contract-title">Titlu</label>
+                <input
+                    id="contract-title"
+                    name="title"
+                    type="text"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    required
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="partner-cui">Partner CUI (optional)</label>
+                <input
+                    id="partner-cui"
+                    name="partner_cui"
+                    type="text"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Supplier CUI (optional)</label>
+                <input
+                    id="supplier-cui"
+                    name="supplier_cui"
+                    type="text"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="client-cui">Client CUI (optional)</label>
+                <input
+                    id="client-cui"
+                    name="client_cui"
+                    type="text"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="contract-date">Data contract</label>
+                <input
+                    id="contract-date"
+                    name="contract_date"
+                    type="date"
+                    value="<?= htmlspecialchars(date('Y-m-d')) ?>"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+            </div>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="contract-title">Titlu</label>
-            <input
-                id="contract-title"
-                name="title"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                required
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="partner-cui">Partner CUI (optional)</label>
-            <input
-                id="partner-cui"
-                name="partner_cui"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Supplier CUI (optional)</label>
-            <input
-                id="supplier-cui"
-                name="supplier_cui"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="client-cui">Client CUI (optional)</label>
-            <input
-                id="client-cui"
-                name="client_cui"
-                type="text"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="contract-date">Data contract</label>
-            <input
-                id="contract-date"
-                name="contract_date"
-                type="date"
-                value="<?= htmlspecialchars(date('Y-m-d')) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
-        </div>
-    </div>
 
-    <div class="mt-4">
-        <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
-            Genereaza contract
-        </button>
-    </div>
-</form>
+        <div class="mt-4">
+            <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">
+                Genereaza contract
+            </button>
+        </div>
+    </form>
+</div>
 
-<form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
-    <?= App\Support\Csrf::input() ?>
-    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="signed-upload-company">Firma</label>
-            <select
-                id="signed-upload-company"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/companies') ?>"
-                required
-            >
-                <option value="">Se incarca firmele...</option>
-            </select>
+<div id="contracts-upload-card" class="mt-4 hidden">
+    <form method="POST" action="<?= App\Support\Url::to('admin/contracts/upload-signed') ?>" enctype="multipart/form-data" class="rounded-xl border border-emerald-100 bg-emerald-50 p-6 shadow-sm ring-1 ring-emerald-100">
+        <?= App\Support\Csrf::input() ?>
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="signed-upload-company">Firma</label>
+                <select
+                    id="signed-upload-company"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/companies') ?>"
+                    required
+                >
+                    <option value="">Se incarca firmele...</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-slate-700" for="signed-upload-contract">Document</label>
+                <select
+                    id="signed-upload-contract"
+                    name="contract_id"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/contracts') ?>"
+                    disabled
+                    required
+                >
+                    <option value="">Selectati mai intai firma</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="signed-upload-file">Fisier semnat</label>
+                <input id="signed-upload-file" type="file" name="file" required class="mt-1 block w-full text-sm text-slate-600">
+            </div>
         </div>
-        <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-slate-700" for="signed-upload-contract">Document</label>
-            <select
-                id="signed-upload-contract"
-                name="contract_id"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                data-source-url="<?= App\Support\Url::to('admin/contracts/upload-signed/contracts') ?>"
-                disabled
-                required
-            >
-                <option value="">Selectati mai intai firma</option>
-            </select>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+            <button id="signed-upload-submit" class="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60" disabled>
+                Incarca contract semnat
+            </button>
+            <span id="signed-upload-status" class="text-xs text-slate-500">Alege firma pentru a incarca documentul semnat.</span>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="signed-upload-file">Fisier semnat</label>
-            <input id="signed-upload-file" type="file" name="file" required class="mt-1 block w-full text-sm text-slate-600">
-        </div>
-    </div>
-    <div class="mt-3 flex flex-wrap items-center gap-3">
-        <button id="signed-upload-submit" class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" disabled>
-            Incarca contract semnat
-        </button>
-        <span id="signed-upload-status" class="text-xs text-slate-500">Alege firma pentru a incarca documentul semnat.</span>
-    </div>
-</form>
+    </form>
+</div>
+
+<script>
+    (function () {
+        const toggleConfigs = [
+            { buttonId: 'contracts-open-generate', cardId: 'contracts-generate-card' },
+            { buttonId: 'contracts-open-upload', cardId: 'contracts-upload-card' },
+        ];
+
+        toggleConfigs.forEach((config) => {
+            const button = document.getElementById(config.buttonId);
+            const card = document.getElementById(config.cardId);
+            if (!button || !card) {
+                return;
+            }
+
+            const syncExpanded = () => {
+                button.setAttribute('aria-expanded', card.classList.contains('hidden') ? 'false' : 'true');
+            };
+
+            button.addEventListener('click', () => {
+                const willOpen = card.classList.contains('hidden');
+                if (willOpen) {
+                    card.classList.remove('hidden');
+                    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    card.classList.add('hidden');
+                }
+                syncExpanded();
+            });
+
+            syncExpanded();
+        });
+    })();
+</script>
 
 <script>
     (function () {
@@ -324,7 +382,52 @@
     })();
 </script>
 
-<div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+<div class="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div class="xl:col-span-2">
+            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500" for="contracts-filter-search">Cautare</label>
+            <input
+                id="contracts-filter-search"
+                type="text"
+                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Nr. registru, titlu, relatie"
+            >
+        </div>
+        <div>
+            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500" for="contracts-filter-status">Status</label>
+            <select id="contracts-filter-status" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Toate statusurile</option>
+                <?php foreach ($statusLabels as $statusKey => $statusLabel): ?>
+                    <option value="<?= htmlspecialchars((string) $statusKey) ?>"><?= htmlspecialchars((string) $statusLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500" for="contracts-filter-company">Firma</label>
+            <select id="contracts-filter-company" class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Toate firmele</option>
+            </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2 xl:grid-cols-2">
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500" for="contracts-filter-date-from">Data de la</label>
+                <input id="contracts-filter-date-from" type="date" class="mt-1 block w-full rounded border border-slate-300 px-2 py-2 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500" for="contracts-filter-date-to">Data pana la</label>
+                <input id="contracts-filter-date-to" type="date" class="mt-1 block w-full rounded border border-slate-300 px-2 py-2 text-sm">
+            </div>
+        </div>
+    </div>
+    <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <button id="contracts-filter-reset" type="button" class="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            Reseteaza filtrele
+        </button>
+        <span id="contracts-filter-summary" class="text-xs text-slate-500"></span>
+    </div>
+</div>
+
+<div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
     <table class="w-full text-left text-sm">
         <thead class="bg-slate-50 text-slate-600">
             <tr>
@@ -337,7 +440,7 @@
                 <th class="px-3 py-2"></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="contracts-table-body">
             <?php if (empty($contracts)): ?>
                 <tr>
                     <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
@@ -380,8 +483,37 @@
                                 ? date('d.m.Y', $contractTimestamp)
                                 : $contractDateRaw;
                         }
+                        $relationLines = [];
+                        $relationCompanies = [];
+                        if ($relationSupplierName !== '') {
+                            $relationLines[] = ['label' => 'Furnizor', 'name' => $relationSupplierName];
+                            $relationCompanies[] = $relationSupplierName;
+                        }
+                        if ($relationClientName !== '') {
+                            $relationLines[] = ['label' => 'Client', 'name' => $relationClientName];
+                            $relationCompanies[] = $relationClientName;
+                        }
+                        if (empty($relationLines) && $relationPartnerName !== '') {
+                            $relationLines[] = ['label' => 'Companie', 'name' => $relationPartnerName];
+                            $relationCompanies[] = $relationPartnerName;
+                        }
+                        $relationCompanies = array_values(array_unique(array_filter($relationCompanies, static fn ($value): bool => trim((string) $value) !== '')));
+                        $rowSearchText = trim(implode(' ', [
+                            (string) $docNoDisplay,
+                            (string) ($contract['title'] ?? ''),
+                            implode(' ', $relationCompanies),
+                            (string) $statusLabel,
+                            (string) $contractDateDisplay,
+                        ]));
                     ?>
-                    <tr class="border-t border-slate-100">
+                    <tr
+                        class="border-t border-slate-100"
+                        data-contract-row="1"
+                        data-filter-text="<?= htmlspecialchars($rowSearchText) ?>"
+                        data-filter-status="<?= htmlspecialchars($statusKey) ?>"
+                        data-filter-companies="<?= htmlspecialchars(implode('|', $relationCompanies)) ?>"
+                        data-filter-date="<?= htmlspecialchars($contractDateRaw) ?>"
+                    >
                         <td class="px-3 py-2 text-slate-600">
                             <?php if ($docNoDisplay !== ''): ?>
                                 <span class="font-mono"><?= htmlspecialchars($docNoDisplay) ?></span>
@@ -390,18 +522,15 @@
                             <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName === ''): ?>
+                            <?php if (empty($relationLines)): ?>
                                 —
                             <?php else: ?>
-                                <?php if ($relationSupplierName !== ''): ?>
-                                    <div><span class="text-xs text-slate-500">Furnizor:</span> <?= htmlspecialchars($relationSupplierName) ?></div>
-                                <?php endif; ?>
-                                <?php if ($relationClientName !== ''): ?>
-                                    <div><span class="text-xs text-slate-500">Client:</span> <?= htmlspecialchars($relationClientName) ?></div>
-                                <?php endif; ?>
-                                <?php if ($relationSupplierName === '' && $relationClientName === '' && $relationPartnerName !== ''): ?>
-                                    <div><span class="text-xs text-slate-500">Companie:</span> <?= htmlspecialchars($relationPartnerName) ?></div>
-                                <?php endif; ?>
+                                <?php foreach ($relationLines as $relationLine): ?>
+                                    <div>
+                                        <span class="text-xs text-slate-500"><?= htmlspecialchars((string) ($relationLine['label'] ?? '')) ?>:</span>
+                                        <?= htmlspecialchars((string) ($relationLine['name'] ?? '')) ?>
+                                    </div>
+                                <?php endforeach; ?>
                             <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-700"><?= htmlspecialchars((string) ($contract['title'] ?? '')) ?></td>
@@ -434,7 +563,122 @@
                         </td>
                     </tr>
                 <?php endforeach; ?>
+                <tr id="contracts-empty-filtered-row" class="hidden">
+                    <td colspan="7" class="px-3 py-4 text-sm text-slate-500">
+                        Nu exista contracte pentru filtrele selectate.
+                    </td>
+                </tr>
             <?php endif; ?>
         </tbody>
     </table>
 </div>
+
+<script>
+    (function () {
+        const tableBody = document.getElementById('contracts-table-body');
+        const searchInput = document.getElementById('contracts-filter-search');
+        const statusSelect = document.getElementById('contracts-filter-status');
+        const companySelect = document.getElementById('contracts-filter-company');
+        const dateFromInput = document.getElementById('contracts-filter-date-from');
+        const dateToInput = document.getElementById('contracts-filter-date-to');
+        const resetButton = document.getElementById('contracts-filter-reset');
+        const summaryNode = document.getElementById('contracts-filter-summary');
+        const emptyFilteredRow = document.getElementById('contracts-empty-filtered-row');
+        if (!tableBody || !searchInput || !statusSelect || !companySelect || !dateFromInput || !dateToInput || !resetButton || !summaryNode) {
+            return;
+        }
+
+        const rows = Array.from(tableBody.querySelectorAll('tr[data-contract-row="1"]'));
+        if (rows.length === 0) {
+            summaryNode.textContent = '0 contracte';
+            return;
+        }
+
+        const normalize = (value) => String(value || '').trim().toLowerCase();
+        const companyMap = new Map();
+        rows.forEach((row) => {
+            const companiesRaw = String(row.dataset.filterCompanies || '');
+            companiesRaw.split('|').forEach((companyNameRaw) => {
+                const companyName = String(companyNameRaw || '').trim();
+                if (companyName === '') {
+                    return;
+                }
+                const key = normalize(companyName);
+                if (!companyMap.has(key)) {
+                    companyMap.set(key, companyName);
+                }
+            });
+        });
+
+        Array.from(companyMap.entries())
+            .sort((left, right) => left[1].localeCompare(right[1], 'ro'))
+            .forEach((entry) => {
+                const option = document.createElement('option');
+                option.value = entry[0];
+                option.textContent = entry[1];
+                companySelect.appendChild(option);
+            });
+
+        const applyFilters = () => {
+            const searchTerm = normalize(searchInput.value);
+            const statusValue = String(statusSelect.value || '').trim();
+            const companyValue = normalize(companySelect.value);
+            const dateFrom = String(dateFromInput.value || '').trim();
+            const dateTo = String(dateToInput.value || '').trim();
+            let visibleCount = 0;
+
+            rows.forEach((row) => {
+                const rowText = normalize(row.dataset.filterText || '');
+                const rowStatus = String(row.dataset.filterStatus || '').trim();
+                const rowDate = String(row.dataset.filterDate || '').trim();
+                const rowCompanyValues = String(row.dataset.filterCompanies || '')
+                    .split('|')
+                    .map((value) => normalize(value))
+                    .filter((value) => value !== '');
+
+                let isVisible = true;
+                if (searchTerm !== '' && !rowText.includes(searchTerm)) {
+                    isVisible = false;
+                }
+                if (isVisible && statusValue !== '' && rowStatus !== statusValue) {
+                    isVisible = false;
+                }
+                if (isVisible && companyValue !== '' && !rowCompanyValues.includes(companyValue)) {
+                    isVisible = false;
+                }
+                if (isVisible && dateFrom !== '' && (rowDate === '' || rowDate < dateFrom)) {
+                    isVisible = false;
+                }
+                if (isVisible && dateTo !== '' && (rowDate === '' || rowDate > dateTo)) {
+                    isVisible = false;
+                }
+
+                row.classList.toggle('hidden', !isVisible);
+                if (isVisible) {
+                    visibleCount++;
+                }
+            });
+
+            if (emptyFilteredRow) {
+                emptyFilteredRow.classList.toggle('hidden', visibleCount > 0);
+            }
+            summaryNode.textContent = visibleCount + ' / ' + rows.length + ' contracte afisate';
+        };
+
+        searchInput.addEventListener('input', applyFilters);
+        statusSelect.addEventListener('change', applyFilters);
+        companySelect.addEventListener('change', applyFilters);
+        dateFromInput.addEventListener('change', applyFilters);
+        dateToInput.addEventListener('change', applyFilters);
+        resetButton.addEventListener('click', () => {
+            searchInput.value = '';
+            statusSelect.value = '';
+            companySelect.value = '';
+            dateFromInput.value = '';
+            dateToInput.value = '';
+            applyFilters();
+        });
+
+        applyFilters();
+    })();
+</script>
