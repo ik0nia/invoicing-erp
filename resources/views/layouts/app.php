@@ -123,20 +123,7 @@ if ($isInternalStaff) {
 }
 
 if ($isPlatformUser) {
-    if ($isOperator) {
-        $menuSections['Facturare'][] = [
-            'label' => 'Istoric incasari',
-            'path' => '/admin/incasari/istoric',
-            'icon' => 'incasari',
-            'active' => str_starts_with($currentPath, '/admin/incasari/istoric'),
-        ];
-        $menuSections['Facturare'][] = [
-            'label' => 'Istoric plati',
-            'path' => '/admin/plati/istoric',
-            'icon' => 'plati',
-            'active' => str_starts_with($currentPath, '/admin/plati/istoric'),
-        ];
-    } else {
+    if (!$isOperator) {
         $menuSections['Facturare'][] = [
             'label' => 'Incasari clienti',
             'path' => '/admin/incasari',
