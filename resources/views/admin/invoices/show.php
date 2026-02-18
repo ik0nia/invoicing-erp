@@ -357,7 +357,6 @@
     <?php
         $unassigned = $linesByPackage[0] ?? [];
         $unassignedCount = count($unassigned);
-        $hasCommission = $commissionPercent !== null;
         $applyCommission = function (float $amount) use ($commissionPercent): ?float {
             if ($commissionPercent === null) {
                 return null;
@@ -366,6 +365,45 @@
             return $commissionPercent >= 0
                 ? round($amount * $factor, 2)
                 : round($amount / $factor, 2);
+        };
+        $lineClientPricing = function ($line) use ($applyCommission): ?array {
+            $netTotal = $applyCommission((float) ($line->line_total ?? 0.0));
+            $grossTotal = $applyCommission((float) ($line->line_total_vat ?? 0.0));
+            if ($netTotal === null || $grossTotal === null) {
+                return null;
+            }
+
+            $qty = (float) ($line->quantity ?? 0.0);
+            if ($qty > 0.000001) {
+                $unitNet = round($netTotal / $qty, 4);
+                $unitGross = round($grossTotal / $qty, 4);
+            } else {
+                $unitNet = $applyCommission((float) ($line->unit_price ?? 0.0));
+                if ($unitNet === null) {
+                    return null;
+                }
+                $taxPercent = (float) ($line->tax_percent ?? 0.0);
+                $unitGross = round($unitNet * (1 + ($taxPercent / 100)), 4);
+            }
+
+            return [
+                'unit_net' => (float) $unitNet,
+                'unit_gross' => (float) $unitGross,
+                'total_net' => (float) $netTotal,
+                'total_gross' => (float) $grossTotal,
+            ];
+        };
+        $packageClientPricing = function (array $stat) use ($applyCommission): ?array {
+            $net = $applyCommission((float) ($stat['total'] ?? 0.0));
+            $gross = $applyCommission((float) ($stat['total_vat'] ?? 0.0));
+            if ($net === null || $gross === null) {
+                return null;
+            }
+
+            return [
+                'net' => (float) $net,
+                'gross' => (float) $gross,
+            ];
         };
     ?>
 
@@ -443,12 +481,21 @@
                 <?php endif; ?>
                 <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
+                    <?php
+                        $packagePricing = $packageClientPricing($stat);
+                        $packageGrossClient = $commissionTotal !== null
+                            ? (float) $commissionTotal
+                            : ($packagePricing['gross'] ?? null);
+                    ?>
                     <div class="mt-1 text-xs text-slate-600">
                         <?= (int) $stat['line_count'] ?> produse
                     </div>
-                    <?php if ($commissionTotal !== null): ?>
+                    <?php if ($packagePricing !== null && $packageGrossClient !== null): ?>
                         <div class="mt-1 text-xs font-semibold text-slate-700">
-                            Total client: <?= number_format($commissionTotal, 2, '.', ' ') ?> RON
+                            Total client fara TVA: <?= number_format((float) $packagePricing['net'], 2, '.', ' ') ?> RON
+                        </div>
+                        <div class="text-xs font-semibold text-slate-700">
+                            Total client cu TVA: <?= number_format((float) $packageGrossClient, 2, '.', ' ') ?> RON
                         </div>
                     <?php else: ?>
                         <div class="mt-1 text-xs text-slate-500">
@@ -502,12 +549,19 @@
                                 <div class="mt-1 text-[11px] font-normal text-slate-700">
                                     Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
                                 </div>
-                                <?php if ($hasCommission): ?>
+                                <?php $linePricing = $lineClientPricing($line); ?>
+                                <?php if ($linePricing !== null): ?>
                                     <div class="text-[11px] font-normal text-slate-700">
-                                        Pret/buc: <?= number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') ?> RON
+                                        Pret/buc fara TVA: <?= number_format((float) $linePricing['unit_net'], 2, '.', ' ') ?> RON
                                     </div>
                                     <div class="text-[11px] font-normal text-slate-700">
-                                        Total: <?= number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') ?> RON
+                                        Pret/buc cu TVA: <?= number_format((float) $linePricing['unit_gross'], 2, '.', ' ') ?> RON
+                                    </div>
+                                    <div class="text-[11px] font-normal text-slate-700">
+                                        Total fara TVA: <?= number_format((float) $linePricing['total_net'], 2, '.', ' ') ?> RON
+                                    </div>
+                                    <div class="text-[11px] font-normal text-slate-700">
+                                        Total cu TVA: <?= number_format((float) $linePricing['total_gross'], 2, '.', ' ') ?> RON
                                     </div>
                                 <?php else: ?>
                                     <div class="text-[11px] font-normal text-slate-500">
@@ -573,12 +627,19 @@
                         <div class="mt-1 text-[11px] font-normal text-slate-700">
                             Cantitate: <?= number_format($line->quantity, 2, '.', ' ') ?> <?= htmlspecialchars($line->unit_code) ?>
                         </div>
-                        <?php if ($hasCommission): ?>
+                        <?php $linePricing = $lineClientPricing($line); ?>
+                        <?php if ($linePricing !== null): ?>
                             <div class="text-[11px] font-normal text-slate-700">
-                                Pret/buc: <?= number_format($applyCommission($line->unit_price) ?? 0, 2, '.', ' ') ?> RON
+                                Pret/buc fara TVA: <?= number_format((float) $linePricing['unit_net'], 2, '.', ' ') ?> RON
                             </div>
                             <div class="text-[11px] font-normal text-slate-700">
-                                Total: <?= number_format($applyCommission($line->line_total_vat) ?? 0, 2, '.', ' ') ?> RON
+                                Pret/buc cu TVA: <?= number_format((float) $linePricing['unit_gross'], 2, '.', ' ') ?> RON
+                            </div>
+                            <div class="text-[11px] font-normal text-slate-700">
+                                Total fara TVA: <?= number_format((float) $linePricing['total_net'], 2, '.', ' ') ?> RON
+                            </div>
+                            <div class="text-[11px] font-normal text-slate-700">
+                                Total cu TVA: <?= number_format((float) $linePricing['total_gross'], 2, '.', ' ') ?> RON
                             </div>
                         <?php else: ?>
                             <div class="text-[11px] font-normal text-slate-500">
