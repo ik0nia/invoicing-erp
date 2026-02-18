@@ -166,14 +166,16 @@ if ($isPlatformUser) {
         ],
     ];
 
-    $menuSections['Rapoarte'] = [
-        [
-            'label' => 'Cashflow lunar',
-            'path' => '/admin/rapoarte/cashflow',
-            'icon' => 'rapoarte',
-            'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
-        ],
-    ];
+    if (!$isOperator) {
+        $menuSections['Rapoarte'] = [
+            [
+                'label' => 'Cashflow lunar',
+                'path' => '/admin/rapoarte/cashflow',
+                'icon' => 'rapoarte',
+                'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
+            ],
+        ];
+    }
 
     $adminItems = [];
     if ($isSuperAdmin) {
