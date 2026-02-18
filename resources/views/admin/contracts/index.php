@@ -711,7 +711,7 @@
                                     <path d="m7 13 5-5 5 5" />
                                     <path d="M5 20h14" />
                                 </svg>
-                                Descarca
+                                Ctr. nesemnat
                             </a>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
@@ -721,7 +721,7 @@
                                     <path d="m7 13 5-5 5 5" />
                                     <path d="M5 20h14" />
                                 </svg>
-                                Descarca
+                                Ctr. Semnat
                             </a>
                         </td>
                     </tr>
