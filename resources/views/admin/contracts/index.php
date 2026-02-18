@@ -693,11 +693,16 @@
                             <?php if ($uploadTargetCompanyCui !== ''): ?>
                                 <button
                                     type="button"
-                                    class="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                                    class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800"
                                     data-contract-upload-trigger="1"
                                     data-upload-company-cui="<?= htmlspecialchars($uploadTargetCompanyCui) ?>"
                                     data-upload-contract-id="<?= (int) $contract['id'] ?>"
                                 >
+                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 20V8" />
+                                        <path d="m7 13 5-5 5 5" />
+                                        <path d="M5 20h14" />
+                                    </svg>
                                     Incarca semnat
                                 </button>
                             <?php else: ?>
