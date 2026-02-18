@@ -50,79 +50,6 @@
         </div>
     <?php endif; ?>
 
-    <?php if ($showPendingContractsCard): ?>
-        <?php
-            $pendingContractsCount = count($pendingContracts);
-            $contractStatusLabels = [
-                'draft' => 'Ciorna',
-                'generated' => 'Generat',
-                'sent' => 'Trimis',
-                'signed_uploaded' => 'Semnat (incarcat)',
-                'approved' => 'Aprobat',
-            ];
-        ?>
-        <div class="mt-4 grid gap-4 lg:grid-cols-2">
-            <div class="rounded border border-slate-200 bg-slate-50 p-4">
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                        <div class="text-sm font-medium text-slate-700">Contracte fara status Aprobat</div>
-                        <div class="mt-1 text-xs text-slate-500">Total curent: <?= $pendingContractsCount ?></div>
-                    </div>
-                    <a
-                        href="<?= App\Support\Url::to('admin/contracts') ?>"
-                        class="text-xs font-semibold text-blue-700 hover:text-blue-800"
-                    >
-                        Vezi contracte
-                    </a>
-                </div>
-
-                <?php if ($pendingContractsCount === 0): ?>
-                    <div class="mt-3 text-sm text-slate-500">Nu exista contracte cu status diferit de Aprobat.</div>
-                <?php else: ?>
-                    <div class="mt-3 max-h-72 overflow-y-auto pr-1">
-                        <ul class="space-y-2 text-sm">
-                            <?php foreach ($pendingContracts as $contract): ?>
-                                <?php
-                                    $statusKey = trim((string) ($contract['status'] ?? ''));
-                                    $statusLabel = $contractStatusLabels[$statusKey]
-                                        ?? ($statusKey !== '' ? ucfirst(str_replace('_', ' ', $statusKey)) : '—');
-                                    $contractDateRaw = trim((string) ($contract['contract_date'] ?? ''));
-                                    $contractDateDisplay = '—';
-                                    if ($contractDateRaw !== '') {
-                                        $contractDateTs = strtotime($contractDateRaw);
-                                        $contractDateDisplay = $contractDateTs !== false ? date('d.m.Y', $contractDateTs) : $contractDateRaw;
-                                    }
-                                    $createdAtRaw = trim((string) ($contract['created_at'] ?? ''));
-                                    $createdAtDisplay = $createdAtRaw !== '' ? $createdAtRaw : '—';
-                                    $docNoDisplay = trim((string) ($contract['doc_no_display'] ?? ''));
-                                    $docTypeDisplay = trim((string) ($contract['doc_type'] ?? ''));
-                                ?>
-                                <li class="rounded border border-slate-200 bg-white px-3 py-2">
-                                    <div class="flex flex-wrap items-start justify-between gap-2">
-                                        <div class="font-semibold text-slate-800">
-                                            <?= htmlspecialchars((string) (($contract['title'] ?? '') !== '' ? $contract['title'] : ('Document #' . (int) ($contract['id'] ?? 0)))) ?>
-                                        </div>
-                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                                            <?= htmlspecialchars($statusLabel) ?>
-                                        </span>
-                                    </div>
-                                    <div class="mt-1 text-xs text-slate-600">
-                                        <?= htmlspecialchars((string) ($contract['relation_label'] ?? '—')) ?>
-                                    </div>
-                                    <div class="mt-1 text-xs text-slate-500">
-                                        <?= $docNoDisplay !== '' ? ('Nr: ' . htmlspecialchars($docNoDisplay) . ' · ') : '' ?>
-                                        <?= $docTypeDisplay !== '' ? ('Tip: ' . htmlspecialchars($docTypeDisplay) . ' · ') : '' ?>
-                                        Data: <?= htmlspecialchars($contractDateDisplay) ?> · Creat: <?= htmlspecialchars($createdAtDisplay) ?>
-                                    </div>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    <?php endif; ?>
-
     <?php if (!empty($isSupplierUser)): ?>
         <div class="mt-6 grid gap-4 lg:grid-cols-3">
             <div class="rounded border border-slate-200 bg-slate-50 p-4">
@@ -215,6 +142,87 @@
                         <?= (int) ($uncollectedCount ?? 0) ?>
                     </div>
                     <div class="text-xs text-slate-500">Facturi emise cu sold restant.</div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($showPendingContractsCard): ?>
+            <?php
+                $pendingContractsCount = count($pendingContracts);
+                $contractStatusLabels = [
+                    'draft' => 'Ciorna',
+                    'generated' => 'Generat',
+                    'sent' => 'Trimis',
+                    'signed_uploaded' => 'Semnat (incarcat)',
+                    'approved' => 'Aprobat',
+                ];
+                $contractStatusClasses = [
+                    'draft' => 'bg-slate-100 text-slate-700',
+                    'generated' => 'bg-blue-100 text-blue-700',
+                    'sent' => 'bg-amber-100 text-amber-700',
+                    'signed_uploaded' => 'bg-purple-100 text-purple-700',
+                    'approved' => 'bg-emerald-100 text-emerald-700',
+                ];
+            ?>
+            <div class="mt-6 grid gap-4 lg:grid-cols-2">
+                <div class="rounded border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                            <div class="text-sm font-medium text-slate-700">Contracte fara status Aprobat</div>
+                            <div class="mt-1 text-xs text-slate-500">Total curent: <?= $pendingContractsCount ?></div>
+                        </div>
+                        <a
+                            href="<?= App\Support\Url::to('admin/contracts') ?>"
+                            class="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                            Vezi contracte
+                        </a>
+                    </div>
+
+                    <?php if ($pendingContractsCount === 0): ?>
+                        <div class="mt-3 text-sm text-slate-500">Nu exista contracte cu status diferit de Aprobat.</div>
+                    <?php else: ?>
+                        <div class="mt-3 max-h-72 overflow-y-auto pr-1">
+                            <ul class="space-y-2 text-sm">
+                                <?php foreach ($pendingContracts as $contract): ?>
+                                    <?php
+                                        $statusKey = strtolower(trim((string) ($contract['status'] ?? '')));
+                                        $statusLabel = $contractStatusLabels[$statusKey]
+                                            ?? ($statusKey !== '' ? ucfirst(str_replace('_', ' ', $statusKey)) : '—');
+                                        $statusClass = $contractStatusClasses[$statusKey] ?? 'bg-slate-100 text-slate-700';
+                                        $contractDateRaw = trim((string) ($contract['contract_date'] ?? ''));
+                                        $contractDateDisplay = '—';
+                                        if ($contractDateRaw !== '') {
+                                            $contractDateTs = strtotime($contractDateRaw);
+                                            $contractDateDisplay = $contractDateTs !== false ? date('d.m.Y', $contractDateTs) : $contractDateRaw;
+                                        }
+                                        $createdAtRaw = trim((string) ($contract['created_at'] ?? ''));
+                                        $createdAtDisplay = $createdAtRaw !== '' ? $createdAtRaw : '—';
+                                        $docNoDisplay = trim((string) ($contract['doc_no_display'] ?? ''));
+                                        $docTypeDisplay = trim((string) ($contract['doc_type'] ?? ''));
+                                    ?>
+                                    <li class="rounded border border-slate-200 bg-white px-3 py-2">
+                                        <div class="flex flex-wrap items-start justify-between gap-2">
+                                            <div class="font-semibold text-slate-800">
+                                                <?= htmlspecialchars((string) (($contract['title'] ?? '') !== '' ? $contract['title'] : ('Document #' . (int) ($contract['id'] ?? 0)))) ?>
+                                            </div>
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold <?= htmlspecialchars($statusClass) ?>">
+                                                <?= htmlspecialchars($statusLabel) ?>
+                                            </span>
+                                        </div>
+                                        <div class="mt-1 text-xs text-slate-600">
+                                            <?= htmlspecialchars((string) ($contract['relation_label'] ?? '—')) ?>
+                                        </div>
+                                        <div class="mt-1 text-xs text-slate-500">
+                                            <?= $docNoDisplay !== '' ? ('Nr: ' . htmlspecialchars($docNoDisplay) . ' · ') : '' ?>
+                                            <?= $docTypeDisplay !== '' ? ('Tip: ' . htmlspecialchars($docTypeDisplay) . ' · ') : '' ?>
+                                            Data: <?= htmlspecialchars($contractDateDisplay) ?> · Creat: <?= htmlspecialchars($createdAtDisplay) ?>
+                                        </div>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endif; ?>
