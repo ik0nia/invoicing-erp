@@ -42,6 +42,7 @@ $router->post('/admin/enrollment-links/approve-onboarding', [EnrollmentLinksCont
 $router->post('/admin/enrollment-links/reset-onboarding', [EnrollmentLinksController::class, 'resetOnboarding']);
 $router->get('/admin/contracts', [ContractsController::class, 'index']);
 $router->post('/admin/contracts/generate', [ContractsController::class, 'generate']);
+$router->get('/admin/contracts/company-search', [ContractsController::class, 'companySearch']);
 $router->post('/admin/contracts/upload-signed', [ContractsController::class, 'uploadSigned']);
 $router->get('/admin/contracts/upload-signed/companies', [ContractsController::class, 'uploadSignedCompanies']);
 $router->get('/admin/contracts/upload-signed/contracts', [ContractsController::class, 'uploadSignedContracts']);

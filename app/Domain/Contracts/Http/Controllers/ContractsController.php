@@ -342,6 +342,20 @@ class ContractsController
         ]);
     }
 
+    public function companySearch(): void
+    {
+        $this->requireGenerateRole();
+
+        $term = trim((string) ($_GET['term'] ?? ''));
+        $limit = min(30, max(1, (int) ($_GET['limit'] ?? 15)));
+        $items = $this->searchCompanies($term, $limit);
+
+        $this->json([
+            'success' => true,
+            'items' => $items,
+        ]);
+    }
+
     public function approve(): void
     {
         Auth::requireInternalStaff();
@@ -627,6 +641,151 @@ class ContractsController
         }
 
         return '';
+    }
+
+    private function searchCompanies(string $term, int $limit): array
+    {
+        $term = trim($term);
+        $termDigits = preg_replace('/\D+/', '', $term);
+        $itemsByCui = [];
+
+        $appendItem = static function (array &$bucket, array $item): void {
+            $cui = preg_replace('/\D+/', '', (string) ($item['cui'] ?? ''));
+            if ($cui === '') {
+                return;
+            }
+            $name = trim((string) ($item['name'] ?? ''));
+            if ($name === '') {
+                $name = $cui;
+            }
+            if (!isset($bucket[$cui])) {
+                $bucket[$cui] = [
+                    'cui' => $cui,
+                    'name' => $name,
+                    'label' => $name !== $cui ? ($name . ' - ' . $cui) : $cui,
+                ];
+                return;
+            }
+            if ($bucket[$cui]['name'] === $cui && $name !== '') {
+                $bucket[$cui]['name'] = $name;
+                $bucket[$cui]['label'] = $name !== $cui ? ($name . ' - ' . $cui) : $cui;
+            }
+        };
+
+        if (Database::tableExists('partners')) {
+            $where = [];
+            $params = [];
+            if ($term !== '') {
+                $parts = ['denumire LIKE :name_term'];
+                $params['name_term'] = '%' . $term . '%';
+                if ($termDigits !== '') {
+                    $parts[] = 'cui LIKE :cui_term';
+                    $params['cui_term'] = '%' . $termDigits . '%';
+                }
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            }
+            $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM partners
+                 ' . $whereSql . '
+                 ORDER BY denumire ASC, cui ASC
+                 LIMIT ' . (int) max($limit * 3, $limit),
+                $params
+            );
+            foreach ($rows as $row) {
+                $appendItem($itemsByCui, [
+                    'cui' => (string) ($row['cui'] ?? ''),
+                    'name' => (string) ($row['denumire'] ?? ''),
+                ]);
+            }
+        }
+
+        if (Database::tableExists('companies')) {
+            $where = [];
+            $params = [];
+            if ($term !== '') {
+                $parts = ['denumire LIKE :name_term'];
+                $params['name_term'] = '%' . $term . '%';
+                if ($termDigits !== '') {
+                    $parts[] = 'cui LIKE :cui_term';
+                    $params['cui_term'] = '%' . $termDigits . '%';
+                }
+                $where[] = '(' . implode(' OR ', $parts) . ')';
+            }
+            $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            $rows = Database::fetchAll(
+                'SELECT cui, denumire
+                 FROM companies
+                 ' . $whereSql . '
+                 ORDER BY denumire ASC, cui ASC
+                 LIMIT ' . (int) max($limit * 3, $limit),
+                $params
+            );
+            foreach ($rows as $row) {
+                $appendItem($itemsByCui, [
+                    'cui' => (string) ($row['cui'] ?? ''),
+                    'name' => (string) ($row['denumire'] ?? ''),
+                ]);
+            }
+        }
+
+        if ($termDigits !== '' && !isset($itemsByCui[$termDigits])) {
+            $appendItem($itemsByCui, [
+                'cui' => $termDigits,
+                'name' => $termDigits,
+            ]);
+        }
+
+        $items = array_values($itemsByCui);
+        $termLower = strtolower($term);
+        usort($items, static function (array $left, array $right) use ($termDigits, $termLower): int {
+            $score = static function (array $item) use ($termDigits, $termLower): int {
+                $cui = (string) ($item['cui'] ?? '');
+                $name = strtolower((string) ($item['name'] ?? ''));
+                $rank = 100;
+
+                if ($termDigits !== '') {
+                    if (str_starts_with($cui, $termDigits)) {
+                        $rank = min($rank, 0);
+                    } elseif (strpos($cui, $termDigits) !== false) {
+                        $rank = min($rank, 10);
+                    }
+                }
+
+                if ($termLower !== '') {
+                    if ($name !== '' && str_starts_with($name, $termLower)) {
+                        $rank = min($rank, 1);
+                    } elseif ($name !== '' && strpos($name, $termLower) !== false) {
+                        $rank = min($rank, 20);
+                    }
+                }
+
+                return $rank;
+            };
+
+            $scoreLeft = $score($left);
+            $scoreRight = $score($right);
+            if ($scoreLeft !== $scoreRight) {
+                return $scoreLeft <=> $scoreRight;
+            }
+
+            $nameCompare = strcmp(
+                strtolower((string) ($left['name'] ?? '')),
+                strtolower((string) ($right['name'] ?? ''))
+            );
+            if ($nameCompare !== 0) {
+                return $nameCompare;
+            }
+
+            return strcmp((string) ($left['cui'] ?? ''), (string) ($right['cui'] ?? ''));
+        });
+
+        if (count($items) > $limit) {
+            $items = array_slice($items, 0, $limit);
+        }
+
+        return $items;
     }
 
     private function resolveTemplateDocType(?array $template, string $docKind): string

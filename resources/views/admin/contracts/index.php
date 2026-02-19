@@ -83,23 +83,45 @@
                 >
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor CUI</label>
-                <input
-                    id="supplier-cui"
-                    name="supplier_cui"
-                    type="text"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    required
+                <div
+                    class="relative"
+                    data-contract-company-picker
+                    data-required="1"
+                    data-search-url="<?= App\Support\Url::to('admin/contracts/company-search') ?>"
                 >
+                    <label class="block text-sm font-medium text-slate-700" for="supplier-cui-display">Furnizor</label>
+                    <input
+                        id="supplier-cui-display"
+                        type="text"
+                        autocomplete="off"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                        placeholder="Cauta dupa denumire sau CUI"
+                        data-company-display
+                        required
+                    >
+                    <input type="hidden" id="supplier-cui" name="supplier_cui" data-company-value>
+                    <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-company-list></div>
+                </div>
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="client-cui">Client CUI (optional)</label>
-                <input
-                    id="client-cui"
-                    name="client_cui"
-                    type="text"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                <div
+                    class="relative"
+                    data-contract-company-picker
+                    data-required="0"
+                    data-search-url="<?= App\Support\Url::to('admin/contracts/company-search') ?>"
                 >
+                    <label class="block text-sm font-medium text-slate-700" for="client-cui-display">Client (optional)</label>
+                    <input
+                        id="client-cui-display"
+                        type="text"
+                        autocomplete="off"
+                        class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                        placeholder="Cauta dupa denumire sau CUI"
+                        data-company-display
+                    >
+                    <input type="hidden" id="client-cui" name="client_cui" data-company-value>
+                    <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-company-list></div>
+                </div>
             </div>
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="contract-date">Data contract</label>
@@ -196,6 +218,224 @@
             });
 
             syncExpanded();
+        });
+    })();
+</script>
+
+<script>
+    (function () {
+        const escapeHtml = (value) => {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+        const normalizeDigits = (value) => String(value || '').replace(/\D+/g, '');
+        const extractCompanyCuiCandidate = (value) => {
+            const raw = String(value || '').trim();
+            if (raw === '') {
+                return '';
+            }
+            if (/^\d+$/.test(raw)) {
+                return raw;
+            }
+            const compact = raw.replace(/\s+/g, '').toUpperCase();
+            if (/^RO\d+$/.test(compact)) {
+                return compact.replace(/^RO/, '');
+            }
+            const suffix = raw.match(/(?:^|[-\s])(RO)?(\d{2,16})$/i);
+            if (suffix && suffix[2]) {
+                return normalizeDigits(suffix[2]);
+            }
+
+            return '';
+        };
+
+        const pickers = Array.from(document.querySelectorAll('[data-contract-company-picker]'));
+        if (pickers.length === 0) {
+            return;
+        }
+
+        pickers.forEach((picker) => {
+            const displayInput = picker.querySelector('[data-company-display]');
+            const valueInput = picker.querySelector('[data-company-value]');
+            const list = picker.querySelector('[data-company-list]');
+            const searchUrl = picker.getAttribute('data-search-url') || '';
+            const required = picker.getAttribute('data-required') === '1';
+            if (!displayInput || !valueInput || !list || !searchUrl) {
+                return;
+            }
+
+            let requestId = 0;
+            let timer = null;
+            let selectedLabel = '';
+
+            const clearList = () => {
+                list.innerHTML = '';
+                list.classList.add('hidden');
+            };
+            const syncValidity = () => {
+                if (!required) {
+                    displayInput.setCustomValidity('');
+                    return;
+                }
+                const hasValue = valueInput.value.trim() !== '' || extractCompanyCuiCandidate(displayInput.value) !== '';
+                displayInput.setCustomValidity(hasValue ? '' : 'Selecteaza furnizorul.');
+            };
+            const applySelection = (item) => {
+                const cui = normalizeDigits(item.cui || '');
+                const name = String(item.name || '').trim();
+                const label = name !== '' && name !== cui ? `${name} - ${cui}` : cui;
+                valueInput.value = cui;
+                selectedLabel = label;
+                displayInput.value = label;
+                clearList();
+                syncValidity();
+            };
+            const renderItems = (items) => {
+                if (!Array.isArray(items) || items.length === 0) {
+                    list.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                    list.classList.remove('hidden');
+                    return;
+                }
+                list.innerHTML = items
+                    .map((item) => {
+                        const cui = escapeHtml(item.cui || '');
+                        const name = escapeHtml(item.name || item.cui || '');
+                        const label = escapeHtml(item.label || `${item.name || item.cui || ''} - ${item.cui || ''}`);
+                        return `
+                            <button
+                                type="button"
+                                class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                                data-company-item
+                                data-cui="${cui}"
+                                data-name="${name}"
+                                data-label="${label}"
+                            >
+                                <div class="font-medium text-slate-900">${label}</div>
+                            </button>
+                        `;
+                    })
+                    .join('');
+                list.classList.remove('hidden');
+            };
+            const fetchItems = (term) => {
+                const currentRequestId = ++requestId;
+                const url = new URL(searchUrl, window.location.origin);
+                url.searchParams.set('term', term);
+                url.searchParams.set('limit', '20');
+                fetch(url.toString(), {
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (currentRequestId !== requestId) {
+                            return;
+                        }
+                        if (!data || data.success !== true) {
+                            renderItems([]);
+                            return;
+                        }
+                        renderItems(data.items || []);
+                    })
+                    .catch(() => {
+                        if (currentRequestId !== requestId) {
+                            return;
+                        }
+                        renderItems([]);
+                    });
+            };
+
+            const parentForm = displayInput.closest('form');
+            if (parentForm) {
+                parentForm.addEventListener('submit', (event) => {
+                    if (valueInput.value.trim() === '') {
+                        const maybeCui = extractCompanyCuiCandidate(displayInput.value);
+                        if (maybeCui !== '') {
+                            valueInput.value = maybeCui;
+                            if (selectedLabel === '') {
+                                displayInput.value = maybeCui;
+                            }
+                        }
+                    }
+                    syncValidity();
+                    if (required && valueInput.value.trim() === '') {
+                        event.preventDefault();
+                        displayInput.reportValidity();
+                    }
+                });
+            }
+
+            displayInput.addEventListener('focus', () => {
+                fetchItems(displayInput.value.trim());
+            });
+            displayInput.addEventListener('input', () => {
+                valueInput.value = '';
+                selectedLabel = '';
+                syncValidity();
+                const query = displayInput.value.trim();
+                if (timer) {
+                    clearTimeout(timer);
+                }
+                timer = setTimeout(() => {
+                    fetchItems(query);
+                }, 200);
+            });
+            displayInput.addEventListener('change', () => {
+                if (valueInput.value.trim() !== '') {
+                    syncValidity();
+                    return;
+                }
+                const maybeCui = extractCompanyCuiCandidate(displayInput.value);
+                if (maybeCui !== '') {
+                    valueInput.value = maybeCui;
+                    displayInput.value = maybeCui;
+                }
+                syncValidity();
+            });
+            displayInput.addEventListener('blur', () => {
+                window.setTimeout(() => {
+                    clearList();
+                    if (valueInput.value.trim() !== '') {
+                        syncValidity();
+                        return;
+                    }
+                    const maybeCui = extractCompanyCuiCandidate(displayInput.value);
+                    if (maybeCui !== '') {
+                        valueInput.value = maybeCui;
+                        displayInput.value = maybeCui;
+                    } else if (!required && displayInput.value.trim() === '') {
+                        valueInput.value = '';
+                    }
+                    syncValidity();
+                }, 150);
+            });
+
+            const handleSelect = (event) => {
+                if (event.type === 'mousedown' && typeof window.PointerEvent !== 'undefined') {
+                    return;
+                }
+                const target = event.target.closest('[data-company-item]');
+                if (!target) {
+                    return;
+                }
+                event.preventDefault();
+                applySelection({
+                    cui: target.getAttribute('data-cui') || '',
+                    name: target.getAttribute('data-name') || '',
+                    label: target.getAttribute('data-label') || '',
+                });
+            };
+            list.addEventListener('pointerdown', handleSelect);
+            list.addEventListener('mousedown', handleSelect);
+
+            syncValidity();
         });
     })();
 </script>
