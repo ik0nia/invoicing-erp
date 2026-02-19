@@ -685,11 +685,6 @@
                 <div>Total fara TVA: <strong><?= number_format($invoiceTotalsNet, 2, '.', ' ') ?> RON</strong></div>
                 <div>Total cu TVA: <strong><?= number_format($invoiceTotalsGross, 2, '.', ' ') ?> RON</strong></div>
             </div>
-            <?php if ($commissionPercent !== null): ?>
-                <div class="mt-1 text-xs text-blue-700">
-                    Valorile afisate includ comisionul clientului selectat.
-                </div>
-            <?php endif; ?>
         </div>
     <?php endif; ?>
 
