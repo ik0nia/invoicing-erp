@@ -24,19 +24,29 @@
     .aviz-compact .aviz-table {
         font-size: 11px;
         line-height: 1.15;
+        width: 100%;
+        table-layout: auto !important;
     }
     .aviz-compact .aviz-table th,
     .aviz-compact .aviz-table td {
         padding: 2px 4px;
         vertical-align: top;
     }
-    .aviz-compact .aviz-table th:first-child,
-    .aviz-compact .aviz-table td:first-child {
+    .aviz-compact .aviz-table .col-nr {
+        width: 18px;
+        min-width: 18px;
+        max-width: 18px;
         padding-left: 2px;
         padding-right: 2px;
         text-align: center;
         white-space: nowrap;
     }
+    .aviz-compact .aviz-table .col-product { width: auto; }
+    .aviz-compact .aviz-table .col-qty { width: 66px; white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-um { width: 44px; white-space: nowrap; text-align: center; }
+    .aviz-compact .aviz-table .col-price { width: 90px; white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-total { width: 98px; white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-vat { width: 60px; white-space: nowrap; text-align: right; }
     .aviz-compact .aviz-company-logo {
         max-height: 56px;
         width: auto;
@@ -127,25 +137,16 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="aviz-table w-full table-fixed border border-slate-300 text-left text-xs">
-                        <colgroup>
-                            <col style="width: 2%">
-                            <col style="width: 49%">
-                            <col style="width: 9%">
-                            <col style="width: 7%">
-                            <col style="width: 11%">
-                            <col style="width: 14%">
-                            <col style="width: 8%">
-                        </colgroup>
+                    <table class="aviz-table w-full border border-slate-300 text-left text-xs">
                         <thead class="bg-white text-slate-600 border-b border-slate-300">
                             <tr>
-                                <th>Nr</th>
-                                <th>Produs</th>
-                                <th>Cantitate</th>
-                                <th>UM</th>
-                                <th>Pret/buc (fara TVA)</th>
-                                <th>Total (fara TVA)</th>
-                                <th>TVA</th>
+                                <th class="col-nr">Nr</th>
+                                <th class="col-product">Produs</th>
+                                <th class="col-qty">Cantitate</th>
+                                <th class="col-um">UM</th>
+                                <th class="col-price">Pret/buc (fara TVA)</th>
+                                <th class="col-total">Total (fara TVA)</th>
+                                <th class="col-vat">TVA</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -156,13 +157,13 @@
                                     $lineTotal = $applyCommission((float) $line->line_total);
                                 ?>
                                 <tr class="border-t border-slate-300">
-                                    <td><?= $index ?></td>
-                                    <td class="break-words"><?= htmlspecialchars($line->product_name) ?></td>
-                                    <td><?= number_format($line->quantity, 2, '.', ' ') ?></td>
-                                    <td><?= htmlspecialchars($line->unit_code) ?></td>
-                                    <td><?= number_format($unitPrice, 2, '.', ' ') ?></td>
-                                    <td><?= number_format($lineTotal, 2, '.', ' ') ?></td>
-                                    <td><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
+                                    <td class="col-nr"><?= $index ?></td>
+                                    <td class="col-product break-words"><?= htmlspecialchars($line->product_name) ?></td>
+                                    <td class="col-qty"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
+                                    <td class="col-um"><?= htmlspecialchars($line->unit_code) ?></td>
+                                    <td class="col-price"><?= number_format($unitPrice, 2, '.', ' ') ?></td>
+                                    <td class="col-total"><?= number_format($lineTotal, 2, '.', ' ') ?></td>
+                                    <td class="col-vat"><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
                                 </tr>
                                 <?php $index++; ?>
                             <?php endforeach; ?>
