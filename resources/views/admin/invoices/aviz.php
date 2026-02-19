@@ -25,7 +25,7 @@
         font-size: 11px;
         line-height: 1.15;
         width: 100%;
-        table-layout: auto !important;
+        table-layout: fixed !important;
     }
     .aviz-compact .aviz-table th,
     .aviz-compact .aviz-table td {
@@ -33,20 +33,18 @@
         vertical-align: top;
     }
     .aviz-compact .aviz-table .col-nr {
-        width: 18px;
-        min-width: 18px;
-        max-width: 18px;
-        padding-left: 2px;
-        padding-right: 2px;
+        padding-left: 0;
+        padding-right: 0;
         text-align: center;
         white-space: nowrap;
+        font-size: 10px;
     }
     .aviz-compact .aviz-table .col-product { width: auto; }
-    .aviz-compact .aviz-table .col-qty { width: 66px; white-space: nowrap; text-align: right; }
-    .aviz-compact .aviz-table .col-um { width: 44px; white-space: nowrap; text-align: center; }
-    .aviz-compact .aviz-table .col-price { width: 90px; white-space: nowrap; text-align: right; }
-    .aviz-compact .aviz-table .col-total { width: 98px; white-space: nowrap; text-align: right; }
-    .aviz-compact .aviz-table .col-vat { width: 60px; white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-qty { white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-um { white-space: nowrap; text-align: center; }
+    .aviz-compact .aviz-table .col-price { white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-total { white-space: nowrap; text-align: right; }
+    .aviz-compact .aviz-table .col-vat { white-space: nowrap; text-align: right; }
     .aviz-compact .aviz-company-logo {
         max-height: 56px;
         width: auto;
@@ -138,9 +136,18 @@
                 </div>
                 <div class="overflow-x-auto">
                     <table class="aviz-table w-full border border-slate-300 text-left text-xs">
+                        <colgroup>
+                            <col style="width: 14px">
+                            <col>
+                            <col style="width: 62px">
+                            <col style="width: 40px">
+                            <col style="width: 88px">
+                            <col style="width: 96px">
+                            <col style="width: 56px">
+                        </colgroup>
                         <thead class="bg-white text-slate-600 border-b border-slate-300">
                             <tr>
-                                <th class="col-nr">Nr</th>
+                                <th class="col-nr">#</th>
                                 <th class="col-product">Produs</th>
                                 <th class="col-qty">Cantitate</th>
                                 <th class="col-um">UM</th>
