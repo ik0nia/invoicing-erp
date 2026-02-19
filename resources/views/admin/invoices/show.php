@@ -665,6 +665,10 @@
             $commissionDifference = ($realInvoiceCommissionPercent !== null && $configuredCommissionPercent !== null)
                 ? round($realInvoiceCommissionPercent - $configuredCommissionPercent, 4)
                 : null;
+            $isCommissionBelowConfigured = $realInvoiceCommissionPercent !== null
+                && $configuredCommissionPercent !== null
+                && ($realInvoiceCommissionPercent + 0.000001) < $configuredCommissionPercent;
+            $commissionInfoClass = $isCommissionBelowConfigured ? 'text-rose-700' : 'text-blue-800';
             if (!empty($packageStats)) {
                 $computedNet = 0.0;
                 $computedGross = 0.0;
@@ -694,21 +698,21 @@
                 <div>Total cu TVA: <strong><?= number_format($invoiceTotalsGross, 2, '.', ' ') ?> RON</strong></div>
             </div>
             <?php if ($hasDiscountPricing): ?>
-                <div class="mt-2 text-xs text-blue-800">
+                <div class="mt-2 text-xs <?= $commissionInfoClass ?>">
                     Procent comision real pe factura:
                     <strong>
                         <?= $realInvoiceCommissionPercent !== null ? number_format($realInvoiceCommissionPercent, 4, '.', ' ') . '%' : '—' ?>
                     </strong>
                 </div>
-                <div class="text-xs text-blue-800">
+                <div class="text-xs <?= $commissionInfoClass ?>">
                     Comision setat furnizor-client:
                     <strong>
                         <?= $configuredCommissionPercent !== null ? number_format($configuredCommissionPercent, 4, '.', ' ') . '%' : '—' ?>
                     </strong>
                 </div>
                 <?php if ($commissionDifference !== null): ?>
-                    <div class="text-xs text-blue-700">
-                        Diferenta: <?= number_format($commissionDifference, 4, '.', ' ') ?> pp
+                    <div class="text-xs <?= $commissionInfoClass ?>">
+                        Diferenta: <?= number_format($commissionDifference, 4, '.', ' ') ?>%
                     </div>
                 <?php endif; ?>
             <?php endif; ?>
