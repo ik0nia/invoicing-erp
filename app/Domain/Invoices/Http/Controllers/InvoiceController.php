@@ -2,6 +2,7 @@
 
 namespace App\Domain\Invoices\Http\Controllers;
 
+use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
@@ -26,6 +27,7 @@ use App\Support\Database;
 use App\Support\Env;
 use App\Support\Response;
 use App\Support\Session;
+use App\Support\View;
 
 class InvoiceController
 {
@@ -1407,7 +1409,7 @@ class InvoiceController
             }
         }
 
-        Response::view('admin/invoices/aviz', [
+        $viewData = [
             'invoice' => $invoice,
             'packages' => $packages,
             'packageStats' => $packageStats,
@@ -1420,7 +1422,12 @@ class InvoiceController
             'clientCompany' => $clientCompany,
             'commissionPercent' => $commissionPercent,
             'hasDiscountPricing' => $hasDiscountPricing,
-        ], 'layouts/print');
+        ];
+        $this->renderInvoicePrintDocument(
+            'admin/invoices/aviz',
+            $viewData,
+            'anexa-factura-' . (int) $invoice->id
+        );
     }
 
     public function showOrderNote(): void
@@ -1457,13 +1464,49 @@ class InvoiceController
             }
         }
 
-        Response::view('admin/invoices/order_note', [
+        $viewData = [
             'invoice' => $invoice,
             'lines' => $lines,
             'clientCui' => $clientCui,
             'clientName' => $clientName,
             'clientCompany' => $clientCompany,
-        ], 'layouts/print');
+        ];
+        $this->renderInvoicePrintDocument(
+            'admin/invoices/order_note',
+            $viewData,
+            'nota-comanda-' . (int) $invoice->id
+        );
+    }
+
+    private function renderInvoicePrintDocument(string $view, array $data, string $filenamePrefix): void
+    {
+        if (!$this->wantsPdfDocument()) {
+            Response::view($view, $data, 'layouts/print');
+            return;
+        }
+
+        $html = View::render($view, $data, 'layouts/print');
+        $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($html, $filenamePrefix);
+        if ($pdfBinary !== '') {
+            $filename = $this->safeFileName($filenamePrefix) . '.pdf';
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($pdfBinary));
+            header('X-Content-Type-Options: nosniff');
+            echo $pdfBinary;
+            exit;
+        }
+
+        header('Content-Type: text/html; charset=utf-8');
+        echo $html;
+        exit;
+    }
+
+    private function wantsPdfDocument(): bool
+    {
+        $value = strtolower(trim((string) ($_GET['pdf'] ?? '')));
+
+        return in_array($value, ['1', 'true', 'yes', 'da', 'pdf'], true);
     }
 
     public function showManual(): void
