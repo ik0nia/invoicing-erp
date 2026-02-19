@@ -1485,7 +1485,9 @@ class InvoiceController
             return;
         }
 
-        $html = View::render($view, $data, 'layouts/print');
+        $pdfData = $data;
+        $pdfData['pdfMode'] = true;
+        $html = View::render($view, $pdfData, 'layouts/print');
         $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($html, $filenamePrefix);
         if ($pdfBinary !== '') {
             $filename = $this->safeFileName($filenamePrefix) . '.pdf';
