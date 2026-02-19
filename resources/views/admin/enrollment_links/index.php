@@ -391,7 +391,7 @@
                             <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 text-slate-600">
-                            <?= (int) ($row['current_step'] ?? 1) ?>/3
+                            <?= (int) ($row['current_step'] ?? 1) ?>/4
                         </td>
                         <td class="px-3 py-2 text-slate-600">
                             <?php
