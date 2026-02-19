@@ -395,6 +395,62 @@ class ContractsController
         Response::redirect('/admin/contracts');
     }
 
+    public function resetGeneratedPdf(): void
+    {
+        $this->requireGenerateRole();
+
+        $id = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
+        if ($id <= 0) {
+            Response::redirect('/admin/contracts');
+        }
+
+        $contract = Database::fetchOne(
+            'SELECT id, generated_pdf_path, generated_file_path
+             FROM contracts
+             WHERE id = :id
+             LIMIT 1',
+            ['id' => $id]
+        );
+        if (!$contract) {
+            Session::flash('error', 'Contract inexistent.');
+            Response::redirect('/admin/contracts');
+        }
+
+        $generatedPdfPath = trim((string) ($contract['generated_pdf_path'] ?? ''));
+        $generatedFilePath = trim((string) ($contract['generated_file_path'] ?? ''));
+        if ($generatedPdfPath !== '') {
+            $this->deleteUploadFile($generatedPdfPath);
+        }
+        if ($generatedFilePath !== '' && $generatedFilePath !== $generatedPdfPath) {
+            $this->deleteUploadFile($generatedFilePath);
+        }
+
+        $setParts = [];
+        $params = ['id' => $id];
+        if (Database::columnExists('contracts', 'generated_pdf_path')) {
+            $setParts[] = 'generated_pdf_path = NULL';
+        }
+        if (Database::columnExists('contracts', 'generated_file_path')) {
+            $setParts[] = 'generated_file_path = NULL';
+        }
+        if (Database::columnExists('contracts', 'updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+            $params['updated_at'] = date('Y-m-d H:i:s');
+        }
+        if (!empty($setParts)) {
+            Database::execute(
+                'UPDATE contracts
+                 SET ' . implode(', ', $setParts) . '
+                 WHERE id = :id',
+                $params
+            );
+        }
+
+        Audit::record('contract.generated_pdf_reset', 'contract', $id, ['rows_count' => 1]);
+        Session::flash('status', 'PDF-ul nesemnat a fost resetat. Se va regenera la urmatoarea descarcare.');
+        Response::redirect('/admin/contracts');
+    }
+
     public function download(): void
     {
         $user = $this->requireContractsRole();
@@ -556,6 +612,21 @@ class ContractsController
         header('Content-Length: ' . filesize($path));
         readfile($path);
         exit;
+    }
+
+    private function deleteUploadFile(string $relativePath): void
+    {
+        $base = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $clean = ltrim($relativePath, '/');
+        if ($clean === '' || !str_starts_with($clean, 'storage/uploads/')) {
+            return;
+        }
+        $path = realpath($base . '/' . $clean);
+        $root = realpath($base . '/storage/uploads');
+        if (!$path || !$root || !str_starts_with($path, $root) || !is_file($path)) {
+            return;
+        }
+        @unlink($path);
     }
 
     private function contractsForSignedUpload(?string $companyCui = null): array

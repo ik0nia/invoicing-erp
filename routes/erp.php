@@ -47,6 +47,7 @@ $router->post('/admin/contracts/upload-signed', [ContractsController::class, 'up
 $router->get('/admin/contracts/upload-signed/companies', [ContractsController::class, 'uploadSignedCompanies']);
 $router->get('/admin/contracts/upload-signed/contracts', [ContractsController::class, 'uploadSignedContracts']);
 $router->post('/admin/contracts/approve', [ContractsController::class, 'approve']);
+$router->post('/admin/contracts/reset-generated-pdf', [ContractsController::class, 'resetGeneratedPdf']);
 $router->get('/admin/contracts/download', [ContractsController::class, 'download']);
 $router->get('/admin/registru-documente', [DocumentRegistryController::class, 'index']);
 $router->post('/admin/registru-documente/save', [DocumentRegistryController::class, 'save']);
