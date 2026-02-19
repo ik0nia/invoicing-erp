@@ -3,15 +3,96 @@
     $fgoNumber = $invoice->fgo_number ?: $invoice->invoice_no ?: $invoice->invoice_number;
     $reference = trim($fgoSeries . ' ' . $fgoNumber);
     $title = 'Anexa factura ' . $reference;
+    $company = is_array($company ?? null) ? $company : [];
+    $companyName = trim((string) ($company['denumire'] ?? ''));
+    $companyType = trim((string) ($company['tip_firma'] ?? ''));
+    $companyDisplayName = trim($companyName . ($companyType !== '' ? ' - ' . $companyType : ''));
+    $companyCui = trim((string) ($company['cui'] ?? ''));
+    $companyRegCom = trim((string) ($company['nr_reg_comertului'] ?? ''));
+    $companyAddressParts = array_filter([
+        trim((string) ($company['adresa'] ?? '')),
+        trim((string) ($company['localitate'] ?? '')),
+        trim((string) ($company['judet'] ?? '')),
+        trim((string) ($company['tara'] ?? '')),
+    ], static fn (string $value): bool => $value !== '');
+    $companyAddress = implode(', ', $companyAddressParts);
+    $companyEmail = trim((string) ($company['email'] ?? ''));
+    $companyPhone = trim((string) ($company['telefon'] ?? ''));
+    $companyBank = trim((string) ($company['banca'] ?? ''));
+    $companyIban = trim((string) ($company['iban'] ?? ''));
+    $companyLogo = trim((string) ($company['logo_url'] ?? ''));
 ?>
 
-<div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-    <div class="flex flex-wrap items-start justify-between gap-4">
+<style>
+    .aviz-compact {
+        font-size: 11px;
+        line-height: 1.25;
+    }
+    .aviz-compact .aviz-package {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+    .aviz-compact .aviz-table {
+        font-size: 11px;
+        line-height: 1.15;
+    }
+    .aviz-compact .aviz-table th,
+    .aviz-compact .aviz-table td {
+        padding: 2px 4px;
+        vertical-align: top;
+    }
+    .aviz-compact .aviz-company-logo {
+        max-height: 56px;
+        width: auto;
+        max-width: 170px;
+        object-fit: contain;
+    }
+</style>
+
+<div class="aviz-compact rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-2">
+        <div class="flex flex-wrap items-start gap-3">
+            <?php if ($companyLogo !== ''): ?>
+                <img class="aviz-company-logo" src="<?= htmlspecialchars($companyLogo) ?>" alt="Logo companie">
+            <?php endif; ?>
+            <div class="text-xs text-slate-700">
+                <?php if ($companyDisplayName !== ''): ?>
+                    <div class="text-sm font-semibold text-slate-900"><?= htmlspecialchars($companyDisplayName) ?></div>
+                <?php endif; ?>
+                <div class="mt-1">
+                    <?php if ($companyCui !== ''): ?>
+                        <span>CUI: <strong><?= htmlspecialchars($companyCui) ?></strong></span>
+                    <?php endif; ?>
+                    <?php if ($companyRegCom !== ''): ?>
+                        <span<?= $companyCui !== '' ? ' class="ml-2"' : '' ?>>Reg. com: <strong><?= htmlspecialchars($companyRegCom) ?></strong></span>
+                    <?php endif; ?>
+                </div>
+                <?php if ($companyAddress !== ''): ?>
+                    <div class="mt-1">Adresa: <?= htmlspecialchars($companyAddress) ?></div>
+                <?php endif; ?>
+                <div class="mt-1">
+                    <?php if ($companyEmail !== ''): ?>
+                        <span>Email: <?= htmlspecialchars($companyEmail) ?></span>
+                    <?php endif; ?>
+                    <?php if ($companyPhone !== ''): ?>
+                        <span<?= $companyEmail !== '' ? ' class="ml-2"' : '' ?>>Tel: <?= htmlspecialchars($companyPhone) ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="mt-1">
+                    <?php if ($companyBank !== ''): ?>
+                        <span>Banca: <?= htmlspecialchars($companyBank) ?></span>
+                    <?php endif; ?>
+                    <?php if ($companyIban !== ''): ?>
+                        <span<?= $companyBank !== '' ? ' class="ml-2"' : '' ?>>IBAN: <?= htmlspecialchars($companyIban) ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
         <div>
             <?php
                 $dateDisplay = $invoice->issue_date ? date('d.m.Y', strtotime($invoice->issue_date)) : '';
             ?>
-            <h1 class="text-xl font-semibold text-slate-900">
+            <h1 class="text-lg font-semibold text-slate-900">
                 ANEXA - Factura <?= htmlspecialchars($reference) ?> / DATA <?= htmlspecialchars($dateDisplay) ?>
             </h1>
             <p class="mt-1 text-xs font-semibold text-slate-600">DOCUMENT NEFISCAL</p>
@@ -21,13 +102,15 @@
                     (CUI: <?= htmlspecialchars($clientCui) ?>)
                 <?php endif; ?>
             </p>
+            <div class="mt-1 text-right">
+                <a
+                    href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice->id) ?>"
+                    class="no-print rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:text-slate-900"
+                >
+                    Inapoi la factura
+                </a>
+            </div>
         </div>
-        <a
-            href="<?= App\Support\Url::to('admin/facturi?invoice_id=' . (int) $invoice->id) ?>"
-            class="no-print rounded border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:text-slate-900"
-        >
-            Inapoi la factura
-        </a>
     </div>
 
     <?php
@@ -43,15 +126,15 @@
         };
     ?>
 
-    <div class="mt-4 space-y-4">
+    <div class="mt-3 space-y-2">
         <?php foreach ($packages as $package): ?>
             <?php
                 $stat = $packageStats[$package->id] ?? ['line_count' => 0, 'total' => 0];
                 $lines = $linesByPackage[$package->id] ?? [];
                 $packageTotal = $applyCommission((float) ($stat['total'] ?? 0));
             ?>
-            <div class="rounded border border-slate-200">
-                <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+            <div class="aviz-package rounded border border-slate-200">
+                <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2 py-1">
                     <?php
                         $labelText = trim((string) ($package->label ?? ''));
                         if ($labelText === '') {
@@ -67,7 +150,7 @@
                     </div>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full table-fixed border border-slate-300 text-left text-xs">
+                    <table class="aviz-table w-full table-fixed border border-slate-300 text-left text-xs">
                         <colgroup>
                             <col style="width: 6%">
                             <col style="width: 40%">
@@ -79,13 +162,13 @@
                         </colgroup>
                         <thead class="bg-white text-slate-600 border-b border-slate-300">
                             <tr>
-                                <th class="px-2 py-1">Nr</th>
-                                <th class="px-2 py-1">Produs</th>
-                                <th class="px-2 py-1">Cantitate</th>
-                                <th class="px-2 py-1">UM</th>
-                                <th class="px-2 py-1">Pret/buc (fara TVA)</th>
-                                <th class="px-2 py-1">Total (fara TVA)</th>
-                                <th class="px-2 py-1">TVA</th>
+                                <th>Nr</th>
+                                <th>Produs</th>
+                                <th>Cantitate</th>
+                                <th>UM</th>
+                                <th>Pret/buc (fara TVA)</th>
+                                <th>Total (fara TVA)</th>
+                                <th>TVA</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -96,19 +179,19 @@
                                     $lineTotal = $applyCommission((float) $line->line_total);
                                 ?>
                                 <tr class="border-t border-slate-300">
-                                    <td class="px-2 py-1"><?= $index ?></td>
-                                    <td class="px-2 py-1 break-words"><?= htmlspecialchars($line->product_name) ?></td>
-                                    <td class="px-2 py-1"><?= number_format($line->quantity, 2, '.', ' ') ?></td>
-                                    <td class="px-2 py-1"><?= htmlspecialchars($line->unit_code) ?></td>
-                                    <td class="px-2 py-1"><?= number_format($unitPrice, 2, '.', ' ') ?></td>
-                                    <td class="px-2 py-1"><?= number_format($lineTotal, 2, '.', ' ') ?></td>
-                                    <td class="px-2 py-1"><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
+                                    <td><?= $index ?></td>
+                                    <td class="break-words"><?= htmlspecialchars($line->product_name) ?></td>
+                                    <td><?= number_format($line->quantity, 2, '.', ' ') ?></td>
+                                    <td><?= htmlspecialchars($line->unit_code) ?></td>
+                                    <td><?= number_format($unitPrice, 2, '.', ' ') ?></td>
+                                    <td><?= number_format($lineTotal, 2, '.', ' ') ?></td>
+                                    <td><?= number_format($line->tax_percent, 2, '.', ' ') ?>%</td>
                                 </tr>
                                 <?php $index++; ?>
                             <?php endforeach; ?>
                             <?php if (empty($lines)): ?>
                                 <tr class="border-t border-slate-100">
-                                    <td colspan="7" class="px-2 py-2 text-xs text-slate-500">Nu exista produse in acest pachet.</td>
+                                    <td colspan="7" class="text-xs text-slate-500">Nu exista produse in acest pachet.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
@@ -118,11 +201,11 @@
         <?php endforeach; ?>
     </div>
 
-    <div class="mt-4 grid gap-2 text-xs text-slate-700 md:grid-cols-2">
-        <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+    <div class="mt-3 grid gap-2 text-xs text-slate-700 md:grid-cols-2">
+        <div class="rounded border border-slate-200 bg-slate-50 px-2 py-1">
             Total fara TVA: <strong><?= number_format($totalWithout, 2, '.', ' ') ?> RON</strong>
         </div>
-        <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+        <div class="rounded border border-slate-200 bg-slate-50 px-2 py-1">
             Total cu TVA: <strong><?= number_format($totalWith, 2, '.', ' ') ?> RON</strong>
         </div>
     </div>

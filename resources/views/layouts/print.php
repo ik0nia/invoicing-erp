@@ -56,6 +56,7 @@
         .text-xs { font-size: 0.75rem; line-height: 1rem; }
         .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
         .text-base { font-size: 1rem; line-height: 1.5rem; }
+        .text-lg { font-size: 1.125rem; line-height: 1.55rem; }
         .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
         .font-semibold { font-weight: 600; }
 
@@ -97,6 +98,8 @@
         .mt-2 { margin-top: 0.5rem; }
         .mt-4 { margin-top: 1rem; }
         .mt-6 { margin-top: 1.5rem; }
+        .ml-2 { margin-left: 0.5rem; }
+        .pb-2 { padding-bottom: 0.5rem; }
 
         @media (min-width: 1024px) {
             .lg\:px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
@@ -104,9 +107,11 @@
         }
 
         <?php if (!empty($pdfMode)): ?>
+        @page { margin: 8mm 6mm; }
         .no-print { display: none !important; }
         body { background: #ffffff !important; }
         .shadow-sm { box-shadow: none !important; }
+        main { padding: 0.4rem !important; }
         <?php endif; ?>
 
         @media print {
