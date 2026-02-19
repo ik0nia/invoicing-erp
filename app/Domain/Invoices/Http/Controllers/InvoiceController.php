@@ -2181,6 +2181,8 @@ class InvoiceController
 
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
+                'CodArticol' => $this->fgoPackageArticleCode($package),
+                'CodGestiune' => '0001',
                 'UM' => 'BUC',
                 'NrProduse' => 1,
                 'CotaTVA' => (float) $package->vat_percent,
@@ -2781,6 +2783,8 @@ class InvoiceController
                 $label = $this->packageLabel($package);
                 $content[] = [
                     'Denumire' => $label,
+                    'CodArticol' => $this->fgoPackageArticleCode($package),
+                    'CodGestiune' => '0001',
                     'UM' => 'BUC',
                     'NrProduse' => 1,
                     'CotaTVA' => (float) $package->vat_percent,
@@ -6568,6 +6572,27 @@ class InvoiceController
     private function packageLabel(Package $package): string
     {
         return $this->packageLabelText($package) . ' #' . $package->package_no;
+    }
+
+    private function fgoPackageArticleCode(Package $package): string
+    {
+        $numericPart = '';
+        if ($package->package_no > 0) {
+            $numericPart = (string) $package->package_no;
+        } else {
+            $label = $this->packageLabel($package);
+            if (preg_match('/#\s*(\d+)/', $label, $match) === 1) {
+                $numericPart = (string) ($match[1] ?? '');
+            }
+            if ($numericPart === '') {
+                $numericPart = preg_replace('/\D+/', '', $label);
+            }
+        }
+        if ($numericPart === '') {
+            $numericPart = (string) max(1, (int) $package->id);
+        }
+
+        return 'PAC' . $numericPart;
     }
 
     private function paginateInvoices(array $invoices, int $page, int $perPage): array
