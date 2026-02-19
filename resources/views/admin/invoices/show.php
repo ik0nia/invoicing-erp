@@ -653,9 +653,43 @@
         <?php endif; ?>
     </div>
 
-    <?php if (!empty($commissionPercent) && !empty($packageTotalsWithCommission['invoice_total'])): ?>
-        <div class="mt-6 rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
-            Total client pachete: <strong><?= number_format($packageTotalsWithCommission['invoice_total'], 2, '.', ' ') ?> RON</strong>
+    <?php if (!empty($packages)): ?>
+        <?php
+            $invoiceTotalsNet = (float) ($invoice->total_without_vat ?? 0.0);
+            $invoiceTotalsGross = (float) ($invoice->total_with_vat ?? 0.0);
+            if (!empty($packageStats)) {
+                $computedNet = 0.0;
+                $computedGross = 0.0;
+                if ($commissionPercent !== null) {
+                    foreach ($packageStats as $stat) {
+                        $clientPricing = $packageClientPricing((array) $stat);
+                        if ($clientPricing === null) {
+                            continue;
+                        }
+                        $computedNet += (float) ($clientPricing['net'] ?? 0.0);
+                        $computedGross += (float) ($clientPricing['gross'] ?? 0.0);
+                    }
+                } else {
+                    foreach ($packageStats as $stat) {
+                        $computedNet += (float) ($stat['total'] ?? 0.0);
+                        $computedGross += (float) ($stat['total_vat'] ?? 0.0);
+                    }
+                }
+                $invoiceTotalsNet = round($computedNet, 2);
+                $invoiceTotalsGross = round($computedGross, 2);
+            }
+        ?>
+        <div class="mt-6 rounded border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+            <div class="text-xs font-semibold uppercase tracking-wide text-blue-700">Total factura</div>
+            <div class="mt-1 flex flex-wrap items-center gap-x-6 gap-y-1">
+                <div>Total fara TVA: <strong><?= number_format($invoiceTotalsNet, 2, '.', ' ') ?> RON</strong></div>
+                <div>Total cu TVA: <strong><?= number_format($invoiceTotalsGross, 2, '.', ' ') ?> RON</strong></div>
+            </div>
+            <?php if ($commissionPercent !== null): ?>
+                <div class="mt-1 text-xs text-blue-700">
+                    Valorile afisate includ comisionul clientului selectat.
+                </div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
