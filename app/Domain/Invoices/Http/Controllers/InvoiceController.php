@@ -91,6 +91,7 @@ class InvoiceController
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
             $clients = Commission::forSupplierWithPartners($invoice->supplier_cui);
             $commissionPercent = null;
+            $configuredCommissionPercent = null;
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
             $canRenamePackages = $this->canRenamePackages($user) && empty($invoice->packages_confirmed);
@@ -129,7 +130,8 @@ class InvoiceController
             if ($selectedClientCui !== '') {
                 foreach ($clients as $client) {
                     if ((string) $client['client_cui'] === $selectedClientCui) {
-                        $commissionPercent = (float) $client['commission'];
+                        $configuredCommissionPercent = (float) $client['commission'];
+                        $commissionPercent = $configuredCommissionPercent;
                         $selectedClientName = (string) ($client['client_name'] ?? '');
                         break;
                     }
@@ -215,6 +217,7 @@ class InvoiceController
                 'selectedClientCui' => $selectedClientCui,
                 'selectedClientName' => $selectedClientName,
                 'commissionPercent' => $commissionPercent,
+                'configuredCommissionPercent' => $configuredCommissionPercent,
                 'packageTotalsWithCommission' => $packageTotalsWithCommission,
                 'isAdmin' => $isAdmin,
                 'canRenamePackages' => $canRenamePackages,

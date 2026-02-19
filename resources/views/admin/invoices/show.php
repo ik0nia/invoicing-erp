@@ -4,6 +4,10 @@
     $canRefacereInvoice = !empty($canRefacereInvoice);
     $refacerePackages = is_array($refacerePackages ?? null) ? $refacerePackages : [];
     $invoiceAdjustments = is_array($invoiceAdjustments ?? null) ? $invoiceAdjustments : [];
+    $hasDiscountPricing = !empty($hasDiscountPricing);
+    $configuredCommissionPercent = isset($configuredCommissionPercent) && $configuredCommissionPercent !== null
+        ? (float) $configuredCommissionPercent
+        : null;
     $canShowRefacereAction = $canRefacereInvoice
         && !empty($isConfirmed)
         && !empty($invoice->fgo_number)
@@ -657,6 +661,10 @@
         <?php
             $invoiceTotalsNet = (float) ($invoice->total_without_vat ?? 0.0);
             $invoiceTotalsGross = (float) ($invoice->total_with_vat ?? 0.0);
+            $realInvoiceCommissionPercent = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+            $commissionDifference = ($realInvoiceCommissionPercent !== null && $configuredCommissionPercent !== null)
+                ? round($realInvoiceCommissionPercent - $configuredCommissionPercent, 4)
+                : null;
             if (!empty($packageStats)) {
                 $computedNet = 0.0;
                 $computedGross = 0.0;
@@ -685,6 +693,25 @@
                 <div>Total fara TVA: <strong><?= number_format($invoiceTotalsNet, 2, '.', ' ') ?> RON</strong></div>
                 <div>Total cu TVA: <strong><?= number_format($invoiceTotalsGross, 2, '.', ' ') ?> RON</strong></div>
             </div>
+            <?php if ($hasDiscountPricing): ?>
+                <div class="mt-2 text-xs text-blue-800">
+                    Procent comision real pe factura:
+                    <strong>
+                        <?= $realInvoiceCommissionPercent !== null ? number_format($realInvoiceCommissionPercent, 4, '.', ' ') . '%' : '—' ?>
+                    </strong>
+                </div>
+                <div class="text-xs text-blue-800">
+                    Comision setat furnizor-client:
+                    <strong>
+                        <?= $configuredCommissionPercent !== null ? number_format($configuredCommissionPercent, 4, '.', ' ') . '%' : '—' ?>
+                    </strong>
+                </div>
+                <?php if ($commissionDifference !== null): ?>
+                    <div class="text-xs text-blue-700">
+                        Diferenta: <?= number_format($commissionDifference, 4, '.', ' ') ?> pp
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
