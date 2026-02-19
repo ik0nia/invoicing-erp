@@ -1,21 +1,13 @@
 <?php $title = 'Companii'; ?>
 
-<div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-        <h1 class="text-xl font-semibold text-slate-900">Companii</h1>
-        <p class="mt-1 text-sm text-slate-600">Lista de companii din sistem.</p>
-    </div>
-    <a
-        href="<?= App\Support\Url::to('admin/companii/edit') ?>"
-        class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
-    >
-        Adauga companie
-    </a>
+<div>
+    <h1 class="text-xl font-semibold text-slate-900">Companii</h1>
+    <p class="mt-1 text-sm text-slate-600">Lista de companii din sistem.</p>
 </div>
 
 <?php if (empty($companies)): ?>
     <div class="mt-6 rounded border border-slate-200 bg-white p-6 text-sm text-slate-600">
-        Nu exista companii disponibile. Importa datele vechi sau adauga o companie noua.
+        Nu exista companii disponibile. Companiile noi se adauga doar prin fluxul de inrolare.
     </div>
 <?php else: ?>
     <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
