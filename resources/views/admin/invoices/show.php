@@ -757,7 +757,7 @@
                             </a>
                         <?php endif; ?>
                         <a
-                            href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id) ?>"
+                            href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id . '&pdf=1') ?>"
                             target="_blank"
                             class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
@@ -768,7 +768,7 @@
                             Afiseaza anexa
                         </a>
                         <a
-                            href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id) ?>"
+                            href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id . '&pdf=1') ?>"
                             target="_blank"
                             class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
