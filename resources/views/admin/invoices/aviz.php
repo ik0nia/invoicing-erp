@@ -30,6 +30,13 @@
         padding: 2px 4px;
         vertical-align: top;
     }
+    .aviz-compact .aviz-table th:first-child,
+    .aviz-compact .aviz-table td:first-child {
+        padding-left: 2px;
+        padding-right: 2px;
+        text-align: center;
+        white-space: nowrap;
+    }
     .aviz-compact .aviz-company-logo {
         max-height: 56px;
         width: auto;
@@ -122,8 +129,8 @@
                 <div class="overflow-x-auto">
                     <table class="aviz-table w-full table-fixed border border-slate-300 text-left text-xs">
                         <colgroup>
-                            <col style="width: 4%">
-                            <col style="width: 47%">
+                            <col style="width: 2%">
+                            <col style="width: 49%">
                             <col style="width: 9%">
                             <col style="width: 7%">
                             <col style="width: 11%">
