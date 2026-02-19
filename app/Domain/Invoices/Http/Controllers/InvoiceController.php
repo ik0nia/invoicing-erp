@@ -1406,6 +1406,10 @@ class InvoiceController
             $absolutePath = BASE_PATH . '/' . ltrim($brandingLogo, '/');
             if (file_exists($absolutePath)) {
                 $company['logo_url'] = \App\Support\Url::asset($brandingLogo);
+                $inlineLogo = $this->imageDataUriFromPath($absolutePath);
+                if ($inlineLogo !== '') {
+                    $company['logo_data_uri'] = $inlineLogo;
+                }
             }
         }
 
@@ -5021,6 +5025,37 @@ class InvoiceController
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $value);
 
         return $safe !== '' ? $safe : 'document';
+    }
+
+    private function imageDataUriFromPath(string $absolutePath): string
+    {
+        if ($absolutePath === '' || !is_file($absolutePath) || !is_readable($absolutePath)) {
+            return '';
+        }
+
+        $imageBinary = @file_get_contents($absolutePath);
+        if (!is_string($imageBinary) || $imageBinary === '') {
+            return '';
+        }
+
+        $extension = strtolower((string) pathinfo($absolutePath, PATHINFO_EXTENSION));
+        $mimeByExtension = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+        ];
+        $mime = $mimeByExtension[$extension] ?? 'image/png';
+        if (function_exists('mime_content_type')) {
+            $detected = @mime_content_type($absolutePath);
+            if (is_string($detected) && str_starts_with($detected, 'image/')) {
+                $mime = $detected;
+            }
+        }
+
+        return 'data:' . $mime . ';base64,' . base64_encode($imageBinary);
     }
 
     private function fetchRemoteFile(string $url): ?string

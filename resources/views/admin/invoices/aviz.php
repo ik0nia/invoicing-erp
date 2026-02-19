@@ -7,20 +7,9 @@
     $companyName = trim((string) ($company['denumire'] ?? ''));
     $companyType = trim((string) ($company['tip_firma'] ?? ''));
     $companyDisplayName = trim($companyName . ($companyType !== '' ? ' - ' . $companyType : ''));
-    $companyCui = trim((string) ($company['cui'] ?? ''));
-    $companyRegCom = trim((string) ($company['nr_reg_comertului'] ?? ''));
-    $companyAddressParts = array_filter([
-        trim((string) ($company['adresa'] ?? '')),
-        trim((string) ($company['localitate'] ?? '')),
-        trim((string) ($company['judet'] ?? '')),
-        trim((string) ($company['tara'] ?? '')),
-    ], static fn (string $value): bool => $value !== '');
-    $companyAddress = implode(', ', $companyAddressParts);
     $companyEmail = trim((string) ($company['email'] ?? ''));
     $companyPhone = trim((string) ($company['telefon'] ?? ''));
-    $companyBank = trim((string) ($company['banca'] ?? ''));
-    $companyIban = trim((string) ($company['iban'] ?? ''));
-    $companyLogo = trim((string) ($company['logo_url'] ?? ''));
+    $companyLogo = trim((string) ($company['logo_data_uri'] ?? ($company['logo_url'] ?? '')));
 ?>
 
 <style>
@@ -60,30 +49,11 @@
                     <div class="text-sm font-semibold text-slate-900"><?= htmlspecialchars($companyDisplayName) ?></div>
                 <?php endif; ?>
                 <div class="mt-1">
-                    <?php if ($companyCui !== ''): ?>
-                        <span>CUI: <strong><?= htmlspecialchars($companyCui) ?></strong></span>
-                    <?php endif; ?>
-                    <?php if ($companyRegCom !== ''): ?>
-                        <span<?= $companyCui !== '' ? ' class="ml-2"' : '' ?>>Reg. com: <strong><?= htmlspecialchars($companyRegCom) ?></strong></span>
-                    <?php endif; ?>
-                </div>
-                <?php if ($companyAddress !== ''): ?>
-                    <div class="mt-1">Adresa: <?= htmlspecialchars($companyAddress) ?></div>
-                <?php endif; ?>
-                <div class="mt-1">
                     <?php if ($companyEmail !== ''): ?>
                         <span>Email: <?= htmlspecialchars($companyEmail) ?></span>
                     <?php endif; ?>
                     <?php if ($companyPhone !== ''): ?>
                         <span<?= $companyEmail !== '' ? ' class="ml-2"' : '' ?>>Tel: <?= htmlspecialchars($companyPhone) ?></span>
-                    <?php endif; ?>
-                </div>
-                <div class="mt-1">
-                    <?php if ($companyBank !== ''): ?>
-                        <span>Banca: <?= htmlspecialchars($companyBank) ?></span>
-                    <?php endif; ?>
-                    <?php if ($companyIban !== ''): ?>
-                        <span<?= $companyBank !== '' ? ' class="ml-2"' : '' ?>>IBAN: <?= htmlspecialchars($companyIban) ?></span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -152,12 +122,12 @@
                 <div class="overflow-x-auto">
                     <table class="aviz-table w-full table-fixed border border-slate-300 text-left text-xs">
                         <colgroup>
-                            <col style="width: 6%">
-                            <col style="width: 40%">
-                            <col style="width: 10%">
-                            <col style="width: 8%">
-                            <col style="width: 12%">
-                            <col style="width: 16%">
+                            <col style="width: 4%">
+                            <col style="width: 47%">
+                            <col style="width: 9%">
+                            <col style="width: 7%">
+                            <col style="width: 11%">
+                            <col style="width: 14%">
                             <col style="width: 8%">
                         </colgroup>
                         <thead class="bg-white text-slate-600 border-b border-slate-300">
