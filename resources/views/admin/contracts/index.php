@@ -83,21 +83,13 @@
                 >
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700" for="partner-cui">Partner CUI (optional)</label>
-                <input
-                    id="partner-cui"
-                    name="partner_cui"
-                    type="text"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                >
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Supplier CUI (optional)</label>
+                <label class="block text-sm font-medium text-slate-700" for="supplier-cui">Furnizor CUI</label>
                 <input
                     id="supplier-cui"
                     name="supplier_cui"
                     type="text"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    required
                 >
             </div>
             <div>
@@ -120,6 +112,9 @@
                 >
             </div>
         </div>
+        <p class="mt-3 text-xs text-slate-600">
+            Daca completezi doar furnizorul, documentul se genereaza pentru furnizor. Daca completezi si clientul, documentul se genereaza pe relatia furnizor-client.
+        </p>
 
         <div class="mt-4">
             <button class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700">

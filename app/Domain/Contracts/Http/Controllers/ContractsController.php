@@ -62,7 +62,7 @@ class ContractsController
 
         $templateId = isset($_POST['template_id']) ? (int) $_POST['template_id'] : 0;
         $title = trim((string) ($_POST['title'] ?? ''));
-        $partnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
+        $legacyPartnerCui = preg_replace('/\D+/', '', (string) ($_POST['partner_cui'] ?? ''));
         $supplierCui = preg_replace('/\D+/', '', (string) ($_POST['supplier_cui'] ?? ''));
         $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
         $contractDate = trim((string) ($_POST['contract_date'] ?? ''));
@@ -71,6 +71,20 @@ class ContractsController
             Session::flash('error', 'Completeaza titlul contractului.');
             Response::redirect('/admin/contracts');
         }
+        if ($supplierCui === '' && $legacyPartnerCui !== '') {
+            // Backward compatibility for older payloads that only sent partner_cui.
+            $supplierCui = $legacyPartnerCui;
+        }
+        if ($supplierCui === '') {
+            Session::flash('error', 'Completeaza CUI furnizor.');
+            Response::redirect('/admin/contracts');
+        }
+        if ($clientCui !== '' && $clientCui === $supplierCui) {
+            Session::flash('error', 'Clientul trebuie sa fie diferit de furnizor.');
+            Response::redirect('/admin/contracts');
+        }
+        $partnerCui = $clientCui !== '' ? $clientCui : $supplierCui;
+        $scopePartnerCui = $clientCui !== '' ? '' : $partnerCui;
 
         $template = $templateId > 0 ? Database::fetchOne('SELECT * FROM contract_templates WHERE id = :id LIMIT 1', ['id' => $templateId]) : null;
         $docKind = strtolower(trim((string) ($template['doc_kind'] ?? '')));
@@ -79,7 +93,7 @@ class ContractsController
             $contractDate = date('Y-m-d');
         }
         if ($docType === 'contract') {
-            $existingPrimary = $this->findExistingPrimaryContract($partnerCui, $supplierCui, $clientCui);
+            $existingPrimary = $this->findExistingPrimaryContract($scopePartnerCui, $supplierCui, $clientCui);
             if ($existingPrimary) {
                 $existingNo = $this->formatContractNumber($existingPrimary);
                 $existingDateRaw = trim((string) ($existingPrimary['contract_date'] ?? ''));
