@@ -504,6 +504,11 @@ class ContractTemplateVariables
             return ['image' => '', 'url' => ''];
         }
 
+        $renderContext = strtolower(trim($renderContext));
+        if (in_array($renderContext, ['public_draft', 'onboarding_draft'], true)) {
+            return ['image' => '', 'url' => ''];
+        }
+
         $stamp = $this->fetchTemplateStamp($templateId);
         $path = trim((string) ($stamp['stamp_image_path'] ?? ''));
         if ($path === '') {
@@ -519,7 +524,6 @@ class ContractTemplateVariables
             ];
         }
 
-        $renderContext = strtolower($renderContext);
         if ($renderContext === 'public') {
             return ['image' => '', 'url' => ''];
         }

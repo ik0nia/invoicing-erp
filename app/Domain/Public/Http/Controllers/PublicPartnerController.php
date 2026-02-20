@@ -489,9 +489,6 @@ class PublicPartnerController
             Response::abort(404);
         }
 
-        $partnerCui = $this->resolvePartnerCui($context);
-        $this->ensurePdfGenerationAllowed($token, $partnerCui);
-
         $template = $this->findRequiredOnboardingTemplateById(
             $templateId,
             (string) ($context['link']['type'] ?? 'client')
@@ -501,7 +498,7 @@ class PublicPartnerController
         }
 
         $draftContract = $this->buildDraftContractFromTemplate($template);
-        $html = (new ContractPdfService())->renderHtmlForContract($draftContract, 'public');
+        $html = (new ContractPdfService())->renderHtmlForContract($draftContract, 'public_draft');
         $currentStep = (int) ($context['link']['current_step'] ?? 1);
         $this->touchLink((int) ($context['link']['id'] ?? 0), $currentStep, false);
         Audit::record('public_contract.preview_draft', 'contract_template', $templateId, ['rows_count' => 1]);
@@ -534,9 +531,6 @@ class PublicPartnerController
             Response::abort(404);
         }
 
-        $partnerCui = $this->resolvePartnerCui($context);
-        $this->ensurePdfGenerationAllowed($token, $partnerCui);
-
         $template = $this->findRequiredOnboardingTemplateById(
             $templateId,
             (string) ($context['link']['type'] ?? 'client')
@@ -547,7 +541,7 @@ class PublicPartnerController
 
         $draftContract = $this->buildDraftContractFromTemplate($template);
         $pdfService = new ContractPdfService();
-        $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+        $html = $pdfService->renderHtmlForContract($draftContract, 'public_draft');
         $pdfBinary = $pdfService->generatePdfBinaryFromHtml(
             $html,
             'onboarding-draft-' . (int) ($template['id'] ?? 0)
@@ -708,7 +702,6 @@ class PublicPartnerController
         }
 
         $partnerCui = $this->resolvePartnerCui($context);
-        $this->ensurePdfGenerationAllowed($token, $partnerCui);
         $resources = $this->fetchOnboardingResourcesForType((string) ($context['link']['type'] ?? 'client'));
 
         $archiveEntries = [];
@@ -2269,7 +2262,7 @@ class PublicPartnerController
             $docType = $this->resolveTemplateDocTypeForDraft($template);
             $draftContract = $this->buildDraftContractFromTemplate($template);
 
-            $html = $pdfService->renderHtmlForContract($draftContract, 'public');
+            $html = $pdfService->renderHtmlForContract($draftContract, 'public_draft');
             $pdfBinary = $pdfService->generatePdfBinaryFromHtml($html, 'onboarding-draft-' . $templateId . '-' . $priority);
             if ($pdfBinary === '') {
                 continue;
