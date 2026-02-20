@@ -380,6 +380,10 @@ class PublicPartnerController
         if ($step < 1 || $step > self::WIZARD_MAX_STEP) {
             $step = 1;
         }
+        $previousStep = (int) ($context['link']['current_step'] ?? 1);
+        if ($previousStep < 1 || $previousStep > self::WIZARD_MAX_STEP) {
+            $previousStep = 1;
+        }
 
         $status = $this->resolveOnboardingStatus($context['link'] ?? []);
         $partnerCui = $this->resolvePartnerCui($context);
@@ -416,6 +420,19 @@ class PublicPartnerController
         }
         if (in_array($status, ['submitted', 'approved'], true)) {
             $step = self::WIZARD_MAX_STEP;
+        }
+        if (
+            $step === 2
+            && $previousStep !== 2
+            && $partnerCui !== ''
+            && !in_array($status, ['submitted', 'approved'], true)
+        ) {
+            $resetRows = $this->resetOnboardingGeneratedContracts($scope);
+            if ($resetRows > 0) {
+                Audit::record('public_contract.generated_reset_on_step2', 'public_link', (int) ($context['link']['id'] ?? 0), [
+                    'rows_count' => $resetRows,
+                ]);
+            }
         }
 
         $this->touchLink((int) ($context['link']['id'] ?? 0), $step, false);
@@ -1374,6 +1391,41 @@ class PublicPartnerController
                 continue;
             }
         }
+    }
+
+    private function resetOnboardingGeneratedContracts(array $scope): int
+    {
+        if (!Database::tableExists('contracts')) {
+            return 0;
+        }
+
+        $contracts = $this->fetchContracts($scope);
+        if (empty($contracts)) {
+            return 0;
+        }
+
+        $resetRows = 0;
+        foreach ($contracts as $contract) {
+            if (!$this->shouldRegenerateOnboardingContract($contract)) {
+                continue;
+            }
+
+            $generatedPdfPath = trim((string) ($contract['generated_pdf_path'] ?? ''));
+            $generatedFilePath = trim((string) ($contract['generated_file_path'] ?? ''));
+            if ($generatedPdfPath === '' && $generatedFilePath === '') {
+                continue;
+            }
+
+            $contractId = (int) ($contract['id'] ?? 0);
+            if ($contractId <= 0) {
+                continue;
+            }
+
+            $this->clearGeneratedContractFiles($contractId, $contract);
+            $resetRows++;
+        }
+
+        return $resetRows;
     }
 
     private function shouldRegenerateOnboardingContract(array $contract): bool
