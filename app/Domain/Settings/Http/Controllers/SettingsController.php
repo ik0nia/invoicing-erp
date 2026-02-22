@@ -49,8 +49,6 @@ class SettingsController
         $fgoSeriesListText = implode(', ', $fgoSeriesList);
         $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
         $openApiKey = (string) $this->settings->get('openapi.api_key', '');
-        $annexSupplierHeaderHtml = (string) $this->settings->get('annex.supplier_header_html', '');
-        $annexSupplierFooterHtml = (string) $this->settings->get('annex.supplier_footer_html', '');
         $annexSupplierSignaturePath = (string) $this->settings->get('annex.supplier_signature_path', '');
         $annexSupplierSignatureUrl = $this->resolveBrandingLogoUrl($annexSupplierSignaturePath);
         $company = [
@@ -83,8 +81,6 @@ class SettingsController
             'fgoSeriesListText' => $fgoSeriesListText,
             'fgoBaseUrl' => $fgoBaseUrl,
             'openApiKey' => $openApiKey,
-            'annexSupplierHeaderHtml' => $annexSupplierHeaderHtml,
-            'annexSupplierFooterHtml' => $annexSupplierFooterHtml,
             'annexSupplierSignaturePath' => $annexSupplierSignaturePath,
             'annexSupplierSignatureUrl' => $annexSupplierSignatureUrl,
             'company' => $company,
@@ -120,8 +116,6 @@ class SettingsController
         $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
         $openApiKey = trim($_POST['openapi_api_key'] ?? '');
-        $annexSupplierHeaderHtml = $this->sanitizeLimitedRichText((string) ($_POST['annex_supplier_header_html'] ?? ''));
-        $annexSupplierFooterHtml = $this->sanitizeLimitedRichText((string) ($_POST['annex_supplier_footer_html'] ?? ''));
         $removeAnnexSignature = !empty($_POST['annex_remove_signature']);
         $currentAnnexSignaturePath = (string) $this->settings->get('annex.supplier_signature_path', '');
         $companyData = [
@@ -159,10 +153,6 @@ class SettingsController
             $currentAnnexSignaturePath = '';
             $savedSomething = true;
         }
-        $this->settings->set('annex.supplier_header_html', $annexSupplierHeaderHtml);
-        $this->settings->set('annex.supplier_footer_html', $annexSupplierFooterHtml);
-        $savedSomething = true;
-
         if ($apiKey !== '') {
             $this->settings->set('fgo.api_key', $apiKey);
             $savedSomething = true;
@@ -419,31 +409,6 @@ class SettingsController
         if (is_file($publicPath)) {
             @unlink($publicPath);
         }
-    }
-
-    private function sanitizeLimitedRichText(string $value): string
-    {
-        $value = str_replace("\0", '', $value);
-        $value = trim($value);
-        if ($value === '') {
-            return '';
-        }
-
-        if (function_exists('mb_substr')) {
-            $value = mb_substr($value, 0, 30000);
-        } else {
-            $value = substr($value, 0, 30000);
-        }
-
-        $value = strip_tags($value, '<p><h2><h3><ul><ol><li><strong><em><b><i><br>');
-        $value = preg_replace('/<\s*b\s*>/i', '<strong>', (string) $value);
-        $value = preg_replace('/<\s*\/\s*b\s*>/i', '</strong>', (string) $value);
-        $value = preg_replace('/<\s*i\s*>/i', '<em>', (string) $value);
-        $value = preg_replace('/<\s*\/\s*i\s*>/i', '</em>', (string) $value);
-        $value = preg_replace('/<\s*(\/?)\s*(p|h2|h3|ul|ol|li|strong|em|br)\b[^>]*>/i', '<$1$2>', (string) $value);
-        $value = preg_replace('/<br\s*\/?>/i', '<br>', (string) $value);
-
-        return trim((string) $value);
     }
 
     public function generateDemo(): void

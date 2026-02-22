@@ -6,8 +6,6 @@
     $errorMessage = trim((string) ($errorMessage ?? ''));
     $previewHtml = $previewHtml ?? null;
 
-    $headerConfigured = trim((string) ($preset['header_html'] ?? '')) !== '';
-    $footerConfigured = trim((string) ($preset['footer_html'] ?? '')) !== '';
     $signatureConfigured = !empty($preset['signature_configured']);
     $initialEditorHtml = (string) ($form['annex_content_html'] ?? '<p></p>');
 ?>
@@ -28,11 +26,13 @@
 </div>
 
 <div class="mt-4 rounded border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-    <div class="font-semibold">Preseturi active din Setari</div>
+    <div class="font-semibold">Template + parametri simpli</div>
     <div class="mt-1 text-xs">
-        Header: <strong><?= $headerConfigured ? 'configurat' : 'neconfigurat' ?></strong> |
-        Footer: <strong><?= $footerConfigured ? 'configurat' : 'neconfigurat' ?></strong> |
-        Semnatura: <strong><?= $signatureConfigured ? 'configurata' : 'neconfigurata' ?></strong>
+        In template poti folosi: <code>{{annex.title}}</code>, <code>{{annex.content}}</code>, <code>{{annex.signature}}</code>.
+        Semnatura preset din Setari: <strong><?= $signatureConfigured ? 'configurata' : 'neconfigurata' ?></strong>.
+    </div>
+    <div class="mt-1 text-xs">
+        Sunt listate doar template-urile anexa pentru furnizor care NU sunt automate la inrolare si NU sunt obligatorii la onboarding.
     </div>
 </div>
 
@@ -54,7 +54,7 @@
                 required
             >
                 <?php if (empty($templates)): ?>
-                    <option value="">Nu exista template-uri anexa active</option>
+                    <option value="">Nu exista template-uri potrivite (anexa furnizor, ne-automat, ne-obligatoriu)</option>
                 <?php else: ?>
                     <?php foreach ($templates as $template): ?>
                         <?php

@@ -287,35 +287,10 @@
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 class="text-lg font-semibold text-slate-900">Anexa furnizor - setari preset</h2>
         <p class="mt-1 text-sm text-slate-600">
-            Header si footer prestabilite pentru generatorul de anexe furnizor. Sunt acceptate doar tag-uri simple:
-            <code>&lt;p&gt;</code>, <code>&lt;h2&gt;</code>, <code>&lt;h3&gt;</code>, <code>&lt;ul&gt;</code>, <code>&lt;ol&gt;</code>, <code>&lt;li&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;br&gt;</code>.
+            Pentru generatorul de anexe furnizor se configureaza doar semnatura preset.
+            Titlul si continutul se completeaza direct in generator, prin parametrii
+            <code>{{annex.title}}</code> si <code>{{annex.content}}</code> in template.
         </p>
-        <p class="mt-1 text-xs text-slate-600">
-            Poti folosi si variabilele documentului, de exemplu:
-            <code>{{supplier.name}}</code>, <code>{{client.cui}}</code>, <code>{{date.today}}</code>.
-        </p>
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="annex_supplier_header_html">Header preset</label>
-                <textarea
-                    id="annex_supplier_header_html"
-                    name="annex_supplier_header_html"
-                    rows="5"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="&lt;h2&gt;Anexa furnizor&lt;/h2&gt;&lt;p&gt;Denumire companie&lt;/p&gt;"
-                ><?= htmlspecialchars((string) ($annexSupplierHeaderHtml ?? '')) ?></textarea>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-slate-700" for="annex_supplier_footer_html">Footer preset</label>
-                <textarea
-                    id="annex_supplier_footer_html"
-                    name="annex_supplier_footer_html"
-                    rows="5"
-                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="&lt;p&gt;Document generat automat&lt;/p&gt;"
-                ><?= htmlspecialchars((string) ($annexSupplierFooterHtml ?? '')) ?></textarea>
-            </div>
-        </div>
 
         <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
             <div class="text-sm font-semibold text-slate-800">Semnatura preset</div>

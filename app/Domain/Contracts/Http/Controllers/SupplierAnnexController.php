@@ -149,6 +149,14 @@ class SupplierAnnexController
             $params['applies_supplier'] = 'supplier';
             $params['applies_both'] = 'both';
         }
+        if (Database::columnExists('contract_templates', 'auto_on_enrollment')) {
+            $where[] = 'auto_on_enrollment = :auto_on_enrollment';
+            $params['auto_on_enrollment'] = 0;
+        }
+        if (Database::columnExists('contract_templates', 'required_onboarding')) {
+            $where[] = 'required_onboarding = :required_onboarding';
+            $params['required_onboarding'] = 0;
+        }
 
         $orderParts = [];
         if (Database::columnExists('contract_templates', 'priority')) {
@@ -241,8 +249,6 @@ class SupplierAnnexController
         $signatureDataUri = $signatureAbsolute !== '' ? $this->imageDataUriFromPath($signatureAbsolute) : '';
 
         return [
-            'header_html' => $this->sanitizeLimitedRichText((string) $settings->get('annex.supplier_header_html', '')),
-            'footer_html' => $this->sanitizeLimitedRichText((string) $settings->get('annex.supplier_footer_html', '')),
             'signature_path' => $signaturePath,
             'signature_data_uri' => $signatureDataUri,
             'signature_configured' => $signatureDataUri !== '',
@@ -301,11 +307,6 @@ class SupplierAnnexController
             $renderedBody .= $signatureHtml;
         }
 
-        $headerHtmlRaw = (string) ($preset['header_html'] ?? '');
-        $footerHtmlRaw = (string) ($preset['footer_html'] ?? '');
-        $headerHtml = $headerHtmlRaw !== '' ? $renderer->render($headerHtmlRaw, $vars) : '';
-        $footerHtml = $footerHtmlRaw !== '' ? $renderer->render($footerHtmlRaw, $vars) : '';
-
         return '<!DOCTYPE html>
 <html lang="ro">
 <head>
@@ -321,18 +322,6 @@ class SupplierAnnexController
             line-height: 1.45;
         }
         .annex-shell { width: 100%; }
-        .annex-header {
-            border-bottom: 1px solid #cbd5e1;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-        }
-        .annex-footer {
-            border-top: 1px solid #cbd5e1;
-            margin-top: 14px;
-            padding-top: 8px;
-            font-size: 11px;
-            color: #334155;
-        }
         .annex-body h1, .annex-body h2, .annex-body h3 {
             margin: 0 0 8px;
             line-height: 1.25;
@@ -355,11 +344,7 @@ class SupplierAnnexController
     </style>
 </head>
 <body>
-    <div class="annex-shell">'
-        . ($headerHtml !== '' ? '<div class="annex-header">' . $headerHtml . '</div>' : '')
-        . '<div class="annex-body">' . $renderedBody . '</div>'
-        . ($footerHtml !== '' ? '<div class="annex-footer">' . $footerHtml . '</div>' : '')
-    . '</div>
+    <div class="annex-shell"><div class="annex-body">' . $renderedBody . '</div></div>
 </body>
 </html>';
     }
