@@ -47,14 +47,14 @@ class ContractsController
             $contracts = Database::fetchAll('SELECT * FROM contracts ORDER BY created_at DESC, id DESC');
         }
         $companyNamesByCui = $this->resolveCompanyNamesByCuis($contracts);
-        $supplementaryAnnexDeletionState = $this->resolveLastSupplierSupplementaryDeletionState();
+        $supplementaryAnnexDeletionStates = $this->resolveSupplementaryAnnexDeletionStates();
 
         Response::view('admin/contracts/index', [
             'templates' => $templates,
             'contracts' => $contracts,
             'companyNamesByCui' => $companyNamesByCui,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
-            'supplementaryAnnexDeletionState' => $supplementaryAnnexDeletionState,
+            'supplementaryAnnexDeletionStates' => $supplementaryAnnexDeletionStates,
         ]);
     }
 
@@ -1194,7 +1194,21 @@ class ContractsController
         return $result;
     }
 
-    private function resolveLastSupplierSupplementaryDeletionState(): array
+    private function resolveSupplementaryAnnexDeletionStates(): array
+    {
+        return [
+            'supplier' => $this->resolveLastSupplementaryDeletionStateForSource(
+                'supplier_annex_generator',
+                DocumentNumberService::REGISTRY_SCOPE_SUPPLIER
+            ),
+            'client' => $this->resolveLastSupplementaryDeletionStateForSource(
+                'client_annex_generator',
+                DocumentNumberService::REGISTRY_SCOPE_CLIENT
+            ),
+        ];
+    }
+
+    private function resolveLastSupplementaryDeletionStateForSource(string $source, string $registryScope): array
     {
         $state = [
             'latest_contract_id' => 0,
@@ -1215,7 +1229,7 @@ class ContractsController
              LIMIT 1',
             [
                 'status' => 'generated',
-                'source' => '%supplier_annex_generator%',
+                'source' => '%' . $source . '%',
             ]
         );
         if (!$latest) {
@@ -1228,7 +1242,7 @@ class ContractsController
             return $state;
         }
 
-        $registryDocType = (new DocumentNumberService())->registryKey(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER);
+        $registryDocType = (new DocumentNumberService())->registryKey($registryScope);
         $registryRow = Database::fetchOne(
             'SELECT next_no
              FROM document_registry

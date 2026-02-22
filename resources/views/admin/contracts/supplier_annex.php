@@ -1,5 +1,20 @@
 <?php
-    $title = 'Anexa furnizor';
+    $generatorConfig = is_array($generatorConfig ?? null) ? $generatorConfig : [];
+    $entityLabel = trim((string) ($generatorConfig['entity_label'] ?? 'Furnizor'));
+    $entityLabelLower = trim((string) ($generatorConfig['entity_label_lower'] ?? 'furnizor'));
+    $partyField = trim((string) ($generatorConfig['party_field'] ?? 'supplier_cui'));
+    $pickerRole = trim((string) ($generatorConfig['picker_role'] ?? 'supplier'));
+    $routeBase = trim((string) ($generatorConfig['route_base'] ?? '/admin/anexe-furnizor'));
+    if ($routeBase === '') {
+        $routeBase = '/admin/anexe-furnizor';
+    }
+    $registryPlural = trim((string) ($generatorConfig['registry_plural'] ?? 'furnizori'));
+    $defaultAnnexTitle = trim((string) ($generatorConfig['default_title'] ?? 'Anexa furnizor'));
+    if ($defaultAnnexTitle === '') {
+        $defaultAnnexTitle = 'Anexa furnizor';
+    }
+
+    $title = $defaultAnnexTitle;
     $templates = $templates ?? [];
     $preset = is_array($preset ?? null) ? $preset : [];
     $form = is_array($form ?? null) ? $form : [];
@@ -12,12 +27,12 @@
 
     $signatureConfigured = !empty($preset['signature_configured']);
     $initialEditorHtml = (string) ($form['annex_content_html'] ?? '<p></p>');
-    $supplierValue = (string) ($form['supplier_cui'] ?? '');
+    $partyValue = (string) ($form[$partyField] ?? '');
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-3">
     <div>
-        <h1 class="text-xl font-semibold text-slate-900">Generator Anexa furnizor</h1>
+        <h1 class="text-xl font-semibold text-slate-900">Generator Anexa <?= htmlspecialchars($entityLabelLower) ?></h1>
         <p class="mt-1 text-sm text-slate-600">
             Generator separat, fara impact pe fluxurile existente de contracte/facturi.
         </p>
@@ -37,10 +52,10 @@
         Semnatura preset din Setari: <strong><?= $signatureConfigured ? 'configurata' : 'neconfigurata' ?></strong>.
     </div>
     <div class="mt-1 text-xs">
-        Sunt listate doar template-urile anexa pentru furnizor care NU sunt automate la inrolare si NU sunt obligatorii la onboarding.
+        Sunt listate doar template-urile anexa pentru <?= htmlspecialchars($entityLabelLower) ?> care NU sunt automate la inrolare si NU sunt obligatorii la onboarding.
     </div>
     <div class="mt-1 text-xs">
-        Butonul <strong>Genereaza document</strong> aloca numar din registrul de furnizori si salveaza documentul in contracte.
+        Butonul <strong>Genereaza document</strong> aloca numar din registrul de <?= htmlspecialchars($registryPlural) ?> si salveaza documentul in contracte.
         <strong>Genereaza PDF rapid</strong> descarca direct PDF fara inregistrare.
     </div>
 </div>
@@ -63,7 +78,7 @@
                 required
             >
                 <?php if (empty($templates)): ?>
-                    <option value="">Nu exista template-uri potrivite (anexa furnizor, ne-automat, ne-obligatoriu)</option>
+                    <option value="">Nu exista template-uri potrivite (anexa <?= htmlspecialchars($entityLabelLower) ?>, ne-automat, ne-obligatoriu)</option>
                 <?php else: ?>
                     <?php foreach ($templates as $template): ?>
                         <?php
@@ -95,24 +110,24 @@
                 class="relative"
                 data-supplier-picker
                 data-search-url="<?= App\Support\Url::to('admin/contracts/company-search') ?>"
-                data-search-role="supplier"
+                data-search-role="<?= htmlspecialchars($pickerRole) ?>"
             >
-                <label class="block text-sm font-medium text-slate-700" for="supplier-cui-display">Furnizor</label>
+                <label class="block text-sm font-medium text-slate-700" for="supplier-cui-display"><?= htmlspecialchars($entityLabel) ?></label>
                 <input
                     id="supplier-cui-display"
                     type="text"
                     autocomplete="off"
                     class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
                     placeholder="Cauta dupa denumire sau CUI"
-                    value="<?= htmlspecialchars($supplierValue) ?>"
+                    value="<?= htmlspecialchars($partyValue) ?>"
                     data-supplier-display
                     required
                 >
                 <input
                     type="hidden"
                     id="supplier_cui"
-                    name="supplier_cui"
-                    value="<?= htmlspecialchars($supplierValue) ?>"
+                    name="<?= htmlspecialchars($partyField) ?>"
+                    value="<?= htmlspecialchars($partyValue) ?>"
                     data-supplier-value
                 >
                 <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-supplier-list></div>
@@ -145,21 +160,21 @@
     <div class="flex flex-wrap items-center gap-2">
         <button
             type="submit"
-            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/preview') ?>"
+            formaction="<?= App\Support\Url::to($routeBase . '/preview') ?>"
             class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
         >
             Previzualizeaza
         </button>
         <button
             type="submit"
-            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/generate-document') ?>"
+            formaction="<?= App\Support\Url::to($routeBase . '/generate-document') ?>"
             class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
         >
             Genereaza document
         </button>
         <button
             type="submit"
-            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/download') ?>"
+            formaction="<?= App\Support\Url::to($routeBase . '/download') ?>"
             class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
         >
             Genereaza PDF rapid
@@ -202,20 +217,20 @@
         <?php endif; ?>
         <div class="mt-3">
             <?php if ($canDeleteLastSupplementary): ?>
-                <form method="POST" action="<?= App\Support\Url::to('admin/anexe-furnizor/delete-last-document') ?>">
+                <form method="POST" action="<?= App\Support\Url::to($routeBase . '/delete-last-document') ?>">
                     <?= App\Support\Csrf::input() ?>
                     <input type="hidden" name="contract_id" value="<?= (int) ($lastSupplementaryDocument['id'] ?? 0) ?>">
                     <button
                         type="submit"
                         class="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                        onclick="return confirm('Stergi ultimul document suplimentar si revii contorul registrului de furnizori?')"
+                        onclick="return confirm('Stergi ultimul document suplimentar si revii contorul registrului de <?= htmlspecialchars($registryPlural) ?>?')"
                     >
                         Sterge ultimul document suplimentar
                     </button>
                 </form>
             <?php else: ?>
                 <div class="text-xs text-slate-500">
-                    Stergerea este disponibila doar pentru ultimul document suplimentar din registrul de furnizori.
+                    Stergerea este disponibila doar pentru ultimul document suplimentar din registrul de <?= htmlspecialchars($registryPlural) ?>.
                 </div>
             <?php endif; ?>
         </div>
@@ -230,7 +245,7 @@
     <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div class="text-sm font-semibold text-slate-700">Previzualizare anexa</div>
         <iframe
-            title="Previzualizare anexa furnizor"
+            title="Previzualizare anexa <?= htmlspecialchars($entityLabelLower) ?>"
             sandbox=""
             srcdoc="<?= htmlspecialchars($previewHtml) ?>"
             class="mt-3 h-[700px] w-full rounded border border-slate-200"
@@ -314,7 +329,7 @@
         };
         const syncSupplierValidity = () => {
             const hasValue = supplierValue.value.trim() !== '' || extractCompanyCuiCandidate(supplierDisplay.value) !== '';
-            supplierDisplay.setCustomValidity(hasValue ? '' : 'Selecteaza furnizorul.');
+            supplierDisplay.setCustomValidity(hasValue ? '' : 'Selecteaza <?= htmlspecialchars($entityLabelLower) ?>ul.');
         };
         const applySupplierSelection = (item) => {
             const cui = normalizeDigits(item.cui || '');

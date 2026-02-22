@@ -9,11 +9,21 @@
     $canApproveContracts = Auth::isInternalStaff();
     $user = Auth::user();
     $canResetGeneratedContracts = $user !== null && ($user->isPlatformUser() || $user->hasRole('operator'));
-    $supplementaryAnnexDeletionState = is_array($supplementaryAnnexDeletionState ?? null) ? $supplementaryAnnexDeletionState : [];
-    $latestSupplementaryAnnexContractId = (int) ($supplementaryAnnexDeletionState['latest_contract_id'] ?? 0);
-    $canDeleteLastSupplementaryAnnex = $user !== null
+    $supplementaryAnnexDeletionStates = is_array($supplementaryAnnexDeletionStates ?? null) ? $supplementaryAnnexDeletionStates : [];
+    $supplierAnnexDeletionState = is_array($supplementaryAnnexDeletionStates['supplier'] ?? null)
+        ? $supplementaryAnnexDeletionStates['supplier']
+        : [];
+    $clientAnnexDeletionState = is_array($supplementaryAnnexDeletionStates['client'] ?? null)
+        ? $supplementaryAnnexDeletionStates['client']
+        : [];
+    $latestSupplierSupplementaryAnnexContractId = (int) ($supplierAnnexDeletionState['latest_contract_id'] ?? 0);
+    $latestClientSupplementaryAnnexContractId = (int) ($clientAnnexDeletionState['latest_contract_id'] ?? 0);
+    $canDeleteLastSupplierSupplementaryAnnex = $user !== null
         && $user->hasRole(['super_admin', 'admin', 'operator', 'contabil'])
-        && !empty($supplementaryAnnexDeletionState['can_delete']);
+        && !empty($supplierAnnexDeletionState['can_delete']);
+    $canDeleteLastClientSupplementaryAnnex = $user !== null
+        && $user->hasRole(['super_admin', 'admin', 'operator', 'contabil'])
+        && !empty($clientAnnexDeletionState['can_delete']);
     $statusLabels = [
         'draft' => 'Ciorna',
         'generated' => 'Generat',
@@ -874,9 +884,13 @@
                         $relationCompanies = array_values(array_unique(array_filter($relationCompanies, static fn ($value): bool => trim((string) $value) !== '')));
                         $metadataJson = (string) ($contract['metadata_json'] ?? '');
                         $isSupplierSupplementaryAnnex = $metadataJson !== '' && stripos($metadataJson, 'supplier_annex_generator') !== false;
-                        $showDeleteSupplementaryButton = $canDeleteLastSupplementaryAnnex
+                        $isClientSupplementaryAnnex = $metadataJson !== '' && stripos($metadataJson, 'client_annex_generator') !== false;
+                        $showDeleteSupplierSupplementaryButton = $canDeleteLastSupplierSupplementaryAnnex
                             && $isSupplierSupplementaryAnnex
-                            && (int) ($contract['id'] ?? 0) === $latestSupplementaryAnnexContractId;
+                            && (int) ($contract['id'] ?? 0) === $latestSupplierSupplementaryAnnexContractId;
+                        $showDeleteClientSupplementaryButton = $canDeleteLastClientSupplementaryAnnex
+                            && $isClientSupplementaryAnnex
+                            && (int) ($contract['id'] ?? 0) === $latestClientSupplementaryAnnexContractId;
                         $rowSearchText = trim(implode(' ', [
                             (string) $docNoDisplay,
                             (string) ($contract['title'] ?? ''),
@@ -984,7 +998,7 @@
                                         </button>
                                     </form>
                                 <?php endif; ?>
-                                <?php if ($showDeleteSupplementaryButton): ?>
+                                <?php if ($showDeleteSupplierSupplementaryButton): ?>
                                     <form method="POST" action="<?= App\Support\Url::to('admin/anexe-furnizor/delete-last-document') ?>" class="inline-flex">
                                         <?= App\Support\Csrf::input() ?>
                                         <input type="hidden" name="contract_id" value="<?= (int) ($contract['id'] ?? 0) ?>">
@@ -995,6 +1009,27 @@
                                             aria-label="Sterge ultima anexa suplimentara"
                                             class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-rose-300 text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
                                             onclick="return confirm('Stergi ultima anexa suplimentara? Contorul registrului de furnizori va reveni automat.')"
+                                        >
+                                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M3 6h18" />
+                                                <path d="M8 6V4h8v2" />
+                                                <path d="M19 6l-1 14H6L5 6" />
+                                                <path d="M10 11v6M14 11v6" />
+                                            </svg>
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                                <?php if ($showDeleteClientSupplementaryButton): ?>
+                                    <form method="POST" action="<?= App\Support\Url::to('admin/anexe-client/delete-last-document') ?>" class="inline-flex">
+                                        <?= App\Support\Csrf::input() ?>
+                                        <input type="hidden" name="contract_id" value="<?= (int) ($contract['id'] ?? 0) ?>">
+                                        <input type="hidden" name="return_to" value="/admin/contracts">
+                                        <button
+                                            type="submit"
+                                            title="Sterge ultima anexa suplimentara client si revino contorul registrului"
+                                            aria-label="Sterge ultima anexa suplimentara client"
+                                            class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-rose-300 text-rose-600 transition hover:bg-rose-50 hover:text-rose-700"
+                                            onclick="return confirm('Stergi ultima anexa suplimentara client? Contorul registrului de clienti va reveni automat.')"
                                         >
                                             <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                                 <path d="M3 6h18" />

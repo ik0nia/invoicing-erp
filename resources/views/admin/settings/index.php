@@ -285,9 +285,9 @@
     </div>
 
     <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Anexa furnizor - setari preset</h2>
+        <h2 class="text-lg font-semibold text-slate-900">Anexe furnizor/client - setari preset</h2>
         <p class="mt-1 text-sm text-slate-600">
-            Pentru generatorul de anexe furnizor se configureaza doar semnatura preset.
+            Pentru generatoarele de anexe furnizor/client se configureaza doar semnatura preset.
             Titlul si continutul se completeaza direct in generator, prin parametrii
             <code>{{annex.title}}</code> si <code>{{annex.content}}</code> in template.
         </p>
@@ -295,7 +295,7 @@
         <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
             <div class="text-sm font-semibold text-slate-800">Semnatura preset</div>
             <p class="mt-1 text-xs text-slate-600">
-                Semnatura este atasata automat in generatorul de anexe furnizor.
+                Semnatura este atasata automat in generatorul de anexe furnizor/client.
             </p>
             <div class="mt-3 flex flex-wrap items-end gap-4">
                 <div>
@@ -326,7 +326,10 @@
                 </div>
             <?php endif; ?>
             <div class="mt-3 text-xs text-slate-600">
-                Generator: <a href="<?= App\Support\Url::to('admin/anexe-furnizor') ?>" class="font-semibold text-blue-700 hover:text-blue-800">Deschide Anexa furnizor</a>
+                Generatoare:
+                <a href="<?= App\Support\Url::to('admin/anexe-furnizor') ?>" class="font-semibold text-blue-700 hover:text-blue-800">Anexa furnizor</a>
+                /
+                <a href="<?= App\Support\Url::to('admin/anexe-client') ?>" class="font-semibold text-blue-700 hover:text-blue-800">Anexa client</a>
             </div>
         </div>
     </div>

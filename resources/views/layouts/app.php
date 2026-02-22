@@ -133,6 +133,12 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'icon' => 'template',
             'active' => str_starts_with($currentPath, '/admin/anexe-furnizor'),
         ];
+        $menuSections['Documente'][] = [
+            'label' => 'Anexa client',
+            'path' => '/admin/anexe-client',
+            'icon' => 'template',
+            'active' => str_starts_with($currentPath, '/admin/anexe-client'),
+        ];
     }
 }
 
