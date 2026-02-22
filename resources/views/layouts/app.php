@@ -126,6 +126,14 @@ if ($isPlatformUser || $isOperator || $isSupplierUser) {
             'active' => str_starts_with($currentPath, '/admin/contracts'),
         ],
     ];
+    if ($isPlatformUser || $isOperator) {
+        $menuSections['Documente'][] = [
+            'label' => 'Anexa furnizor',
+            'path' => '/admin/anexe-furnizor',
+            'icon' => 'template',
+            'active' => str_starts_with($currentPath, '/admin/anexe-furnizor'),
+        ];
+    }
 }
 
 if ($isPlatformUser) {

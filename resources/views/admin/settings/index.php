@@ -284,6 +284,74 @@
         </div>
     </div>
 
+    <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold text-slate-900">Anexa furnizor - setari preset</h2>
+        <p class="mt-1 text-sm text-slate-600">
+            Header si footer prestabilite pentru generatorul de anexe furnizor. Sunt acceptate doar tag-uri simple:
+            <code>&lt;p&gt;</code>, <code>&lt;h2&gt;</code>, <code>&lt;h3&gt;</code>, <code>&lt;ul&gt;</code>, <code>&lt;ol&gt;</code>, <code>&lt;li&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;br&gt;</code>.
+        </p>
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="annex_supplier_header_html">Header preset</label>
+                <textarea
+                    id="annex_supplier_header_html"
+                    name="annex_supplier_header_html"
+                    rows="5"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="&lt;h2&gt;Anexa furnizor&lt;/h2&gt;&lt;p&gt;Denumire companie&lt;/p&gt;"
+                ><?= htmlspecialchars((string) ($annexSupplierHeaderHtml ?? '')) ?></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700" for="annex_supplier_footer_html">Footer preset</label>
+                <textarea
+                    id="annex_supplier_footer_html"
+                    name="annex_supplier_footer_html"
+                    rows="5"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="&lt;p&gt;Document generat automat&lt;/p&gt;"
+                ><?= htmlspecialchars((string) ($annexSupplierFooterHtml ?? '')) ?></textarea>
+            </div>
+        </div>
+
+        <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
+            <div class="text-sm font-semibold text-slate-800">Semnatura preset</div>
+            <p class="mt-1 text-xs text-slate-600">
+                Semnatura este atasata automat in generatorul de anexe furnizor.
+            </p>
+            <div class="mt-3 flex flex-wrap items-end gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700" for="annex_signature">Incarca semnatura (png, jpg, webp)</label>
+                    <input
+                        id="annex_signature"
+                        name="annex_signature"
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                        class="mt-1 block rounded border border-slate-300 px-3 py-2 text-sm"
+                    >
+                    <p class="mt-1 text-xs text-slate-600">Dimensiune maxima 3 MB.</p>
+                </div>
+                <?php if (!empty($annexSupplierSignatureUrl)): ?>
+                    <label class="inline-flex items-center gap-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                        <input type="checkbox" name="annex_remove_signature" value="1" class="rounded border-rose-300">
+                        Sterge semnatura curenta
+                    </label>
+                <?php endif; ?>
+            </div>
+            <?php if (!empty($annexSupplierSignatureUrl)): ?>
+                <div class="mt-3">
+                    <img
+                        src="<?= htmlspecialchars((string) $annexSupplierSignatureUrl) ?>"
+                        alt="Semnatura anexa furnizor"
+                        class="max-h-24 w-auto rounded border border-slate-200 bg-white p-2"
+                    >
+                </div>
+            <?php endif; ?>
+            <div class="mt-3 text-xs text-slate-600">
+                Generator: <a href="<?= App\Support\Url::to('admin/anexe-furnizor') ?>" class="font-semibold text-blue-700 hover:text-blue-800">Deschide Anexa furnizor</a>
+            </div>
+        </div>
+    </div>
+
     <div>
         <button
             type="submit"

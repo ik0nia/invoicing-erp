@@ -17,6 +17,13 @@ use App\Support\Session;
 class SettingsController
 {
     private const APP_VERSION = 'v1.1.0';
+    private const ANNEX_SIGNATURE_BASE_NAME = 'annex-signature';
+    private const ANNEX_SIGNATURE_MAX_UPLOAD_BYTES = 3145728;
+    private const ANNEX_SIGNATURE_ALLOWED_MIMES = [
+        'image/png' => 'png',
+        'image/jpeg' => 'jpg',
+        'image/webp' => 'webp',
+    ];
     private SettingsService $settings;
 
     public function __construct()
@@ -42,6 +49,10 @@ class SettingsController
         $fgoSeriesListText = implode(', ', $fgoSeriesList);
         $fgoBaseUrl = (string) $this->settings->get('fgo.base_url', '');
         $openApiKey = (string) $this->settings->get('openapi.api_key', '');
+        $annexSupplierHeaderHtml = (string) $this->settings->get('annex.supplier_header_html', '');
+        $annexSupplierFooterHtml = (string) $this->settings->get('annex.supplier_footer_html', '');
+        $annexSupplierSignaturePath = (string) $this->settings->get('annex.supplier_signature_path', '');
+        $annexSupplierSignatureUrl = $this->resolveBrandingLogoUrl($annexSupplierSignaturePath);
         $company = [
             'denumire' => (string) $this->settings->get('company.denumire', ''),
             'cui' => (string) $this->settings->get('company.cui', ''),
@@ -72,6 +83,10 @@ class SettingsController
             'fgoSeriesListText' => $fgoSeriesListText,
             'fgoBaseUrl' => $fgoBaseUrl,
             'openApiKey' => $openApiKey,
+            'annexSupplierHeaderHtml' => $annexSupplierHeaderHtml,
+            'annexSupplierFooterHtml' => $annexSupplierFooterHtml,
+            'annexSupplierSignaturePath' => $annexSupplierSignaturePath,
+            'annexSupplierSignatureUrl' => $annexSupplierSignatureUrl,
             'company' => $company,
             'documentRegistry' => $documentRegistry,
         ]);
@@ -105,6 +120,10 @@ class SettingsController
         $seriesListRaw = trim($_POST['fgo_series_list'] ?? '');
         $baseUrl = trim($_POST['fgo_base_url'] ?? '');
         $openApiKey = trim($_POST['openapi_api_key'] ?? '');
+        $annexSupplierHeaderHtml = $this->sanitizeLimitedRichText((string) ($_POST['annex_supplier_header_html'] ?? ''));
+        $annexSupplierFooterHtml = $this->sanitizeLimitedRichText((string) ($_POST['annex_supplier_footer_html'] ?? ''));
+        $removeAnnexSignature = !empty($_POST['annex_remove_signature']);
+        $currentAnnexSignaturePath = (string) $this->settings->get('annex.supplier_signature_path', '');
         $companyData = [
             'denumire' => \App\Support\CompanyName::normalize((string) ($_POST['company_denumire'] ?? '')),
             'cui' => trim($_POST['company_cui'] ?? ''),
@@ -121,6 +140,28 @@ class SettingsController
         ];
 
         $savedSomething = $logoUpdated || $logoDarkUpdated;
+        $hasAnnexSignatureUpload = isset($_FILES['annex_signature'])
+            && ($_FILES['annex_signature']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+        if ($hasAnnexSignatureUpload) {
+            $storedAnnexSignature = $this->storeAnnexSignatureUpload($_FILES['annex_signature']);
+            if ($storedAnnexSignature === null) {
+                Response::redirect('/admin/setari');
+            }
+            if ($currentAnnexSignaturePath !== '' && $currentAnnexSignaturePath !== $storedAnnexSignature) {
+                $this->deleteStorageErpFile($currentAnnexSignaturePath);
+            }
+            $this->settings->set('annex.supplier_signature_path', $storedAnnexSignature);
+            $currentAnnexSignaturePath = $storedAnnexSignature;
+            $savedSomething = true;
+        } elseif ($removeAnnexSignature && $currentAnnexSignaturePath !== '') {
+            $this->deleteStorageErpFile($currentAnnexSignaturePath);
+            $this->settings->set('annex.supplier_signature_path', '');
+            $currentAnnexSignaturePath = '';
+            $savedSomething = true;
+        }
+        $this->settings->set('annex.supplier_header_html', $annexSupplierHeaderHtml);
+        $this->settings->set('annex.supplier_footer_html', $annexSupplierFooterHtml);
+        $savedSomething = true;
 
         if ($apiKey !== '') {
             $this->settings->set('fgo.api_key', $apiKey);
@@ -289,6 +330,120 @@ class SettingsController
         @copy($targetPath, $publicDir . '/' . $filename);
 
         return 'storage/erp/' . $filename;
+    }
+
+    private function storeAnnexSignatureUpload(array $file): ?string
+    {
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            Session::flash('error', 'Te rog incarca o semnatura valida.');
+            return null;
+        }
+        if ((int) ($file['size'] ?? 0) > self::ANNEX_SIGNATURE_MAX_UPLOAD_BYTES) {
+            Session::flash('error', 'Semnatura trebuie sa fie sub 3 MB.');
+            return null;
+        }
+
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
+            Session::flash('error', 'Te rog incarca o semnatura valida.');
+            return null;
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeRaw = $finfo ? (string) finfo_file($finfo, $tmpName) : (string) ($file['type'] ?? '');
+        if ($finfo) {
+            finfo_close($finfo);
+        }
+        $mime = $this->normalizeImageMime($mimeRaw);
+        if (!array_key_exists($mime, self::ANNEX_SIGNATURE_ALLOWED_MIMES)) {
+            Session::flash('error', 'Format semnatura invalid. Acceptam png, jpg sau webp.');
+            return null;
+        }
+
+        $extension = self::ANNEX_SIGNATURE_ALLOWED_MIMES[$mime];
+        $storageDir = BASE_PATH . '/storage/erp';
+        $publicDir = BASE_PATH . '/public/storage/erp';
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0775, true);
+        }
+        if (!is_dir($publicDir)) {
+            mkdir($publicDir, 0775, true);
+        }
+
+        $filename = self::ANNEX_SIGNATURE_BASE_NAME . '.' . $extension;
+        $targetPath = $storageDir . '/' . $filename;
+        if (!move_uploaded_file($tmpName, $targetPath)) {
+            Session::flash('error', 'Nu am putut salva semnatura incarcata.');
+            return null;
+        }
+
+        foreach (['png', 'jpg', 'webp'] as $ext) {
+            if ($ext === $extension) {
+                continue;
+            }
+            @unlink($storageDir . '/' . self::ANNEX_SIGNATURE_BASE_NAME . '.' . $ext);
+            @unlink($publicDir . '/' . self::ANNEX_SIGNATURE_BASE_NAME . '.' . $ext);
+        }
+
+        @copy($targetPath, $publicDir . '/' . $filename);
+
+        return 'storage/erp/' . $filename;
+    }
+
+    private function normalizeImageMime(string $mime): string
+    {
+        $mime = strtolower(trim($mime));
+        if ($mime === 'image/jpg') {
+            return 'image/jpeg';
+        }
+        if ($mime === 'image/x-png') {
+            return 'image/png';
+        }
+
+        return $mime;
+    }
+
+    private function deleteStorageErpFile(string $relativePath): void
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '' || !str_starts_with($relativePath, 'storage/erp/')) {
+            return;
+        }
+
+        $absolutePath = BASE_PATH . '/' . $relativePath;
+        if (is_file($absolutePath)) {
+            @unlink($absolutePath);
+        }
+
+        $publicPath = BASE_PATH . '/public/' . $relativePath;
+        if (is_file($publicPath)) {
+            @unlink($publicPath);
+        }
+    }
+
+    private function sanitizeLimitedRichText(string $value): string
+    {
+        $value = str_replace("\0", '', $value);
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_substr')) {
+            $value = mb_substr($value, 0, 30000);
+        } else {
+            $value = substr($value, 0, 30000);
+        }
+
+        $value = strip_tags($value, '<p><h2><h3><ul><ol><li><strong><em><b><i><br>');
+        $value = preg_replace('/<\s*b\s*>/i', '<strong>', (string) $value);
+        $value = preg_replace('/<\s*\/\s*b\s*>/i', '</strong>', (string) $value);
+        $value = preg_replace('/<\s*i\s*>/i', '<em>', (string) $value);
+        $value = preg_replace('/<\s*\/\s*i\s*>/i', '</em>', (string) $value);
+        $value = preg_replace('/<\s*(\/?)\s*(p|h2|h3|ul|ol|li|strong|em|br)\b[^>]*>/i', '<$1$2>', (string) $value);
+        $value = preg_replace('/<br\s*\/?>/i', '<br>', (string) $value);
+
+        return trim((string) $value);
     }
 
     public function generateDemo(): void
