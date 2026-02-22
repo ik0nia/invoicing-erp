@@ -13,6 +13,7 @@ use App\Domain\Enrollment\Http\Controllers\EnrollmentLinksController;
 use App\Domain\Contracts\Http\Controllers\ContractsController;
 use App\Domain\Contracts\Http\Controllers\ContractTemplatesController;
 use App\Domain\Contracts\Http\Controllers\DocumentRegistryController;
+use App\Domain\Contracts\Http\Controllers\SupplierAnnexController;
 use App\Domain\Contacts\Http\Controllers\ContactsController;
 use App\Domain\Tools\Http\Controllers\PdfToolsController;
 
@@ -47,6 +48,11 @@ $router->get('/admin/contracts/upload-signed/companies', [ContractsController::c
 $router->get('/admin/contracts/upload-signed/contracts', [ContractsController::class, 'uploadSignedContracts']);
 $router->post('/admin/contracts/approve', [ContractsController::class, 'approve']);
 $router->get('/admin/contracts/download', [ContractsController::class, 'download']);
+$router->get('/admin/anexe-furnizor', [SupplierAnnexController::class, 'index']);
+$router->post('/admin/anexe-furnizor/preview', [SupplierAnnexController::class, 'preview']);
+$router->post('/admin/anexe-furnizor/download', [SupplierAnnexController::class, 'download']);
+$router->post('/admin/anexe-furnizor/generate-document', [SupplierAnnexController::class, 'generateDocument']);
+$router->post('/admin/anexe-furnizor/delete-last-document', [SupplierAnnexController::class, 'deleteLastGeneratedDocument']);
 $router->get('/admin/registru-documente', [DocumentRegistryController::class, 'index']);
 $router->post('/admin/registru-documente/save', [DocumentRegistryController::class, 'save']);
 $router->post('/admin/registru-documente/set-start', [DocumentRegistryController::class, 'setStart']);
