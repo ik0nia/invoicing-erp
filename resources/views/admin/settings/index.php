@@ -290,6 +290,10 @@
             Header si footer prestabilite pentru generatorul de anexe furnizor. Sunt acceptate doar tag-uri simple:
             <code>&lt;p&gt;</code>, <code>&lt;h2&gt;</code>, <code>&lt;h3&gt;</code>, <code>&lt;ul&gt;</code>, <code>&lt;ol&gt;</code>, <code>&lt;li&gt;</code>, <code>&lt;strong&gt;</code>, <code>&lt;em&gt;</code>, <code>&lt;br&gt;</code>.
         </p>
+        <p class="mt-1 text-xs text-slate-600">
+            Poti folosi si variabilele documentului, de exemplu:
+            <code>{{supplier.name}}</code>, <code>{{client.cui}}</code>, <code>{{date.today}}</code>.
+        </p>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
             <div>
                 <label class="block text-sm font-medium text-slate-700" for="annex_supplier_header_html">Header preset</label>

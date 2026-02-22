@@ -301,8 +301,10 @@ class SupplierAnnexController
             $renderedBody .= $signatureHtml;
         }
 
-        $headerHtml = (string) ($preset['header_html'] ?? '');
-        $footerHtml = (string) ($preset['footer_html'] ?? '');
+        $headerHtmlRaw = (string) ($preset['header_html'] ?? '');
+        $footerHtmlRaw = (string) ($preset['footer_html'] ?? '');
+        $headerHtml = $headerHtmlRaw !== '' ? $renderer->render($headerHtmlRaw, $vars) : '';
+        $footerHtml = $footerHtmlRaw !== '' ? $renderer->render($footerHtmlRaw, $vars) : '';
 
         return '<!DOCTYPE html>
 <html lang="ro">
