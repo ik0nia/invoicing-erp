@@ -53,6 +53,7 @@ $router->get('/admin/contracts/download', [ContractsController::class, 'download
 $router->get('/admin/anexe-furnizor', [SupplierAnnexController::class, 'index']);
 $router->post('/admin/anexe-furnizor/preview', [SupplierAnnexController::class, 'preview']);
 $router->post('/admin/anexe-furnizor/download', [SupplierAnnexController::class, 'download']);
+$router->post('/admin/anexe-furnizor/generate-document', [SupplierAnnexController::class, 'generateDocument']);
 $router->get('/admin/registru-documente', [DocumentRegistryController::class, 'index']);
 $router->post('/admin/registru-documente/save', [DocumentRegistryController::class, 'save']);
 $router->post('/admin/registru-documente/set-start', [DocumentRegistryController::class, 'setStart']);

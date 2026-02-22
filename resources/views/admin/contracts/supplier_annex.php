@@ -36,7 +36,8 @@
         Sunt listate doar template-urile anexa pentru furnizor care NU sunt automate la inrolare si NU sunt obligatorii la onboarding.
     </div>
     <div class="mt-1 text-xs">
-        La generare se aloca automat numarul documentului din registrul de furnizori.
+        Butonul <strong>Genereaza document</strong> aloca numar din registrul de furnizori si salveaza documentul in contracte.
+        <strong>Genereaza PDF rapid</strong> descarca direct PDF fara inregistrare.
     </div>
 </div>
 
@@ -147,10 +148,17 @@
         </button>
         <button
             type="submit"
-            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/download') ?>"
+            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/generate-document') ?>"
             class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
         >
-            Genereaza PDF
+            Genereaza document
+        </button>
+        <button
+            type="submit"
+            formaction="<?= App\Support\Url::to('admin/anexe-furnizor/download') ?>"
+            class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+        >
+            Genereaza PDF rapid
         </button>
     </div>
 </form>

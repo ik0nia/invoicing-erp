@@ -11,6 +11,7 @@ use App\Support\Audit;
 use App\Support\Auth;
 use App\Support\Database;
 use App\Support\Response;
+use App\Support\Session;
 
 class SupplierAnnexController
 {
@@ -63,29 +64,18 @@ class SupplierAnnexController
 
         $template = $payload['template'];
         $form = $payload['form'];
-        try {
-            $allocatedNumber = $this->allocateSupplierDocNumber($template);
-        } catch (\Throwable $exception) {
-            $this->renderPage($templates, $preset, $form, 'Nu am putut aloca numarul din registrul de furnizori.');
-        }
-        $allocatedNumber['date'] = date('Y-m-d');
-        $documentHtml = $this->buildAnnexDocumentHtml($template, $form, $preset, $allocatedNumber);
+        $documentHtml = $this->buildAnnexDocumentHtml($template, $form, $preset, []);
 
         $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($documentHtml, 'anexa-furnizor');
         $baseFilename = $this->sanitizeFilenamePart($form['annex_title']);
         if ($baseFilename === '') {
             $baseFilename = 'anexa-furnizor';
         }
-        $docFilePart = $this->sanitizeFilenamePart((string) ($allocatedNumber['full_no'] ?? ''));
-        if ($docFilePart !== '') {
-            $baseFilename = $docFilePart . '-' . $baseFilename;
-        }
 
         if ($pdfBinary !== '') {
             Audit::record('supplier_annex.download', 'contract_template', (int) ($template['id'] ?? 0), [
                 'rows_count' => 1,
                 'mode' => 'pdf',
-                'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
                 'supplier_cui' => $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null,
             ]);
 
@@ -100,7 +90,6 @@ class SupplierAnnexController
         Audit::record('supplier_annex.download', 'contract_template', (int) ($template['id'] ?? 0), [
             'rows_count' => 1,
             'mode' => 'html',
-            'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
             'supplier_cui' => $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null,
         ]);
         header('Content-Type: text/html; charset=utf-8');
@@ -108,6 +97,155 @@ class SupplierAnnexController
         header('X-Content-Type-Options: nosniff');
         echo $documentHtml;
         exit;
+    }
+
+    public function generateDocument(): void
+    {
+        $user = $this->requireAccessRole();
+
+        $templates = $this->fetchSupplierAnnexTemplates();
+        $preset = $this->loadPresetSettings();
+        $payload = $this->formFromRequest($templates);
+        if (!empty($payload['error'])) {
+            $this->renderPage($templates, $preset, $payload['form'], (string) $payload['error']);
+        }
+
+        $template = $payload['template'];
+        $form = $payload['form'];
+        try {
+            $allocatedNumber = $this->allocateSupplierDocNumber($template);
+        } catch (\Throwable $exception) {
+            $this->renderPage($templates, $preset, $form, 'Nu am putut aloca numarul din registrul de furnizori.');
+        }
+        $allocatedNumber['date'] = date('Y-m-d');
+
+        $documentHtml = $this->buildAnnexDocumentHtml($template, $form, $preset, $allocatedNumber);
+        $docType = $this->resolveTemplateDocType($template);
+        $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($documentHtml, 'anexa-furnizor');
+        if ($pdfBinary === '') {
+            $this->renderPage($templates, $preset, $form, 'Documentul nu a putut fi generat PDF momentan.');
+        }
+
+        $metadataJson = json_encode([
+            'doc_kind' => 'anexa',
+            'source' => 'supplier_annex_generator',
+            'annex_title' => (string) $form['annex_title'],
+            'annex_content_html' => (string) $form['annex_content_html'],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $supplierCui = preg_replace('/\D+/', '', (string) ($form['supplier_cui'] ?? ''));
+        $now = date('Y-m-d H:i:s');
+        Database::execute(
+            'INSERT INTO contracts (
+                template_id,
+                partner_cui,
+                supplier_cui,
+                client_cui,
+                title,
+                doc_type,
+                contract_date,
+                doc_no,
+                doc_series,
+                doc_full_no,
+                doc_assigned_at,
+                required_onboarding,
+                status,
+                metadata_json,
+                created_by_user_id,
+                created_at
+            ) VALUES (
+                :template_id,
+                :partner_cui,
+                :supplier_cui,
+                :client_cui,
+                :title,
+                :doc_type,
+                :contract_date,
+                :doc_no,
+                :doc_series,
+                :doc_full_no,
+                :doc_assigned_at,
+                :required_onboarding,
+                :status,
+                :metadata_json,
+                :user_id,
+                :created_at
+            )',
+            [
+                'template_id' => ((int) ($template['id'] ?? 0)) > 0 ? (int) ($template['id'] ?? 0) : null,
+                'partner_cui' => $supplierCui !== '' ? $supplierCui : null,
+                'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
+                'client_cui' => null,
+                'title' => (string) ($form['annex_title'] ?? 'Anexa'),
+                'doc_type' => $docType,
+                'contract_date' => (string) ($allocatedNumber['date'] ?? date('Y-m-d')),
+                'doc_no' => isset($allocatedNumber['no']) ? (int) ($allocatedNumber['no'] ?? 0) : null,
+                'doc_series' => isset($allocatedNumber['series']) && (string) ($allocatedNumber['series'] ?? '') !== ''
+                    ? (string) ($allocatedNumber['series'] ?? '')
+                    : null,
+                'doc_full_no' => isset($allocatedNumber['full_no']) && (string) ($allocatedNumber['full_no'] ?? '') !== ''
+                    ? (string) ($allocatedNumber['full_no'] ?? '')
+                    : null,
+                'doc_assigned_at' => isset($allocatedNumber['no']) ? $now : null,
+                'required_onboarding' => 0,
+                'status' => 'generated',
+                'metadata_json' => $metadataJson !== false ? $metadataJson : null,
+                'user_id' => $user ? $user->id : null,
+                'created_at' => $now,
+            ]
+        );
+        $contractId = (int) Database::lastInsertId();
+        if ($contractId <= 0) {
+            $this->renderPage($templates, $preset, $form, 'Documentul a fost numerotat dar nu a putut fi salvat.');
+        }
+        Audit::record('contract.number_assigned', 'contract', $contractId, [
+            'doc_type' => $docType,
+            'registry_scope' => DocumentNumberService::REGISTRY_SCOPE_SUPPLIER,
+            'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
+            'rows_count' => 1,
+        ]);
+
+        $storedPath = $this->storeGeneratedPdfBinary($pdfBinary, $docType, $contractId);
+        if ($storedPath === '') {
+            Database::execute('DELETE FROM contracts WHERE id = :id', ['id' => $contractId]);
+            $this->renderPage($templates, $preset, $form, 'Documentul nu a putut fi salvat complet. Inregistrarea a fost anulata.');
+        }
+
+        $setParts = [];
+        $params = [
+            'id' => $contractId,
+            'updated_at' => $now,
+        ];
+        if (Database::columnExists('contracts', 'generated_pdf_path')) {
+            $setParts[] = 'generated_pdf_path = :generated_pdf_path';
+            $params['generated_pdf_path'] = $storedPath;
+        }
+        if (Database::columnExists('contracts', 'generated_file_path')) {
+            $setParts[] = 'generated_file_path = :generated_file_path';
+            $params['generated_file_path'] = $storedPath;
+        }
+        if (Database::columnExists('contracts', 'updated_at')) {
+            $setParts[] = 'updated_at = :updated_at';
+        }
+        if (!empty($setParts)) {
+            Database::execute(
+                'UPDATE contracts SET ' . implode(', ', $setParts) . ' WHERE id = :id',
+                $params
+            );
+        }
+
+        Audit::record('supplier_annex.document_generated', 'contract', $contractId, [
+            'rows_count' => 1,
+            'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
+            'supplier_cui' => $supplierCui !== '' ? $supplierCui : null,
+        ]);
+
+        $docFullNo = trim((string) ($allocatedNumber['full_no'] ?? ''));
+        $message = $docFullNo !== ''
+            ? ('Documentul a fost generat si inregistrat cu numarul ' . $docFullNo . '.')
+            : 'Documentul a fost generat si inregistrat in registrul de furnizori.';
+        Session::flash('status', $message);
+        Response::redirect('/admin/contracts');
     }
 
     private function renderPage(
@@ -391,6 +529,42 @@ class SupplierAnnexController
         return $service->allocateNumber($docType, [
             'registry_scope' => DocumentNumberService::REGISTRY_SCOPE_SUPPLIER,
         ]);
+    }
+
+    private function storeGeneratedPdfBinary(string $pdfBinary, string $docType, int $contractId): string
+    {
+        if ($pdfBinary === '' || $contractId <= 0) {
+            return '';
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $outputDir = $basePath . '/storage/uploads/contracts';
+        if (!is_dir($outputDir)) {
+            @mkdir($outputDir, 0775, true);
+        }
+        if (!is_dir($outputDir) || !is_writable($outputDir)) {
+            return '';
+        }
+
+        $prefix = strtolower(trim((string) preg_replace('/[^a-zA-Z0-9_-]+/', '-', $docType), '-'));
+        if ($prefix === '') {
+            $prefix = 'document';
+        }
+
+        try {
+            $name = $prefix . '-' . $contractId . '-' . bin2hex(random_bytes(8)) . '.pdf';
+        } catch (\Throwable $exception) {
+            $name = $prefix . '-' . $contractId . '-' . uniqid('', true) . '.pdf';
+            $name = preg_replace('/[^a-zA-Z0-9._-]/', '-', (string) $name);
+        }
+
+        $absolutePath = $outputDir . '/' . $name;
+        if (@file_put_contents($absolutePath, $pdfBinary) === false || !is_file($absolutePath) || filesize($absolutePath) <= 0) {
+            @unlink($absolutePath);
+            return '';
+        }
+
+        return 'storage/uploads/contracts/' . $name;
     }
 
     private function templateHasPlaceholder(string $templateHtml, string $placeholder): bool
