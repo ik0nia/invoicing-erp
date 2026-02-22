@@ -47,12 +47,14 @@ class ContractsController
             $contracts = Database::fetchAll('SELECT * FROM contracts ORDER BY created_at DESC, id DESC');
         }
         $companyNamesByCui = $this->resolveCompanyNamesByCuis($contracts);
+        $supplementaryAnnexDeletionState = $this->resolveLastSupplierSupplementaryDeletionState();
 
         Response::view('admin/contracts/index', [
             'templates' => $templates,
             'contracts' => $contracts,
             'companyNamesByCui' => $companyNamesByCui,
             'pdfAvailable' => (new ContractPdfService())->isPdfGenerationAvailable(),
+            'supplementaryAnnexDeletionState' => $supplementaryAnnexDeletionState,
         ]);
     }
 
@@ -1190,6 +1192,58 @@ class ContractsController
         }
 
         return $result;
+    }
+
+    private function resolveLastSupplierSupplementaryDeletionState(): array
+    {
+        $state = [
+            'latest_contract_id' => 0,
+            'can_delete' => false,
+        ];
+        if (!Database::tableExists('contracts') || !Database::tableExists('document_registry')) {
+            return $state;
+        }
+
+        $latest = Database::fetchOne(
+            'SELECT id, doc_no
+             FROM contracts
+             WHERE status = :status
+               AND doc_no IS NOT NULL
+               AND doc_no > 0
+               AND metadata_json LIKE :source
+             ORDER BY doc_no DESC, id DESC
+             LIMIT 1',
+            [
+                'status' => 'generated',
+                'source' => '%supplier_annex_generator%',
+            ]
+        );
+        if (!$latest) {
+            return $state;
+        }
+
+        $latestId = (int) ($latest['id'] ?? 0);
+        $latestNo = (int) ($latest['doc_no'] ?? 0);
+        if ($latestId <= 0 || $latestNo <= 0) {
+            return $state;
+        }
+
+        $registryDocType = (new DocumentNumberService())->registryKey(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER);
+        $registryRow = Database::fetchOne(
+            'SELECT next_no
+             FROM document_registry
+             WHERE doc_type = :doc_type
+             LIMIT 1',
+            ['doc_type' => $registryDocType]
+        );
+        if (!$registryRow) {
+            return $state;
+        }
+
+        $state['latest_contract_id'] = $latestId;
+        $state['can_delete'] = ((int) ($registryRow['next_no'] ?? 0)) === ($latestNo + 1);
+
+        return $state;
     }
 
     private function json(array $payload, int $statusCode = 200): void

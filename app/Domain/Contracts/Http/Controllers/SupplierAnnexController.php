@@ -123,6 +123,7 @@ class SupplierAnnexController
         $docType = $this->resolveTemplateDocType($template);
         $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($documentHtml, 'anexa-furnizor');
         if ($pdfBinary === '') {
+            $this->rollbackAllocatedSupplierDocNumber($allocatedNumber);
             $this->renderPage($templates, $preset, $form, 'Documentul nu a putut fi generat PDF momentan.');
         }
 
@@ -135,7 +136,7 @@ class SupplierAnnexController
 
         $supplierCui = preg_replace('/\D+/', '', (string) ($form['supplier_cui'] ?? ''));
         $now = date('Y-m-d H:i:s');
-        Database::execute(
+        $inserted = Database::execute(
             'INSERT INTO contracts (
                 template_id,
                 partner_cui,
@@ -194,8 +195,13 @@ class SupplierAnnexController
                 'created_at' => $now,
             ]
         );
+        if (!$inserted) {
+            $this->rollbackAllocatedSupplierDocNumber($allocatedNumber);
+            $this->renderPage($templates, $preset, $form, 'Documentul a fost numerotat dar nu a putut fi salvat.');
+        }
         $contractId = (int) Database::lastInsertId();
         if ($contractId <= 0) {
+            $this->rollbackAllocatedSupplierDocNumber($allocatedNumber);
             $this->renderPage($templates, $preset, $form, 'Documentul a fost numerotat dar nu a putut fi salvat.');
         }
         Audit::record('contract.number_assigned', 'contract', $contractId, [
@@ -208,6 +214,7 @@ class SupplierAnnexController
         $storedPath = $this->storeGeneratedPdfBinary($pdfBinary, $docType, $contractId);
         if ($storedPath === '') {
             Database::execute('DELETE FROM contracts WHERE id = :id', ['id' => $contractId]);
+            $this->rollbackAllocatedSupplierDocNumber($allocatedNumber);
             $this->renderPage($templates, $preset, $form, 'Documentul nu a putut fi salvat complet. Inregistrarea a fost anulata.');
         }
 
@@ -251,32 +258,33 @@ class SupplierAnnexController
     public function deleteLastGeneratedDocument(): void
     {
         $this->requireAccessRole();
+        $redirectPath = $this->resolveDeleteRedirectPath((string) ($_POST['return_to'] ?? ''));
 
         if (!Database::tableExists('contracts')) {
             Session::flash('error', 'Documentele nu sunt disponibile momentan.');
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
         if (!Database::tableExists('document_registry')) {
             Session::flash('error', 'Registrul de furnizori nu este disponibil momentan.');
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
 
         $requestedContractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
         $latest = $this->fetchLastSupplementaryGeneratedDocument();
         if ($latest === null) {
             Session::flash('error', 'Nu exista documente suplimentare generate pentru stergere.');
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
         $latestId = (int) ($latest['id'] ?? 0);
         if ($requestedContractId > 0 && $latestId > 0 && $requestedContractId !== $latestId) {
             Session::flash('error', 'Intre timp s-a schimbat ultimul document. Reincarca pagina si incearca din nou.');
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
 
         $latestDocNo = (int) ($latest['doc_no'] ?? 0);
         if ($latestDocNo <= 0) {
             Session::flash('error', 'Ultimul document nu are numar de registru valid.');
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
 
         $numberService = new DocumentNumberService();
@@ -358,7 +366,7 @@ class SupplierAnnexController
                 $pdo->rollBack();
             }
             Session::flash('error', $exception->getMessage());
-            Response::redirect('/admin/anexe-furnizor');
+            Response::redirect($redirectPath);
         }
 
         if (is_array($deletedDoc)) {
@@ -378,7 +386,7 @@ class SupplierAnnexController
             'rollback_next_no' => $rollbackNo,
         ]);
         Session::flash('status', 'Ultimul document suplimentar a fost sters. Contorul registrului de furnizori a fost readus la pozitia corecta.');
-        Response::redirect('/admin/anexe-furnizor');
+        Response::redirect($redirectPath);
     }
 
     private function renderPage(
@@ -786,6 +794,79 @@ class SupplierAnnexController
         }
 
         return 'storage/uploads/contracts/' . $name;
+    }
+
+    private function rollbackAllocatedSupplierDocNumber(array $allocatedNumber): void
+    {
+        $allocatedNo = isset($allocatedNumber['no']) ? (int) ($allocatedNumber['no'] ?? 0) : 0;
+        if ($allocatedNo <= 0 || !Database::tableExists('document_registry')) {
+            return;
+        }
+
+        $registryDocType = (new DocumentNumberService())->registryKey(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER);
+        $pdo = Database::pdo();
+        try {
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+            }
+
+            $stmt = $pdo->prepare(
+                'SELECT next_no, start_no
+                 FROM document_registry
+                 WHERE doc_type = :doc_type
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $stmt->execute(['doc_type' => $registryDocType]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
+                $pdo->rollBack();
+                return;
+            }
+
+            $currentNextNo = (int) ($row['next_no'] ?? 0);
+            if ($currentNextNo !== ($allocatedNo + 1)) {
+                $pdo->rollBack();
+                return;
+            }
+
+            $startNo = max(1, (int) ($row['start_no'] ?? 1));
+            $rollbackNo = max($startNo, $allocatedNo);
+            $update = $pdo->prepare(
+                'UPDATE document_registry
+                 SET next_no = :next_no,
+                     updated_at = :updated_at
+                 WHERE doc_type = :doc_type'
+            );
+            $update->execute([
+                'next_no' => $rollbackNo,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'doc_type' => $registryDocType,
+            ]);
+
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+        }
+    }
+
+    private function resolveDeleteRedirectPath(string $requestedPath): string
+    {
+        $requestedPath = trim($requestedPath);
+        if ($requestedPath === '') {
+            return '/admin/anexe-furnizor';
+        }
+        $path = parse_url($requestedPath, PHP_URL_PATH);
+        $path = is_string($path) ? trim($path) : '';
+        if ($path === '') {
+            return '/admin/anexe-furnizor';
+        }
+
+        return in_array($path, ['/admin/anexe-furnizor', '/admin/contracts'], true)
+            ? $path
+            : '/admin/anexe-furnizor';
     }
 
     private function deleteUploadFile(string $relativePath): void
