@@ -248,6 +248,139 @@ class SupplierAnnexController
         Response::redirect('/admin/contracts');
     }
 
+    public function deleteLastGeneratedDocument(): void
+    {
+        $this->requireAccessRole();
+
+        if (!Database::tableExists('contracts')) {
+            Session::flash('error', 'Documentele nu sunt disponibile momentan.');
+            Response::redirect('/admin/anexe-furnizor');
+        }
+        if (!Database::tableExists('document_registry')) {
+            Session::flash('error', 'Registrul de furnizori nu este disponibil momentan.');
+            Response::redirect('/admin/anexe-furnizor');
+        }
+
+        $requestedContractId = isset($_POST['contract_id']) ? (int) $_POST['contract_id'] : 0;
+        $latest = $this->fetchLastSupplementaryGeneratedDocument();
+        if ($latest === null) {
+            Session::flash('error', 'Nu exista documente suplimentare generate pentru stergere.');
+            Response::redirect('/admin/anexe-furnizor');
+        }
+        $latestId = (int) ($latest['id'] ?? 0);
+        if ($requestedContractId > 0 && $latestId > 0 && $requestedContractId !== $latestId) {
+            Session::flash('error', 'Intre timp s-a schimbat ultimul document. Reincarca pagina si incearca din nou.');
+            Response::redirect('/admin/anexe-furnizor');
+        }
+
+        $latestDocNo = (int) ($latest['doc_no'] ?? 0);
+        if ($latestDocNo <= 0) {
+            Session::flash('error', 'Ultimul document nu are numar de registru valid.');
+            Response::redirect('/admin/anexe-furnizor');
+        }
+
+        $numberService = new DocumentNumberService();
+        $registryDocType = $numberService->registryKey(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER);
+        $deletedDoc = null;
+        $rollbackNo = 0;
+
+        $pdo = Database::pdo();
+        try {
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+            }
+
+            $docStmt = $pdo->prepare(
+                'SELECT id, doc_no, doc_full_no, generated_pdf_path, generated_file_path
+                 FROM contracts
+                 WHERE id = :id
+                   AND status = :status
+                   AND metadata_json LIKE :source
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $docStmt->execute([
+                'id' => $latestId,
+                'status' => 'generated',
+                'source' => '%supplier_annex_generator%',
+            ]);
+            $lockedDoc = $docStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$lockedDoc) {
+                throw new \RuntimeException('Documentul nu mai este disponibil pentru stergere.');
+            }
+
+            $lockedDocNo = (int) ($lockedDoc['doc_no'] ?? 0);
+            if ($lockedDocNo <= 0) {
+                throw new \RuntimeException('Documentul nu are numar de registru valid.');
+            }
+
+            $registryStmt = $pdo->prepare(
+                'SELECT doc_type, next_no, start_no
+                 FROM document_registry
+                 WHERE doc_type = :doc_type
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $registryStmt->execute(['doc_type' => $registryDocType]);
+            $registryRow = $registryStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$registryRow) {
+                throw new \RuntimeException('Registrul de furnizori nu este disponibil.');
+            }
+
+            $currentNextNo = (int) ($registryRow['next_no'] ?? 0);
+            $expectedNextNo = $lockedDocNo + 1;
+            if ($currentNextNo !== $expectedNextNo) {
+                throw new \RuntimeException('Poti sterge doar ultimul document generat din registrul de furnizori.');
+            }
+
+            $startNo = max(1, (int) ($registryRow['start_no'] ?? 1));
+            $rollbackNo = max($startNo, $lockedDocNo);
+
+            $deleteStmt = $pdo->prepare('DELETE FROM contracts WHERE id = :id LIMIT 1');
+            $deleteStmt->execute(['id' => (int) ($lockedDoc['id'] ?? 0)]);
+
+            $updateStmt = $pdo->prepare(
+                'UPDATE document_registry
+                 SET next_no = :next_no,
+                     updated_at = :updated_at
+                 WHERE doc_type = :doc_type'
+            );
+            $updateStmt->execute([
+                'next_no' => $rollbackNo,
+                'updated_at' => date('Y-m-d H:i:s'),
+                'doc_type' => $registryDocType,
+            ]);
+
+            $pdo->commit();
+            $deletedDoc = $lockedDoc;
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            Session::flash('error', $exception->getMessage());
+            Response::redirect('/admin/anexe-furnizor');
+        }
+
+        if (is_array($deletedDoc)) {
+            $generatedPdfPath = trim((string) ($deletedDoc['generated_pdf_path'] ?? ''));
+            $generatedFilePath = trim((string) ($deletedDoc['generated_file_path'] ?? ''));
+            if ($generatedPdfPath !== '') {
+                $this->deleteUploadFile($generatedPdfPath);
+            }
+            if ($generatedFilePath !== '' && $generatedFilePath !== $generatedPdfPath) {
+                $this->deleteUploadFile($generatedFilePath);
+            }
+        }
+
+        Audit::record('supplier_annex.document_deleted', 'contract', (int) ($deletedDoc['id'] ?? 0), [
+            'rows_count' => 1,
+            'doc_full_no' => (string) ($deletedDoc['doc_full_no'] ?? ''),
+            'rollback_next_no' => $rollbackNo,
+        ]);
+        Session::flash('status', 'Ultimul document suplimentar a fost sters. Contorul registrului de furnizori a fost readus la pozitia corecta.');
+        Response::redirect('/admin/anexe-furnizor');
+    }
+
     private function renderPage(
         array $templates,
         array $preset,
@@ -255,13 +388,101 @@ class SupplierAnnexController
         string $errorMessage = '',
         ?string $previewHtml = null
     ): void {
+        $lastSupplementaryDocumentState = $this->buildLastSupplementaryDocumentState();
         Response::view('admin/contracts/supplier_annex', [
             'templates' => $templates,
             'preset' => $preset,
             'form' => $form,
             'errorMessage' => $errorMessage,
             'previewHtml' => $previewHtml,
+            'lastSupplementaryDocumentState' => $lastSupplementaryDocumentState,
         ]);
+    }
+
+    private function buildLastSupplementaryDocumentState(): array
+    {
+        $document = $this->fetchLastSupplementaryGeneratedDocument();
+        if ($document === null) {
+            return [
+                'document' => null,
+                'can_delete' => false,
+                'message' => 'Nu exista inca documente suplimentare generate.',
+            ];
+        }
+
+        $docNo = (int) ($document['doc_no'] ?? 0);
+        if ($docNo <= 0) {
+            return [
+                'document' => $document,
+                'can_delete' => false,
+                'message' => 'Documentul nu are numar de registru valid.',
+            ];
+        }
+
+        $numberService = new DocumentNumberService();
+        $registryDocType = $numberService->registryKey(DocumentNumberService::REGISTRY_SCOPE_SUPPLIER);
+        if (!Database::tableExists('document_registry')) {
+            return [
+                'document' => $document,
+                'can_delete' => false,
+                'message' => 'Registrul documentelor nu este disponibil.',
+            ];
+        }
+
+        $registryRow = Database::fetchOne(
+            'SELECT next_no, start_no
+             FROM document_registry
+             WHERE doc_type = :doc_type
+             LIMIT 1',
+            ['doc_type' => $registryDocType]
+        );
+        if (!$registryRow) {
+            return [
+                'document' => $document,
+                'can_delete' => false,
+                'message' => 'Registrul de furnizori nu este initializat.',
+            ];
+        }
+
+        $currentNextNo = (int) ($registryRow['next_no'] ?? 0);
+        $expectedNextNo = $docNo + 1;
+        if ($currentNextNo !== $expectedNextNo) {
+            return [
+                'document' => $document,
+                'can_delete' => false,
+                'message' => 'Ultimul document din registru este altul. Se poate sterge doar documentul suplimentar cel mai recent.',
+            ];
+        }
+
+        return [
+            'document' => $document,
+            'can_delete' => true,
+            'message' => 'Stergerea va reveni contorul registrului la numarul acestui document.',
+        ];
+    }
+
+    private function fetchLastSupplementaryGeneratedDocument(): ?array
+    {
+        if (!Database::tableExists('contracts')) {
+            return null;
+        }
+
+        $row = Database::fetchOne(
+            'SELECT id, title, doc_no, doc_series, doc_full_no, contract_date, supplier_cui, created_at, status
+             FROM contracts
+             WHERE status = :status
+               AND doc_no IS NOT NULL
+               AND doc_no > 0
+               AND metadata_json LIKE :source
+             ORDER BY doc_no DESC, id DESC
+             LIMIT 1',
+            [
+                'status' => 'generated',
+                'source' => '%supplier_annex_generator%',
+            ]
+        );
+
+        return $row ?: null;
     }
 
     private function requireAccessRole(): ?\App\Domain\Users\Models\User
@@ -565,6 +786,26 @@ class SupplierAnnexController
         }
 
         return 'storage/uploads/contracts/' . $name;
+    }
+
+    private function deleteUploadFile(string $relativePath): void
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '' || !str_starts_with($relativePath, 'storage/uploads/')) {
+            return;
+        }
+
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 4);
+        $root = realpath($basePath . '/storage/uploads');
+        if ($root === false) {
+            return;
+        }
+        $absolutePath = realpath($basePath . '/' . $relativePath);
+        if ($absolutePath === false || !str_starts_with($absolutePath, $root) || !is_file($absolutePath)) {
+            return;
+        }
+
+        @unlink($absolutePath);
     }
 
     private function templateHasPlaceholder(string $templateHtml, string $placeholder): bool

@@ -5,6 +5,10 @@
     $form = is_array($form ?? null) ? $form : [];
     $errorMessage = trim((string) ($errorMessage ?? ''));
     $previewHtml = $previewHtml ?? null;
+    $lastSupplementaryDocumentState = is_array($lastSupplementaryDocumentState ?? null) ? $lastSupplementaryDocumentState : [];
+    $lastSupplementaryDocument = is_array($lastSupplementaryDocumentState['document'] ?? null) ? $lastSupplementaryDocumentState['document'] : null;
+    $canDeleteLastSupplementary = !empty($lastSupplementaryDocumentState['can_delete']);
+    $lastSupplementaryMessage = trim((string) ($lastSupplementaryDocumentState['message'] ?? ''));
 
     $signatureConfigured = !empty($preset['signature_configured']);
     $initialEditorHtml = (string) ($form['annex_content_html'] ?? '<p></p>');
@@ -162,6 +166,65 @@
         </button>
     </div>
 </form>
+
+<div class="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="text-sm font-semibold text-slate-700">Ultimul document suplimentar generat</div>
+    <?php if ($lastSupplementaryDocument): ?>
+        <?php
+            $lastDocNo = trim((string) ($lastSupplementaryDocument['doc_full_no'] ?? ''));
+            if ($lastDocNo === '') {
+                $rawNo = (int) ($lastSupplementaryDocument['doc_no'] ?? 0);
+                $rawSeries = trim((string) ($lastSupplementaryDocument['doc_series'] ?? ''));
+                if ($rawNo > 0) {
+                    $paddedNo = str_pad((string) $rawNo, 6, '0', STR_PAD_LEFT);
+                    $lastDocNo = $rawSeries !== '' ? ($rawSeries . '-' . $paddedNo) : $paddedNo;
+                }
+            }
+            $lastDocTitle = trim((string) ($lastSupplementaryDocument['title'] ?? ''));
+            $lastDocDateRaw = trim((string) ($lastSupplementaryDocument['contract_date'] ?? $lastSupplementaryDocument['created_at'] ?? ''));
+            $lastDocDate = $lastDocDateRaw;
+            if ($lastDocDateRaw !== '') {
+                $ts = strtotime($lastDocDateRaw);
+                if ($ts !== false) {
+                    $lastDocDate = date('d.m.Y H:i', $ts);
+                }
+            }
+        ?>
+        <div class="mt-2 text-sm text-slate-700">
+            <div><strong>Numar:</strong> <?= htmlspecialchars($lastDocNo !== '' ? $lastDocNo : '—') ?></div>
+            <div><strong>Titlu:</strong> <?= htmlspecialchars($lastDocTitle !== '' ? $lastDocTitle : '—') ?></div>
+            <div><strong>Data:</strong> <?= htmlspecialchars($lastDocDate !== '' ? $lastDocDate : '—') ?></div>
+        </div>
+        <?php if ($lastSupplementaryMessage !== ''): ?>
+            <div class="mt-2 text-xs <?= $canDeleteLastSupplementary ? 'text-emerald-700' : 'text-amber-700' ?>">
+                <?= htmlspecialchars($lastSupplementaryMessage) ?>
+            </div>
+        <?php endif; ?>
+        <div class="mt-3">
+            <?php if ($canDeleteLastSupplementary): ?>
+                <form method="POST" action="<?= App\Support\Url::to('admin/anexe-furnizor/delete-last-document') ?>">
+                    <?= App\Support\Csrf::input() ?>
+                    <input type="hidden" name="contract_id" value="<?= (int) ($lastSupplementaryDocument['id'] ?? 0) ?>">
+                    <button
+                        type="submit"
+                        class="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        onclick="return confirm('Stergi ultimul document suplimentar si revii contorul registrului de furnizori?')"
+                    >
+                        Sterge ultimul document suplimentar
+                    </button>
+                </form>
+            <?php else: ?>
+                <div class="text-xs text-slate-500">
+                    Stergerea este disponibila doar pentru ultimul document suplimentar din registrul de furnizori.
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php else: ?>
+        <div class="mt-2 text-xs text-slate-500">
+            Nu exista documente suplimentare generate.
+        </div>
+    <?php endif; ?>
+</div>
 
 <?php if (is_string($previewHtml) && $previewHtml !== ''): ?>
     <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
