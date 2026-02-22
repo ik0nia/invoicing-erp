@@ -4,6 +4,7 @@ namespace App\Domain\Contracts\Http\Controllers;
 
 use App\Domain\Contracts\Services\ContractPdfService;
 use App\Domain\Contracts\Services\ContractTemplateVariables;
+use App\Domain\Contracts\Services\DocumentNumberService;
 use App\Domain\Contracts\Services\TemplateRenderer;
 use App\Domain\Settings\Services\SettingsService;
 use App\Support\Audit;
@@ -38,12 +39,11 @@ class SupplierAnnexController
 
         $template = $payload['template'];
         $form = $payload['form'];
-        $previewHtml = $this->buildAnnexDocumentHtml($template, $form, $preset);
+        $previewHtml = $this->buildAnnexDocumentHtml($template, $form, $preset, []);
 
         Audit::record('supplier_annex.preview', 'contract_template', (int) ($template['id'] ?? 0), [
             'rows_count' => 1,
             'supplier_cui' => $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null,
-            'client_cui' => $form['client_cui'] !== '' ? $form['client_cui'] : null,
         ]);
 
         $this->renderPage($templates, $preset, $form, '', $previewHtml);
@@ -63,18 +63,30 @@ class SupplierAnnexController
 
         $template = $payload['template'];
         $form = $payload['form'];
-        $documentHtml = $this->buildAnnexDocumentHtml($template, $form, $preset);
+        try {
+            $allocatedNumber = $this->allocateSupplierDocNumber($template);
+        } catch (\Throwable $exception) {
+            $this->renderPage($templates, $preset, $form, 'Nu am putut aloca numarul din registrul de furnizori.');
+        }
+        $allocatedNumber['date'] = date('Y-m-d');
+        $documentHtml = $this->buildAnnexDocumentHtml($template, $form, $preset, $allocatedNumber);
 
         $pdfBinary = (new ContractPdfService())->generatePdfBinaryFromHtml($documentHtml, 'anexa-furnizor');
         $baseFilename = $this->sanitizeFilenamePart($form['annex_title']);
         if ($baseFilename === '') {
             $baseFilename = 'anexa-furnizor';
         }
+        $docFilePart = $this->sanitizeFilenamePart((string) ($allocatedNumber['full_no'] ?? ''));
+        if ($docFilePart !== '') {
+            $baseFilename = $docFilePart . '-' . $baseFilename;
+        }
 
         if ($pdfBinary !== '') {
             Audit::record('supplier_annex.download', 'contract_template', (int) ($template['id'] ?? 0), [
                 'rows_count' => 1,
                 'mode' => 'pdf',
+                'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
+                'supplier_cui' => $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null,
             ]);
 
             header('Content-Type: application/pdf');
@@ -88,6 +100,8 @@ class SupplierAnnexController
         Audit::record('supplier_annex.download', 'contract_template', (int) ($template['id'] ?? 0), [
             'rows_count' => 1,
             'mode' => 'html',
+            'doc_full_no' => (string) ($allocatedNumber['full_no'] ?? ''),
+            'supplier_cui' => $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null,
         ]);
         header('Content-Type: text/html; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $baseFilename . '.html"');
@@ -183,7 +197,6 @@ class SupplierAnnexController
         return [
             'template_id' => $firstTemplateId,
             'supplier_cui' => '',
-            'client_cui' => '',
             'annex_title' => 'Anexa furnizor',
             'annex_content_html' => '<p>Completeaza continutul anexei.</p>',
         ];
@@ -209,15 +222,20 @@ class SupplierAnnexController
         }
 
         $supplierCui = $this->normalizeCui((string) ($_POST['supplier_cui'] ?? ''));
-        $clientCui = $this->normalizeCui((string) ($_POST['client_cui'] ?? ''));
         $annexTitle = $this->sanitizeTitle((string) ($_POST['annex_title'] ?? ''));
         $annexContentHtml = $this->sanitizeLimitedRichText((string) ($_POST['annex_content_html'] ?? ''));
 
         $form['template_id'] = $templateId;
         $form['supplier_cui'] = $supplierCui;
-        $form['client_cui'] = $clientCui;
         $form['annex_title'] = $annexTitle;
         $form['annex_content_html'] = $annexContentHtml !== '' ? $annexContentHtml : '<p></p>';
+
+        if ($supplierCui === '') {
+            return [
+                'error' => 'Selecteaza furnizorul.',
+                'form' => $form,
+            ];
+        }
 
         if ($annexTitle === '') {
             return [
@@ -255,7 +273,7 @@ class SupplierAnnexController
         ];
     }
 
-    private function buildAnnexDocumentHtml(array $template, array $form, array $preset): string
+    private function buildAnnexDocumentHtml(array $template, array $form, array $preset, array $docContext = []): string
     {
         $templateHtml = (string) ($template['html_content'] ?? '');
         if (trim($templateHtml) === '') {
@@ -263,23 +281,28 @@ class SupplierAnnexController
         }
 
         $supplierCui = $form['supplier_cui'] !== '' ? $form['supplier_cui'] : null;
-        $clientCui = $form['client_cui'] !== '' ? $form['client_cui'] : null;
+        $docType = $this->resolveTemplateDocType($template);
+        $docNo = isset($docContext['no']) ? (int) $docContext['no'] : 0;
+        $docSeries = trim((string) ($docContext['series'] ?? ''));
+        $docFullNo = trim((string) ($docContext['full_no'] ?? ''));
+        $docDate = trim((string) ($docContext['date'] ?? date('Y-m-d')));
 
         $variablesService = new ContractTemplateVariables();
         $vars = $variablesService->buildVariables(
             $supplierCui,
             $supplierCui,
-            $clientCui,
+            null,
             [
                 'template_id' => (int) ($template['id'] ?? 0),
                 'render_context' => 'admin',
                 'title' => $form['annex_title'],
-                'created_at' => date('Y-m-d'),
-                'contract_date' => date('Y-m-d'),
-                'doc_type' => (string) ($template['doc_type'] ?? $template['template_type'] ?? 'anexa'),
-                'doc_no' => 0,
-                'doc_series' => '',
-                'doc_full_no' => '',
+                'created_at' => $docDate,
+                'contract_date' => $docDate,
+                'doc_type' => $docType,
+                'doc_no' => $docNo,
+                'doc_series' => $docSeries,
+                'doc_full_no' => $docFullNo,
+                'template_applies_to' => (string) ($template['applies_to'] ?? 'supplier'),
             ]
         );
 
@@ -347,6 +370,27 @@ class SupplierAnnexController
     <div class="annex-shell"><div class="annex-body">' . $renderedBody . '</div></div>
 </body>
 </html>';
+    }
+
+    private function resolveTemplateDocType(array $template): string
+    {
+        $docType = trim((string) ($template['doc_type'] ?? $template['template_type'] ?? 'anexa'));
+        $docType = strtolower((string) preg_replace('/[^a-zA-Z0-9_.-]/', '', $docType));
+        if ($docType === '') {
+            $docType = 'anexa';
+        }
+
+        return $docType;
+    }
+
+    private function allocateSupplierDocNumber(array $template): array
+    {
+        $service = new DocumentNumberService();
+        $docType = $this->resolveTemplateDocType($template);
+
+        return $service->allocateNumber($docType, [
+            'registry_scope' => DocumentNumberService::REGISTRY_SCOPE_SUPPLIER,
+        ]);
     }
 
     private function templateHasPlaceholder(string $templateHtml, string $placeholder): bool

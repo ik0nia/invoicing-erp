@@ -348,7 +348,8 @@ class ContractsController
 
         $term = trim((string) ($_GET['term'] ?? ''));
         $limit = min(30, max(1, (int) ($_GET['limit'] ?? 15)));
-        $items = $this->searchCompanies($term, $limit);
+        $role = $this->normalizeCompanySearchRole((string) ($_GET['role'] ?? 'all'));
+        $items = $this->searchCompanies($term, $limit, $role);
 
         $this->json([
             'success' => true,
@@ -714,10 +715,11 @@ class ContractsController
         return '';
     }
 
-    private function searchCompanies(string $term, int $limit): array
+    private function searchCompanies(string $term, int $limit, string $role = 'all'): array
     {
         $term = trim($term);
         $termDigits = preg_replace('/\D+/', '', $term);
+        $role = $this->normalizeCompanySearchRole($role);
         $itemsByCui = [];
 
         $appendItem = static function (array &$bucket, array $item): void {
@@ -852,11 +854,60 @@ class ContractsController
             return strcmp((string) ($left['cui'] ?? ''), (string) ($right['cui'] ?? ''));
         });
 
+        if ($role !== 'all') {
+            $items = array_values(array_filter($items, function (array $item) use ($role): bool {
+                $cui = preg_replace('/\D+/', '', (string) ($item['cui'] ?? ''));
+                if ($cui === '') {
+                    return false;
+                }
+
+                return $this->companyMatchesSearchRole($cui, $role);
+            }));
+        }
+
         if (count($items) > $limit) {
             $items = array_slice($items, 0, $limit);
         }
 
         return $items;
+    }
+
+    private function normalizeCompanySearchRole(string $role): string
+    {
+        $role = strtolower(trim($role));
+        if (!in_array($role, ['all', 'supplier', 'client'], true)) {
+            return 'all';
+        }
+
+        return $role;
+    }
+
+    private function companyMatchesSearchRole(string $cui, string $role): bool
+    {
+        $role = $this->normalizeCompanySearchRole($role);
+        if ($role === 'all') {
+            return true;
+        }
+
+        $cui = preg_replace('/\D+/', '', $cui);
+        if ($cui === '') {
+            return false;
+        }
+
+        static $scopeCache = [];
+        if (!array_key_exists($cui, $scopeCache)) {
+            $scopeCache[$cui] = $this->partnerRegistryScopeHint($cui);
+        }
+        $scope = $scopeCache[$cui];
+        if ($scope === null) {
+            return true;
+        }
+
+        if ($role === 'supplier') {
+            return $scope === DocumentNumberService::REGISTRY_SCOPE_SUPPLIER;
+        }
+
+        return $scope === DocumentNumberService::REGISTRY_SCOPE_CLIENT;
     }
 
     private function resolveTemplateDocType(?array $template, string $docKind): string

@@ -8,6 +8,7 @@
 
     $signatureConfigured = !empty($preset['signature_configured']);
     $initialEditorHtml = (string) ($form['annex_content_html'] ?? '<p></p>');
+    $supplierValue = (string) ($form['supplier_cui'] ?? '');
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-3">
@@ -33,6 +34,9 @@
     </div>
     <div class="mt-1 text-xs">
         Sunt listate doar template-urile anexa pentru furnizor care NU sunt automate la inrolare si NU sunt obligatorii la onboarding.
+    </div>
+    <div class="mt-1 text-xs">
+        La generare se aloca automat numarul documentului din registrul de furnizori.
     </div>
 </div>
 
@@ -82,28 +86,32 @@
             >
         </div>
         <div>
-            <label class="block text-sm font-medium text-slate-700" for="supplier_cui">Furnizor CUI</label>
-            <input
-                id="supplier_cui"
-                name="supplier_cui"
-                type="text"
-                inputmode="numeric"
-                value="<?= htmlspecialchars((string) ($form['supplier_cui'] ?? '')) ?>"
-                placeholder="ex: 12345678"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            <div
+                class="relative"
+                data-supplier-picker
+                data-search-url="<?= App\Support\Url::to('admin/contracts/company-search') ?>"
+                data-search-role="supplier"
             >
-        </div>
-        <div>
-            <label class="block text-sm font-medium text-slate-700" for="client_cui">Client CUI (optional)</label>
-            <input
-                id="client_cui"
-                name="client_cui"
-                type="text"
-                inputmode="numeric"
-                value="<?= htmlspecialchars((string) ($form['client_cui'] ?? '')) ?>"
-                placeholder="ex: 87654321"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
+                <label class="block text-sm font-medium text-slate-700" for="supplier-cui-display">Furnizor</label>
+                <input
+                    id="supplier-cui-display"
+                    type="text"
+                    autocomplete="off"
+                    class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Cauta dupa denumire sau CUI"
+                    value="<?= htmlspecialchars($supplierValue) ?>"
+                    data-supplier-display
+                    required
+                >
+                <input
+                    type="hidden"
+                    id="supplier_cui"
+                    name="supplier_cui"
+                    value="<?= htmlspecialchars($supplierValue) ?>"
+                    data-supplier-value
+                >
+                <div class="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-lg border border-slate-300 bg-white p-1 shadow-xl ring-1 ring-slate-200 divide-y divide-slate-100" data-supplier-list></div>
+            </div>
         </div>
     </div>
 
@@ -113,9 +121,9 @@
             Formatare permisa: paragraf, heading (H2/H3), liste, bold/italic. Fara schimbari de font.
         </p>
         <div class="mt-3 flex flex-wrap gap-2">
-            <button type="button" data-block="P" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">Paragraf</button>
-            <button type="button" data-block="H2" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">H2</button>
-            <button type="button" data-block="H3" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">H3</button>
+            <button type="button" data-block="p" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">Paragraf</button>
+            <button type="button" data-block="h2" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">H2</button>
+            <button type="button" data-block="h3" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">H3</button>
             <button type="button" data-command="insertUnorderedList" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">Lista puncte</button>
             <button type="button" data-command="insertOrderedList" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">Lista numerotata</button>
             <button type="button" data-command="bold" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">Bold</button>
@@ -159,12 +167,67 @@
     </div>
 <?php endif; ?>
 
+<style>
+    #annex-editor h2 {
+        font-size: 1.35rem;
+        line-height: 1.25;
+        font-weight: 700;
+        margin: 0 0 0.55rem;
+        color: #0f172a;
+    }
+    #annex-editor h3 {
+        font-size: 1.1rem;
+        line-height: 1.3;
+        font-weight: 700;
+        margin: 0 0 0.5rem;
+        color: #1e293b;
+    }
+    #annex-editor p {
+        margin: 0 0 0.5rem;
+        line-height: 1.5;
+    }
+    #annex-editor ul,
+    #annex-editor ol {
+        margin: 0 0 0.5rem 1.15rem;
+        padding: 0;
+    }
+    #annex-editor li { margin: 0 0 0.25rem; }
+    #annex-editor strong { font-weight: 700; }
+    #annex-editor em { font-style: italic; }
+</style>
+
 <script>
     (function () {
+        const escapeHtml = (value) => {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+        const normalizeDigits = (value) => String(value || '').replace(/\D+/g, '');
+        const extractCompanyCuiCandidate = (value) => {
+            const raw = String(value || '').trim();
+            if (raw === '') return '';
+            if (/^\d+$/.test(raw)) return raw;
+            const compact = raw.replace(/\s+/g, '').toUpperCase();
+            if (/^RO\d+$/.test(compact)) return compact.replace(/^RO/, '');
+            const suffix = raw.match(/(?:^|[-\s])(RO)?(\d{2,16})$/i);
+            if (suffix && suffix[2]) return normalizeDigits(suffix[2]);
+            return '';
+        };
+
         const form = document.getElementById('supplier-annex-form');
         const editor = document.getElementById('annex-editor');
         const hidden = document.getElementById('annex_content_html');
-        if (!form || !editor || !hidden) {
+        const picker = document.querySelector('[data-supplier-picker]');
+        const supplierDisplay = picker ? picker.querySelector('[data-supplier-display]') : null;
+        const supplierValue = picker ? picker.querySelector('[data-supplier-value]') : null;
+        const supplierList = picker ? picker.querySelector('[data-supplier-list]') : null;
+        const supplierSearchUrl = picker ? (picker.getAttribute('data-search-url') || '') : '';
+        const supplierSearchRole = picker ? (picker.getAttribute('data-search-role') || 'supplier') : 'supplier';
+        if (!form || !editor || !hidden || !picker || !supplierDisplay || !supplierValue || !supplierList || !supplierSearchUrl) {
             return;
         }
 
@@ -172,7 +235,149 @@
             hidden.value = editor.innerHTML;
         };
 
-        form.addEventListener('submit', syncEditor);
+        let supplierRequestId = 0;
+        let supplierTimer = null;
+        const clearSupplierList = () => {
+            supplierList.innerHTML = '';
+            supplierList.classList.add('hidden');
+        };
+        const syncSupplierValidity = () => {
+            const hasValue = supplierValue.value.trim() !== '' || extractCompanyCuiCandidate(supplierDisplay.value) !== '';
+            supplierDisplay.setCustomValidity(hasValue ? '' : 'Selecteaza furnizorul.');
+        };
+        const applySupplierSelection = (item) => {
+            const cui = normalizeDigits(item.cui || '');
+            const name = String(item.name || '').trim();
+            const label = name !== '' && name !== cui ? `${name} - ${cui}` : cui;
+            supplierValue.value = cui;
+            supplierDisplay.value = label;
+            clearSupplierList();
+            syncSupplierValidity();
+        };
+        const renderSupplierItems = (items) => {
+            if (!Array.isArray(items) || items.length === 0) {
+                supplierList.innerHTML = '<div class="px-3 py-2 text-xs text-slate-500">Nu exista rezultate.</div>';
+                supplierList.classList.remove('hidden');
+                return;
+            }
+            supplierList.innerHTML = items.map((item) => {
+                const cui = escapeHtml(item.cui || '');
+                const name = escapeHtml(item.name || item.cui || '');
+                const label = escapeHtml(item.label || `${item.name || item.cui || ''} - ${item.cui || ''}`);
+                return `
+                    <button
+                        type="button"
+                        class="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                        data-supplier-item
+                        data-cui="${cui}"
+                        data-name="${name}"
+                        data-label="${label}"
+                    >
+                        <div class="font-medium text-slate-900">${label}</div>
+                    </button>
+                `;
+            }).join('');
+            supplierList.classList.remove('hidden');
+        };
+        const fetchSupplierItems = (term) => {
+            const currentRequestId = ++supplierRequestId;
+            const url = new URL(supplierSearchUrl, window.location.origin);
+            url.searchParams.set('term', term);
+            url.searchParams.set('limit', '20');
+            url.searchParams.set('role', supplierSearchRole);
+            fetch(url.toString(), {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            })
+                .then((response) => response.json())
+                .then((data) => {
+                    if (currentRequestId !== supplierRequestId) return;
+                    if (!data || data.success !== true) {
+                        renderSupplierItems([]);
+                        return;
+                    }
+                    renderSupplierItems(data.items || []);
+                })
+                .catch(() => {
+                    if (currentRequestId !== supplierRequestId) return;
+                    renderSupplierItems([]);
+                });
+        };
+
+        form.addEventListener('submit', (event) => {
+            syncEditor();
+            if (supplierValue.value.trim() === '') {
+                const maybeCui = extractCompanyCuiCandidate(supplierDisplay.value);
+                if (maybeCui !== '') {
+                    supplierValue.value = maybeCui;
+                    supplierDisplay.value = maybeCui;
+                }
+            }
+            syncSupplierValidity();
+            if (supplierValue.value.trim() === '') {
+                event.preventDefault();
+                supplierDisplay.reportValidity();
+            }
+        });
+
+        supplierDisplay.addEventListener('focus', () => {
+            fetchSupplierItems(supplierDisplay.value.trim());
+        });
+        supplierDisplay.addEventListener('input', () => {
+            supplierValue.value = '';
+            syncSupplierValidity();
+            const query = supplierDisplay.value.trim();
+            if (supplierTimer) clearTimeout(supplierTimer);
+            supplierTimer = setTimeout(() => {
+                fetchSupplierItems(query);
+            }, 200);
+        });
+        supplierDisplay.addEventListener('change', () => {
+            if (supplierValue.value.trim() !== '') {
+                syncSupplierValidity();
+                return;
+            }
+            const maybeCui = extractCompanyCuiCandidate(supplierDisplay.value);
+            if (maybeCui !== '') {
+                supplierValue.value = maybeCui;
+                supplierDisplay.value = maybeCui;
+            }
+            syncSupplierValidity();
+        });
+        supplierDisplay.addEventListener('blur', () => {
+            window.setTimeout(() => {
+                clearSupplierList();
+                if (supplierValue.value.trim() !== '') {
+                    syncSupplierValidity();
+                    return;
+                }
+                const maybeCui = extractCompanyCuiCandidate(supplierDisplay.value);
+                if (maybeCui !== '') {
+                    supplierValue.value = maybeCui;
+                    supplierDisplay.value = maybeCui;
+                }
+                syncSupplierValidity();
+            }, 140);
+        });
+
+        const handleSupplierSelect = (event) => {
+            if (event.type === 'mousedown' && typeof window.PointerEvent !== 'undefined') {
+                return;
+            }
+            const target = event.target.closest('[data-supplier-item]');
+            if (!target) return;
+            event.preventDefault();
+            applySupplierSelection({
+                cui: target.getAttribute('data-cui') || '',
+                name: target.getAttribute('data-name') || '',
+                label: target.getAttribute('data-label') || '',
+            });
+        };
+        supplierList.addEventListener('pointerdown', handleSupplierSelect);
+        supplierList.addEventListener('mousedown', handleSupplierSelect);
 
         document.querySelectorAll('[data-block]').forEach((button) => {
             button.addEventListener('click', () => {
@@ -181,7 +386,10 @@
                     return;
                 }
                 editor.focus();
-                document.execCommand('formatBlock', false, block);
+                const fallback = String(block).toLowerCase().replace(/[^a-z0-9]/g, '');
+                const primary = `<${fallback}>`;
+                document.execCommand('formatBlock', false, primary);
+                document.execCommand('formatBlock', false, fallback);
                 syncEditor();
             });
         });
@@ -209,5 +417,8 @@
             }
             syncEditor();
         });
+        editor.addEventListener('input', syncEditor);
+
+        syncSupplierValidity();
     })();
 </script>
