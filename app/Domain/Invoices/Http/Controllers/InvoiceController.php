@@ -878,7 +878,7 @@ class InvoiceController
         if (Database::tableExists('saga_products')) {
             $sagaRows = Database::fetchAll('SELECT name_key, cod_saga, stock_qty FROM saga_products');
             foreach ($sagaRows as $row) {
-                $key = (string) ($row['name_key'] ?? '');
+                $key = $this->normalizeSagaName((string) ($row['name_key'] ?? ''));
                 if ($key === '') {
                     continue;
                 }
@@ -6859,6 +6859,11 @@ class InvoiceController
     {
         $value = trim($value);
         $value = preg_replace('/\s+/', ' ', $value);
+        if (function_exists('mb_substr')) {
+            $value = (string) mb_substr($value, 0, 60, 'UTF-8');
+        } else {
+            $value = substr($value, 0, 60);
+        }
         if (function_exists('mb_strtoupper')) {
             return mb_strtoupper($value, 'UTF-8');
         }

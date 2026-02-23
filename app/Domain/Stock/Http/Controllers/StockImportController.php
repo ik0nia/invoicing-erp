@@ -264,6 +264,11 @@ class StockImportController
     {
         $value = trim($value);
         $value = preg_replace('/\s+/', ' ', $value);
+        if (function_exists('mb_substr')) {
+            $value = (string) mb_substr($value, 0, 60, 'UTF-8');
+        } else {
+            $value = substr($value, 0, 60);
+        }
         if (function_exists('mb_strtoupper')) {
             return mb_strtoupper($value, 'UTF-8');
         }
