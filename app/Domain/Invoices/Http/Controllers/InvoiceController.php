@@ -31,6 +31,8 @@ use App\Support\View;
 
 class InvoiceController
 {
+    private const FGO_DUE_DAYS = 30;
+
     private CommissionService $commissionService;
     private SagaExportService $sagaExportService;
     private InvoiceAuditService $invoiceAuditService;
@@ -2222,9 +2224,7 @@ class InvoiceController
             'PlatformaUrl' => FgoClient::platformUrl(),
         ];
 
-        if (!empty($invoice->due_date)) {
-            $payload['DataScadenta'] = $invoice->due_date;
-        }
+        $payload['DataScadenta'] = $this->fgoDueDateFromIssueDate($issueDate);
 
         $client = new FgoClient($baseUrl);
         $response = $client->post('factura/emitere', $payload);
@@ -2823,9 +2823,7 @@ class InvoiceController
             'Continut' => $content,
             'PlatformaUrl' => FgoClient::platformUrl(),
         ];
-        if (!empty($invoice->due_date)) {
-            $payload['DataScadenta'] = $invoice->due_date;
-        }
+        $payload['DataScadenta'] = $this->fgoDueDateFromIssueDate($issueDate);
 
         $client = new FgoClient($baseUrl);
         $response = $client->post('factura/emitere', $payload);
@@ -6558,6 +6556,17 @@ class InvoiceController
             || trim((string) ($invoice->fgo_series ?? '')) !== ''
             || trim((string) ($invoice->fgo_storno_number ?? '')) !== ''
             || trim((string) ($invoice->fgo_storno_series ?? '')) !== '';
+    }
+
+    private function fgoDueDateFromIssueDate(string $issueDate): string
+    {
+        $issueDate = trim($issueDate);
+        $timestamp = $issueDate !== '' ? strtotime($issueDate . ' 00:00:00') : false;
+        if ($timestamp === false) {
+            $timestamp = strtotime(date('Y-m-d') . ' 00:00:00');
+        }
+
+        return date('Y-m-d', strtotime('+' . self::FGO_DUE_DAYS . ' days', $timestamp));
     }
 
     private function packageLabelText(Package $package): string
