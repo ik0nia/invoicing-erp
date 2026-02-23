@@ -1,6 +1,7 @@
 <?php
     $number = $invoice->order_note_no ?? 0;
-    $date = $invoice->order_note_date ? date('d.m.Y', strtotime($invoice->order_note_date)) : '';
+    $displayDateRaw = trim((string) ($invoice->fgo_date ?: $invoice->order_note_date ?: $invoice->issue_date));
+    $date = $displayDateRaw !== '' ? date('d.m.Y', strtotime($displayDateRaw)) : '';
     $title = 'Nota de comanda';
 ?>
 

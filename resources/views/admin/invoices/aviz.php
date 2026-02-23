@@ -75,7 +75,8 @@
         </div>
         <div>
             <?php
-                $dateDisplay = $invoice->issue_date ? date('d.m.Y', strtotime($invoice->issue_date)) : '';
+                $displayDateRaw = trim((string) ($invoice->fgo_date ?: $invoice->issue_date));
+                $dateDisplay = $displayDateRaw !== '' ? date('d.m.Y', strtotime($displayDateRaw)) : '';
             ?>
             <h1 class="text-lg font-semibold text-slate-900">
                 ANEXA - Factura <?= htmlspecialchars($reference) ?> / DATA <?= htmlspecialchars($dateDisplay) ?>

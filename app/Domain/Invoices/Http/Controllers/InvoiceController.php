@@ -5093,13 +5093,12 @@ class InvoiceController
         $last = (int) $settings->get('order_note.last_no', 999);
         $next = $last > 0 ? $last + 1 : 1000;
 
-        $baseDate = $invoice->issue_date ?: date('Y-m-d');
+        $baseDate = $invoice->fgo_date ?: ($invoice->issue_date ?: date('Y-m-d'));
         $baseTs = strtotime($baseDate);
         if ($baseTs === false) {
             $baseTs = time();
         }
-        $daysBack = random_int(0, 15);
-        $noteDate = date('Y-m-d', strtotime('-' . $daysBack . ' days', $baseTs));
+        $noteDate = date('Y-m-d', $baseTs);
 
         Database::execute(
             'UPDATE invoices_in SET order_note_no = :no, order_note_date = :date, updated_at = :now WHERE id = :id',
