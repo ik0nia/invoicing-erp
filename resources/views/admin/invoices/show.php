@@ -4,6 +4,7 @@
     $canRefacereInvoice = !empty($canRefacereInvoice);
     $refacerePackages = is_array($refacerePackages ?? null) ? $refacerePackages : [];
     $invoiceAdjustments = is_array($invoiceAdjustments ?? null) ? $invoiceAdjustments : [];
+    $hasImportedPackages = !empty($hasImportedPackages);
     $canShowRefacereAction = $canRefacereInvoice
         && !empty($isConfirmed)
         && !empty($invoice->fgo_number)
@@ -674,7 +675,7 @@
         <div class="mt-4 space-y-3">
             <?php if (!empty($canUnconfirmPackages)): ?>
                 <div class="flex justify-end">
-                    <?php if (empty($hasFgoInvoice)): ?>
+                    <?php if (empty($hasFgoInvoice) && empty($hasImportedPackages)): ?>
                         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
@@ -686,11 +687,21 @@
                                 Anuleaza confirmarea
                             </button>
                         </form>
+                    <?php elseif (!empty($hasImportedPackages)): ?>
+                        <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                            Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
+                        </div>
                     <?php else: ?>
                         <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                             Factura FGO este emisa. Confirmarea nu mai poate fi anulata.
                         </div>
                     <?php endif; ?>
+                </div>
+            <?php elseif (!empty($hasImportedPackages)): ?>
+                <div class="flex justify-end">
+                    <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                        Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
+                    </div>
                 </div>
             <?php endif; ?>
             <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
