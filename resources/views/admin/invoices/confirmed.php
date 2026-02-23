@@ -190,6 +190,8 @@
                                     <div class="text-[11px] font-semibold text-emerald-700">Executat</div>
                                 <?php elseif ($status === 'imported'): ?>
                                     <div class="text-[11px] font-semibold text-emerald-700">Importat</div>
+                                <?php elseif (empty($row['has_fgo_invoice'])): ?>
+                                    <div class="text-[11px] font-semibold text-rose-600">Factura FGO lipsa</div>
                                 <?php elseif ($status === 'pending' || $status === 'processing'): ?>
                                     <?php if (!empty($sagaToken)): ?>
                                         <a

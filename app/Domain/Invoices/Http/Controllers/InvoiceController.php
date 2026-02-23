@@ -863,7 +863,8 @@ class InvoiceController
 
         if (!isset($rows)) {
             $rows = Database::fetchAll(
-                'SELECT p.*, i.invoice_number, i.supplier_name, i.issue_date, i.packages_confirmed_at
+                'SELECT p.*, i.invoice_number, i.supplier_name, i.issue_date, i.packages_confirmed_at,
+                        i.fgo_number, i.fgo_series, i.fgo_storno_number, i.fgo_storno_series
                  FROM packages p
                  JOIN invoices_in i ON i.id = p.invoice_in_id
                  WHERE i.packages_confirmed = 1' . $whereSupplier . '
@@ -945,6 +946,7 @@ class InvoiceController
             $row['all_saga'] = $sagaStats
                 ? ($sagaStats['line_count'] > 0 && $sagaStats['saga_count'] >= $sagaStats['line_count'])
                 : false;
+            $row['has_fgo_invoice'] = $this->invoiceRowHasFgoInvoice($row);
         }
         unset($row);
 
@@ -968,6 +970,20 @@ class InvoiceController
         $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
         if (!$packageId) {
             Response::abort(400, 'Pachet invalid.');
+        }
+        $packageRow = Database::fetchOne(
+            'SELECT p.id, i.fgo_number, i.fgo_series, i.fgo_storno_number, i.fgo_storno_series
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE p.id = :id
+             LIMIT 1',
+            ['id' => $packageId]
+        );
+        if (!$packageRow) {
+            Response::abort(400, 'Pachet invalid.');
+        }
+        if (!$this->invoiceRowHasFgoInvoice($packageRow)) {
+            Response::abort(400, 'Nu poti genera SAGA fara factura emisa in FGO.');
         }
 
         try {
@@ -1002,7 +1018,7 @@ class InvoiceController
         }
 
         $row = Database::fetchOne(
-            'SELECT p.id, p.package_no, i.packages_confirmed
+            'SELECT p.id, p.package_no, i.packages_confirmed, i.fgo_number, i.fgo_series, i.fgo_storno_number, i.fgo_storno_series
              FROM packages p
              JOIN invoices_in i ON i.id = p.invoice_in_id
              WHERE p.id = :id
@@ -1011,6 +1027,10 @@ class InvoiceController
         );
         if (!$row || !$this->packageLockService->isInvoiceLocked($row)) {
             Session::flash('error', 'Pachetul nu este confirmat.');
+            Response::redirect('/admin/pachete-confirmate');
+        }
+        if (!$this->invoiceRowHasFgoInvoice($row)) {
+            Session::flash('error', 'Nu poti genera SAGA fara factura emisa in FGO.');
             Response::redirect('/admin/pachete-confirmate');
         }
 
@@ -1049,6 +1069,20 @@ class InvoiceController
         $packageId = isset($_GET['package_id']) ? (int) $_GET['package_id'] : 0;
         if (!$packageId) {
             $this->json(['success' => false, 'message' => 'Pachet invalid.'], 400);
+        }
+        $packageRow = Database::fetchOne(
+            'SELECT p.id, i.fgo_number, i.fgo_series, i.fgo_storno_number, i.fgo_storno_series
+             FROM packages p
+             JOIN invoices_in i ON i.id = p.invoice_in_id
+             WHERE p.id = :id
+             LIMIT 1',
+            ['id' => $packageId]
+        );
+        if (!$packageRow) {
+            $this->json(['success' => false, 'message' => 'Pachet invalid.'], 400);
+        }
+        if (!$this->invoiceRowHasFgoInvoice($packageRow)) {
+            $this->json(['success' => false, 'message' => 'Nu poti genera SAGA fara factura emisa in FGO.'], 400);
         }
 
         try {
@@ -1095,6 +1129,12 @@ class InvoiceController
                 GROUP BY package_id
              ) l ON l.package_id = p.id
              WHERE i.packages_confirmed = 1
+               AND (
+                    NULLIF(TRIM(COALESCE(i.fgo_number, '')), '') IS NOT NULL
+                    OR NULLIF(TRIM(COALESCE(i.fgo_series, '')), '') IS NOT NULL
+                    OR NULLIF(TRIM(COALESCE(i.fgo_storno_number, '')), '') IS NOT NULL
+                    OR NULLIF(TRIM(COALESCE(i.fgo_storno_series, '')), '') IS NOT NULL
+               )
                AND l.line_count > 0
                AND l.saga_count = l.line_count{$statusFilter}
              ORDER BY i.packages_confirmed_at DESC, p.package_no ASC, p.id ASC"
@@ -6580,10 +6620,34 @@ class InvoiceController
 
     private function hasFgoInvoice(InvoiceIn $invoice): bool
     {
-        return trim((string) ($invoice->fgo_number ?? '')) !== ''
-            || trim((string) ($invoice->fgo_series ?? '')) !== ''
-            || trim((string) ($invoice->fgo_storno_number ?? '')) !== ''
-            || trim((string) ($invoice->fgo_storno_series ?? '')) !== '';
+        return $this->invoiceFieldsHaveFgoInvoice(
+            $invoice->fgo_number ?? null,
+            $invoice->fgo_series ?? null,
+            $invoice->fgo_storno_number ?? null,
+            $invoice->fgo_storno_series ?? null
+        );
+    }
+
+    private function invoiceRowHasFgoInvoice(array $row): bool
+    {
+        return $this->invoiceFieldsHaveFgoInvoice(
+            $row['fgo_number'] ?? null,
+            $row['fgo_series'] ?? null,
+            $row['fgo_storno_number'] ?? null,
+            $row['fgo_storno_series'] ?? null
+        );
+    }
+
+    private function invoiceFieldsHaveFgoInvoice(
+        ?string $fgoNumber,
+        ?string $fgoSeries,
+        ?string $fgoStornoNumber,
+        ?string $fgoStornoSeries
+    ): bool {
+        return trim((string) $fgoNumber) !== ''
+            || trim((string) $fgoSeries) !== ''
+            || trim((string) $fgoStornoNumber) !== ''
+            || trim((string) $fgoStornoSeries) !== '';
     }
 
     private function fgoDueDateFromIssueDate(string $issueDate): string
