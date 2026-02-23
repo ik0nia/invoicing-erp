@@ -839,6 +839,17 @@
                             Afiseaza anexa
                         </a>
                         <a
+                            href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id) ?>"
+                            target="_blank"
+                            class="inline-flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                        >
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                                <path d="M14 3v6h6" />
+                            </svg>
+                            Anexa HTML
+                        </a>
+                        <a
                             href="<?= App\Support\Url::to('admin/facturi/nota-comanda?invoice_id=' . (int) $invoice->id . '&pdf=1') ?>"
                             target="_blank"
                             class="inline-flex items-center gap-2 rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"

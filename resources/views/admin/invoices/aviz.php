@@ -10,6 +10,7 @@
     $companyEmail = trim((string) ($company['email'] ?? ''));
     $companyPhone = trim((string) ($company['telefon'] ?? ''));
     $companyLogo = trim((string) ($company['logo_data_uri'] ?? ($company['logo_url'] ?? '')));
+    $isPdfMode = !empty($pdfMode);
 ?>
 
 <style>
@@ -18,18 +19,28 @@
         line-height: 1.25;
     }
     .aviz-compact .aviz-package {
+        page-break-inside: auto;
+        break-inside: auto;
+    }
+    .aviz-compact .aviz-table-wrap {
+        overflow: visible !important;
+    }
+    .aviz-compact .aviz-table {
+        font-size: 10px;
+        line-height: 1.2;
+        width: 100%;
+        table-layout: auto !important;
+    }
+    .aviz-compact .aviz-table thead {
+        display: table-header-group;
+    }
+    .aviz-compact .aviz-table tr {
         page-break-inside: avoid;
         break-inside: avoid;
     }
-    .aviz-compact .aviz-table {
-        font-size: 11px;
-        line-height: 1.15;
-        width: 100%;
-        table-layout: fixed !important;
-    }
     .aviz-compact .aviz-table th,
     .aviz-compact .aviz-table td {
-        padding: 2px 4px;
+        padding: 2px 3px;
         vertical-align: top;
     }
     .aviz-compact .aviz-table .col-nr {
@@ -39,7 +50,12 @@
         white-space: nowrap;
         font-size: 10px;
     }
-    .aviz-compact .aviz-table .col-product { width: auto; }
+    .aviz-compact .aviz-table .col-product {
+        width: auto;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: break-word;
+    }
     .aviz-compact .aviz-table .col-qty { white-space: nowrap; text-align: right; }
     .aviz-compact .aviz-table .col-um { white-space: nowrap; text-align: center; }
     .aviz-compact .aviz-table .col-price { white-space: nowrap; text-align: right; }
@@ -53,7 +69,7 @@
     }
 </style>
 
-<div class="aviz-compact rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+<div class="aviz-compact<?= $isPdfMode ? ' aviz-pdf' : '' ?> rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
     <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-2">
         <div class="flex flex-wrap items-start gap-3">
             <?php if ($companyLogo !== ''): ?>
@@ -135,16 +151,16 @@
                         Total pachet: <strong><?= number_format($packageTotal, 2, '.', ' ') ?> RON</strong>
                     </div>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="aviz-table-wrap">
                     <table class="aviz-table w-full border border-slate-300 text-left text-xs">
                         <colgroup>
                             <col style="width: 14px">
                             <col>
-                            <col style="width: 62px">
-                            <col style="width: 40px">
-                            <col style="width: 88px">
-                            <col style="width: 96px">
-                            <col style="width: 56px">
+                            <col style="width: 54px">
+                            <col style="width: 34px">
+                            <col style="width: 78px">
+                            <col style="width: 86px">
+                            <col style="width: 48px">
                         </colgroup>
                         <thead class="bg-white text-slate-600 border-b border-slate-300">
                             <tr>
