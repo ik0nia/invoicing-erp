@@ -514,9 +514,13 @@
                     <?php else: ?>
                         <?php foreach ($packageLines as $line): ?>
                             <?php
-                                $hasSagaStock = !empty($line->cod_saga)
+                                $hasSagaMapping = !empty($line->cod_saga);
+                                $hasSagaStock = $hasSagaMapping
                                     && $line->stock_saga !== null
-                                    && (float) $line->stock_saga > (float) $line->quantity;
+                                    && (((float) $line->stock_saga) + 0.0001) >= (float) $line->quantity;
+                                $sagaBadgeClass = $hasSagaStock
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : 'bg-amber-50 text-amber-700';
                             ?>
                             <div
                                 class="cursor-move rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
@@ -527,8 +531,8 @@
                             >
                                 <div class="flex items-start justify-between gap-2">
                                     <div class="flex items-start gap-2">
-                                        <?php if ($hasSagaStock): ?>
-                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                        <?php if ($hasSagaMapping): ?>
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $sagaBadgeClass ?>">
                                                 ✔
                                             </span>
                                         <?php endif; ?>
@@ -592,9 +596,13 @@
                 <div class="mt-3 space-y-2 min-h-[40px]">
                     <?php foreach ($unassigned as $line): ?>
                     <?php
-                        $hasSagaStock = !empty($line->cod_saga)
+                        $hasSagaMapping = !empty($line->cod_saga);
+                        $hasSagaStock = $hasSagaMapping
                             && $line->stock_saga !== null
-                            && (float) $line->stock_saga > (float) $line->quantity;
+                            && (((float) $line->stock_saga) + 0.0001) >= (float) $line->quantity;
+                        $sagaBadgeClass = $hasSagaStock
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-amber-50 text-amber-700';
                     ?>
                     <div
                         class="cursor-move rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
@@ -605,8 +613,8 @@
                     >
                         <div class="flex items-start justify-between gap-2">
                             <div class="flex items-start gap-2">
-                                <?php if ($hasSagaStock): ?>
-                                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                <?php if ($hasSagaMapping): ?>
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $sagaBadgeClass ?>">
                                         ✔
                                     </span>
                                 <?php endif; ?>

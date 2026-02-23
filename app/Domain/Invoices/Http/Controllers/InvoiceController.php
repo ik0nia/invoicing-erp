@@ -938,7 +938,9 @@ class InvoiceController
             $key = $this->normalizeSagaName($label);
             $saga = $sagaProducts[$key] ?? null;
             $qty = $packageQtyMap[(int) ($row['id'] ?? 0)] ?? 0.0;
-            $row['stock_ok'] = $saga && $saga['cod_saga'] !== '' && $saga['stock_qty'] > $qty;
+            $row['stock_ok'] = $saga
+                && $saga['cod_saga'] !== ''
+                && (((float) $saga['stock_qty']) + 0.0001) >= $qty;
             $sagaStats = $packageSagaMap[(int) ($row['id'] ?? 0)] ?? null;
             $row['all_saga'] = $sagaStats
                 ? ($sagaStats['line_count'] > 0 && $sagaStats['saga_count'] >= $sagaStats['line_count'])
@@ -6860,9 +6862,9 @@ class InvoiceController
         $value = trim($value);
         $value = preg_replace('/\s+/', ' ', $value);
         if (function_exists('mb_substr')) {
-            $value = (string) mb_substr($value, 0, 60, 'UTF-8');
+            $value = (string) mb_substr($value, 0, 55, 'UTF-8');
         } else {
-            $value = substr($value, 0, 60);
+            $value = substr($value, 0, 55);
         }
         if (function_exists('mb_strtoupper')) {
             return mb_strtoupper($value, 'UTF-8');
