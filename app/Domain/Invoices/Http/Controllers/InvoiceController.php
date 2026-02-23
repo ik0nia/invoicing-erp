@@ -99,7 +99,8 @@ class InvoiceController
             $selectedClientName = '';
             $isAdmin = $user ? $user->isAdmin() : false;
             $canRenamePackages = $this->canRenamePackages($user) && empty($invoice->packages_confirmed);
-            $canUnconfirmPackages = $this->canUnconfirmPackages($user);
+            $hasImportedPackages = $this->invoiceHasImportedPackages($invoice->id);
+            $canUnconfirmPackages = $this->canUnconfirmPackages($user) && !$hasImportedPackages;
             $canDownloadSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
             $hasFgoInvoice = $this->hasFgoInvoice($invoice);
             $invoiceLocked = $this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed]);
@@ -226,6 +227,7 @@ class InvoiceController
                 'isAdmin' => $isAdmin,
                 'canRenamePackages' => $canRenamePackages,
                 'canUnconfirmPackages' => $canUnconfirmPackages,
+                'hasImportedPackages' => $hasImportedPackages,
                 'hasFgoInvoice' => $hasFgoInvoice,
                 'clientLocked' => $clientLocked,
                 'canDownloadSaga' => $canDownloadSaga,
@@ -1938,6 +1940,9 @@ class InvoiceController
         }
 
         $invoice = $this->guardInvoice($invoiceId);
+        $invoiceLock = $this->packageLockService->isInvoiceLocked([
+            'packages_confirmed' => $invoice->packages_confirmed,
+        ]);
 
         if ($action === 'generate') {
             if ($invoiceLock) {
@@ -1995,6 +2000,11 @@ class InvoiceController
 
             if (!$invoiceLock) {
                 Session::flash('status', 'Pachetele nu sunt confirmate.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+
+            if ($this->invoiceHasImportedPackages($invoiceId)) {
+                Session::flash('error', 'Nu poti anula confirmarea: exista pachete deja importate in SAGA.');
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
 
@@ -6538,6 +6548,23 @@ class InvoiceController
 
         UserPermission::ensureTable();
         return UserPermission::userHas($user->id, UserPermission::RENAME_PACKAGES);
+    }
+
+    private function invoiceHasImportedPackages(int $invoiceId): bool
+    {
+        if ($invoiceId <= 0 || !Database::tableExists('packages') || !Database::columnExists('packages', 'saga_status')) {
+            return false;
+        }
+
+        $count = (int) Database::fetchValue(
+            "SELECT COUNT(*)
+             FROM packages
+             WHERE invoice_in_id = :invoice
+               AND LOWER(TRIM(COALESCE(saga_status, ''))) IN ('imported', 'executed')",
+            ['invoice' => $invoiceId]
+        );
+
+        return $count > 0;
     }
 
     private function canUnconfirmPackages(?\App\Domain\Users\Models\User $user): bool
