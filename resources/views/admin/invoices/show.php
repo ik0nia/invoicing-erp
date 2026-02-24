@@ -297,10 +297,56 @@
 </div>
 
 <div id="drag-drop" class="mt-8 rounded-lg border border-slate-300 bg-white p-6 shadow-sm">
-    <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>
-    <p class="mt-2 text-sm text-slate-600">
-        Seteaza numarul de pachete pe fiecare cota TVA si muta produsele prin drag &amp; drop.
-    </p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <h2 class="text-lg font-semibold text-slate-900">Configurare pachete</h2>
+            <p class="mt-2 text-sm text-slate-600">
+                Seteaza numarul de pachete pe fiecare cota TVA si muta produsele prin drag &amp; drop.
+            </p>
+        </div>
+        <?php if (!empty($packages)): ?>
+            <div class="flex flex-wrap items-center justify-end gap-2">
+                <?php if (empty($isConfirmed)): ?>
+                    <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                        <?= App\Support\Csrf::input() ?>
+                        <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                        <input type="hidden" name="action" value="confirm">
+                        <button class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                            Confirma pachetele
+                        </button>
+                    </form>
+                <?php else: ?>
+                    <?php if (!empty($canUnconfirmPackages)): ?>
+                        <?php if (empty($hasFgoInvoice) && empty($hasImportedPackages)): ?>
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
+                                <?= App\Support\Csrf::input() ?>
+                                <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <input type="hidden" name="action" value="unconfirm">
+                                <button
+                                    class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                                    onclick="return confirm('Sigur doresti anularea confirmarii pachetelor?')"
+                                >
+                                    Anuleaza confirmarea
+                                </button>
+                            </form>
+                        <?php elseif (!empty($hasImportedPackages)): ?>
+                            <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                                Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
+                            </div>
+                        <?php else: ?>
+                            <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                                Factura FGO este emisa. Confirmarea nu mai poate fi anulata.
+                            </div>
+                        <?php endif; ?>
+                    <?php elseif (!empty($hasImportedPackages)): ?>
+                        <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                            Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+    </div>
     <?php if (!empty($isConfirmed)): ?>
         <div class="mt-3 text-sm font-semibold text-amber-700">
             Pachetele sunt confirmate si nu mai pot fi mutate.
@@ -728,50 +774,8 @@
         </div>
     <?php endif; ?>
 
-    <?php if (empty($isConfirmed) && !empty($packages)): ?>
-        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>" class="mt-6 flex justify-end">
-            <?= App\Support\Csrf::input() ?>
-            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-            <input type="hidden" name="action" value="confirm">
-            <button class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Confirma pachetele
-            </button>
-        </form>
-    <?php endif; ?>
-
     <?php if (!empty($isConfirmed) && !empty($packages)): ?>
         <div class="mt-4 space-y-3">
-            <?php if (!empty($canUnconfirmPackages)): ?>
-                <div class="flex justify-end">
-                    <?php if (empty($hasFgoInvoice) && empty($hasImportedPackages)): ?>
-                        <form method="POST" action="<?= App\Support\Url::to('admin/facturi/pachete') ?>">
-                            <?= App\Support\Csrf::input() ?>
-                            <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                            <input type="hidden" name="action" value="unconfirm">
-                            <button
-                                class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
-                                onclick="return confirm('Sigur doresti anularea confirmarii pachetelor?')"
-                            >
-                                Anuleaza confirmarea
-                            </button>
-                        </form>
-                    <?php elseif (!empty($hasImportedPackages)): ?>
-                        <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                            Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
-                        </div>
-                    <?php else: ?>
-                        <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                            Factura FGO este emisa. Confirmarea nu mai poate fi anulata.
-                        </div>
-                    <?php endif; ?>
-                </div>
-            <?php elseif (!empty($hasImportedPackages)): ?>
-                <div class="flex justify-end">
-                    <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                        Exista pachete importate in SAGA. Confirmarea nu poate fi anulata.
-                    </div>
-                </div>
-            <?php endif; ?>
             <?php if (empty($invoice->fgo_number) && empty($invoice->fgo_series)): ?>
                 <div class="flex justify-end">
                     <form method="POST" action="<?= App\Support\Url::to('admin/facturi/genereaza') ?>">
