@@ -135,11 +135,11 @@
             <?php if (!empty($canViewPaymentDetails)): ?>
                 <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Incasare client">
                     <?php if ($status && $status['client_total'] !== null): ?>
-                        <div class="inline-flex items-center gap-1 whitespace-nowrap text-xs">
-                            <span class="font-medium text-slate-900 whitespace-nowrap">
+                        <div class="text-xs">
+                            <div class="font-medium whitespace-nowrap text-slate-900">
                                 <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
-                            </span>
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['client_class'] ?>">
+                            </div>
+                            <span class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['client_class'] ?>">
                                 <?= htmlspecialchars($status['client_label']) ?>
                             </span>
                         </div>
@@ -149,11 +149,11 @@
                 </td>
                 <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Plata furnizor">
                     <?php if ($status): ?>
-                        <div class="inline-flex items-center gap-1 whitespace-nowrap text-xs">
-                            <span class="font-medium text-slate-900 whitespace-nowrap">
+                        <div class="text-xs">
+                            <div class="font-medium whitespace-nowrap text-slate-900">
                                 <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
-                            </span>
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['supplier_class'] ?>">
+                            </div>
+                            <span class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['supplier_class'] ?>">
                                 <?= htmlspecialchars($status['supplier_label']) ?>
                             </span>
                         </div>

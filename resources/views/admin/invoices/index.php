@@ -419,6 +419,7 @@
         #invoice-table-body td {
             padding-top: 0.65rem !important;
             padding-bottom: 0.65rem !important;
+            vertical-align: middle !important;
         }
         .invoice-table .date-col {
             padding-left: 0.35rem !important;
