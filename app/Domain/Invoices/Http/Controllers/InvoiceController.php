@@ -3835,9 +3835,16 @@ class InvoiceController
                 continue;
             }
 
+            $effectiveNet = ($line->cost_line_total !== null)
+                ? (float) $line->cost_line_total
+                : (float) $line->line_total;
+            $effectiveGross = ($line->cost_line_total_vat !== null)
+                ? (float) $line->cost_line_total_vat
+                : (float) $line->line_total_vat;
+
             $stats[$line->package_id]['line_count']++;
-            $stats[$line->package_id]['total'] += $line->line_total;
-            $stats[$line->package_id]['total_vat'] += $line->line_total_vat;
+            $stats[$line->package_id]['total'] += $effectiveNet;
+            $stats[$line->package_id]['total_vat'] += $effectiveGross;
         }
 
         return $stats;
