@@ -896,7 +896,7 @@
                         <form method="POST" action="<?= App\Support\Url::to('admin/facturi/print') ?>">
                             <?= App\Support\Csrf::input() ?>
                             <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
-                            <button class="inline-flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700">
+                            <button class="inline-flex items-center gap-2 rounded border border-emerald-400 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <path d="M12 16v-8M12 16l-3-3M12 16l3-3" />
                                     <path d="M20 16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2" />
@@ -907,7 +907,7 @@
                         <a
                             href="<?= App\Support\Url::to('admin/facturi/anexa?invoice_id=' . (int) $invoice->id . '&pdf=1') ?>"
                             target="_blank"
-                            class="inline-flex items-center gap-2 rounded border border-emerald-600 bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                            class="inline-flex items-center gap-2 rounded border border-emerald-400 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                         >
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M12 16v-8M12 16l-3-3M12 16l3-3" />
