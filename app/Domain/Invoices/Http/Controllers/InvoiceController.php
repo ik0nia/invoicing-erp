@@ -826,7 +826,7 @@ class InvoiceController
             'telefon' => (string) $settings->get('company.telefon', ''),
         ];
 
-        Response::view('admin/invoices/print_situation', [
+        $viewData = [
             'invoices' => $invoices,
             'invoiceStatuses' => $invoiceStatuses,
             'clientFinals' => $clientFinals,
@@ -834,7 +834,38 @@ class InvoiceController
             'company' => $company,
             'printedAt' => date('d.m.Y H:i'),
             'titleText' => $titleText,
-        ], null);
+        ];
+
+        if ($this->wantsPdfDocument()) {
+            $filenameParts = ['situatie', date('d-m-Y')];
+            if (($filters['supplier_cui'] ?? '') !== '') {
+                $supplierName = $this->resolveSupplierName((string) $filters['supplier_cui'], $allInvoices);
+                $slug = $this->slugify($supplierName);
+                if ($slug !== '') {
+                    $filenameParts[] = $slug;
+                }
+            } elseif (($filters['client_cui'] ?? '') !== '') {
+                $clientName = $this->resolveClientName((string) $filters['client_cui'], $clientNameMap);
+                $slug = $this->slugify($clientName);
+                if ($slug !== '') {
+                    $filenameParts[] = $slug;
+                }
+            }
+            $filenamePrefix = implode('-', $filenameParts);
+
+            $html = \App\Support\View::render('admin/invoices/print_situation', $viewData, null);
+            $pdfBinary = (new \App\Domain\Contracts\Services\ContractPdfService())->generatePdfBinaryFromHtml($html, $filenamePrefix);
+            if ($pdfBinary !== '') {
+                $filename = $filenamePrefix . '.pdf';
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Content-Length: ' . strlen($pdfBinary));
+                echo $pdfBinary;
+                exit;
+            }
+        }
+
+        Response::view('admin/invoices/print_situation', $viewData, null);
     }
 
     public function confirmedPackages(): void
@@ -5251,6 +5282,18 @@ class InvoiceController
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $value);
 
         return $safe !== '' ? $safe : 'document';
+    }
+
+    private function slugify(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = str_replace(
+            ['ă', 'â', 'î', 'ș', 'ş', 'ț', 'ţ'],
+            ['a', 'a', 'i', 's', 's', 't', 't'],
+            $value
+        );
+        $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? '';
+        return trim($value, '-');
     }
 
     private function fgoRef(object $invoice): string

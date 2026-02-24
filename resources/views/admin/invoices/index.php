@@ -51,10 +51,14 @@
     });
     $exportUrl = App\Support\Url::to('admin/facturi/export');
     $printUrl = App\Support\Url::to('admin/facturi/print-situatie');
+    $pdfUrl = App\Support\Url::to('admin/facturi/print-situatie');
     if (!empty($filterParams)) {
         $query = http_build_query($filterParams);
         $exportUrl .= '?' . $query;
         $printUrl .= '?' . $query;
+        $pdfUrl .= '?' . $query . '&pdf=1';
+    } else {
+        $pdfUrl .= '?pdf=1';
     }
     $paginationParams = $filterParams;
     $paginationParams['per_page'] = (int) ($pagination['per_page'] ?? 25);
@@ -296,6 +300,16 @@
             class="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
         >
             Print situatie
+        </a>
+        <a
+            href="<?= htmlspecialchars($pdfUrl) ?>"
+            class="inline-flex items-center gap-1 rounded border border-emerald-400 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+        >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 16v-8M12 16l-3-3M12 16l3-3" />
+                <path d="M20 16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2" />
+            </svg>
+            Situatie PDF
         </a>
         <a
             href="<?= htmlspecialchars($exportUrl) ?>"
