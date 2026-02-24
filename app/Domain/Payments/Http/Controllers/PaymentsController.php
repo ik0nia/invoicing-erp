@@ -6,9 +6,11 @@ use App\Domain\Companies\Models\Company;
 use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Partners\Models\Commission;
 use App\Domain\Partners\Models\Partner;
+use App\Domain\Payments\Services\BankImportService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
+use App\Support\Csrf;
 use App\Support\Database;
 use App\Support\Response;
 use App\Support\Session;
@@ -37,6 +39,123 @@ class PaymentsController
         Response::view('admin/payments/in/index', [
             'payments' => $rows,
         ]);
+    }
+
+    public function importBankStatement(): void
+    {
+        Auth::requireAdminWithoutOperator();
+
+        $service = new BankImportService();
+
+        if (!$this->ensurePaymentTables() || !$service->ensureTable()) {
+            Session::flash('error', 'Nu pot initializa tabelele necesare.');
+            Response::redirect('/admin/incasari');
+        }
+
+        $proposals = [];
+        $importError = null;
+        $importInfo = null;
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            Csrf::verify();
+
+            $file = $_FILES['csv_file'] ?? null;
+            if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $importError = 'Nu a fost incarcat niciun fisier CSV.';
+            } else {
+                $content = @file_get_contents($file['tmp_name']);
+                if ($content === false || trim($content) === '') {
+                    $importError = 'Fisierul CSV este gol sau nu poate fi citit.';
+                } else {
+                    $rows = $service->parseCsv($content);
+                    $normalized = array_map([$service, 'normalizeRow'], $rows);
+                    $incoming = $service->filterIncoming($normalized);
+                    $service->storeRows($incoming);
+                    $proposals = $service->buildProposals($incoming);
+
+                    $newCount = count(array_filter($proposals, static fn($p) => $p['status'] === 'new'));
+                    $importInfo = count($incoming) . ' tranzactii incasari gasite, din care ' . $newCount . ' sunt noi.';
+                }
+            }
+        }
+
+        Response::view('admin/payments/in/import_bank', [
+            'proposals'   => $proposals,
+            'importError' => $importError,
+            'importInfo'  => $importInfo,
+        ]);
+    }
+
+    public function executeBankProposal(): void
+    {
+        Auth::requireAdminWithoutOperator();
+        Csrf::verify();
+
+        if (!$this->ensurePaymentTables()) {
+            Session::flash('error', 'Nu pot initializa tabelele.');
+            Response::redirect('/admin/incasari/import-extras');
+        }
+
+        $service = new BankImportService();
+        if (!$service->ensureTable()) {
+            Session::flash('error', 'Tabela bank_transactions lipseste.');
+            Response::redirect('/admin/incasari/import-extras');
+        }
+
+        $rowHash   = trim((string) ($_POST['row_hash'] ?? ''));
+        $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
+        $paidAt    = trim((string) ($_POST['paid_at'] ?? ''));
+        $amount    = (float) str_replace(',', '.', (string) ($_POST['amount'] ?? '0'));
+        $notes     = trim((string) ($_POST['notes'] ?? ''));
+
+        if ($rowHash === '' || $clientCui === '' || $paidAt === '' || $amount <= 0) {
+            Session::flash('error', 'Date incomplete pentru executarea incasarii.');
+            Response::redirect('/admin/incasari/import-extras');
+        }
+
+        $tx = Database::fetchOne(
+            'SELECT id, payment_in_id FROM bank_transactions WHERE row_hash = :h LIMIT 1',
+            ['h' => $rowHash]
+        );
+        if (!$tx) {
+            Session::flash('error', 'Tranzactia bancara nu a fost gasita.');
+            Response::redirect('/admin/incasari/import-extras');
+        }
+        if (!empty($tx['payment_in_id'])) {
+            Session::flash('error', 'Tranzactia a fost deja procesata.');
+            Response::redirect('/admin/incasari/import-extras');
+        }
+
+        $clientCompany = Company::findByCui($clientCui);
+        if ($clientCompany) {
+            $clientName = $clientCompany->denumire;
+        } else {
+            $partner = Partner::findByCui($clientCui);
+            $clientName = $partner ? $partner->denumire : $clientCui;
+        }
+
+        Database::execute(
+            'INSERT INTO payments_in (client_cui, client_name, amount, paid_at, notes, created_at)
+             VALUES (:client_cui, :client_name, :amount, :paid_at, :notes, :created_at)',
+            [
+                'client_cui'  => $clientCui,
+                'client_name' => $clientName,
+                'amount'      => $amount,
+                'paid_at'     => $paidAt,
+                'notes'       => $notes,
+                'created_at'  => date('Y-m-d H:i:s'),
+            ]
+        );
+
+        $paymentInId = (int) Database::lastInsertId();
+
+        Database::execute(
+            'UPDATE bank_transactions SET payment_in_id = :pid WHERE row_hash = :h',
+            ['pid' => $paymentInId, 'h' => $rowHash]
+        );
+
+        Session::flash('status', 'Incasare creata. Poti aloca facturile acum.');
+        Response::redirect('/admin/incasari/adauga?client_cui=' . $clientCui . '&payment_id=' . $paymentInId);
     }
 
     public function deleteIn(): void
