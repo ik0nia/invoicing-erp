@@ -5234,11 +5234,9 @@ class InvoiceController
 
     private function fgoRef(object $invoice): string
     {
-        $series = trim((string) ($invoice->fgo_series ?? ''));
         $number = trim((string) ($invoice->fgo_number ?? ''));
-        $ref = $series . $number;
 
-        return $ref !== '' ? $this->safeFileName($ref) : (string) ($invoice->id ?? 'doc');
+        return $number !== '' ? $this->safeFileName($number) : (string) ($invoice->id ?? 'doc');
     }
 
     private function imageDataUriFromPath(string $absolutePath): string
