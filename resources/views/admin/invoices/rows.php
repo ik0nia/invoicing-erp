@@ -39,13 +39,24 @@
             if ($clientDate === '' && !empty($invoice->fgo_number) && !empty($invoice->packages_confirmed_at)) {
                 $clientDate = date('Y-m-d', strtotime((string) $invoice->packages_confirmed_at));
             }
+            $supplierDateRaw = trim((string) ($invoice->issue_date ?? ''));
+            $supplierDateLabel = '—';
+            if ($supplierDateRaw !== '') {
+                $supplierTs = strtotime($supplierDateRaw);
+                $supplierDateLabel = $supplierTs !== false ? date('d.m.Y', $supplierTs) : $supplierDateRaw;
+            }
+            $clientDateLabel = '—';
+            if ($clientDate !== '') {
+                $clientTs = strtotime($clientDate);
+                $clientDateLabel = $clientTs !== false ? date('d.m.Y', $clientTs) : $clientDate;
+            }
             $rowUrl = App\Support\Url::to('admin/facturi') . '?invoice_id=' . (int) $invoice->id;
             $createdAt = (string) ($invoice->created_at ?? '');
             $createdLabel = '—';
             if ($createdAt !== '') {
                 $createdTs = strtotime($createdAt);
                 if ($createdTs !== false) {
-                    $createdLabel = date('d.m.y H:i', $createdTs);
+                    $createdLabel = date('d.m.Y H:i', $createdTs);
                 }
             }
         ?>
@@ -86,7 +97,7 @@
                 </div>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura furnizor">
-                <?= htmlspecialchars($invoice->issue_date) ?>
+                <?= htmlspecialchars($supplierDateLabel) ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Total factura furnizor">
                 <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
@@ -108,7 +119,7 @@
                 <?php endif; ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura client">
-                <?= htmlspecialchars($clientDate !== '' ? $clientDate : '—') ?>
+                <?= htmlspecialchars($clientDateLabel) ?>
             </td>
             <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Total factura client">
                 <?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?>
