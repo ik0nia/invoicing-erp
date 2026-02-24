@@ -307,15 +307,15 @@
 </form>
 
 <div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-    <table class="w-full text-left text-sm md:table">
+    <table class="invoice-table w-full text-left text-sm md:table">
         <thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-600">
             <tr>
-                <th class="px-2 py-2">Creat</th>
+                <th class="px-2 py-2 date-col">Creat</th>
                 <th class="px-2 py-2">Furnizor</th>
                 <th class="px-2 py-2 whitespace-normal">
                     <span class="inline-block leading-tight">Factura<br>furnizor</span>
                 </th>
-                <th class="px-2 py-2 whitespace-normal">
+                <th class="px-2 py-2 whitespace-normal date-col">
                     <span class="inline-block leading-tight">Data factura<br>furnizor</span>
                 </th>
                 <th class="px-2 py-2 whitespace-normal">
@@ -327,7 +327,7 @@
                 <th class="px-2 py-2 whitespace-normal">
                     <span class="inline-block leading-tight">Factura<br>client</span>
                 </th>
-                <th class="px-2 py-2 whitespace-normal">
+                <th class="px-2 py-2 whitespace-normal date-col">
                     <span class="inline-block leading-tight">Data factura<br>client</span>
                 </th>
                 <th class="px-2 py-2 whitespace-normal">
@@ -419,6 +419,10 @@
         #invoice-table-body td {
             padding-top: 0.65rem !important;
             padding-bottom: 0.65rem !important;
+        }
+        .invoice-table .date-col {
+            padding-left: 0.35rem !important;
+            padding-right: 0.35rem !important;
         }
     }
 

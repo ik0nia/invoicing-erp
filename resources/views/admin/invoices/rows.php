@@ -61,11 +61,11 @@
             }
         ?>
         <tr class="<?= $rowClass ?> invoice-row cursor-pointer <?= $hoverClass ?>" data-url="<?= htmlspecialchars($rowUrl) ?>">
-            <td class="px-2 py-2 text-xs text-slate-500 whitespace-nowrap block md:table-cell" data-label="Creat">
+            <td class="px-2 py-2 text-xs text-slate-500 whitespace-nowrap date-col block md:table-cell" data-label="Creat">
                 <?= htmlspecialchars($createdLabel) ?>
             </td>
             <td class="px-2 py-2 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
-                <span class="block md:max-w-[160px] md:truncate" title="<?= htmlspecialchars($invoice->supplier_name) ?>">
+                <span class="block">
                     <?= htmlspecialchars($invoice->supplier_name) ?>
                 </span>
             </td>
@@ -98,7 +98,7 @@
                     <?php endif; ?>
                 </div>
             </td>
-            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Data factura furnizor">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap date-col block md:table-cell" data-label="Data factura furnizor">
                 <?= htmlspecialchars($supplierDateLabel) ?>
             </td>
             <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Total factura furnizor">
@@ -107,13 +107,12 @@
             <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Client final">
                 <?php if ($hasStorno): ?>
                     <span
-                        class="block md:max-w-[170px] md:truncate font-semibold text-slate-400 line-through"
-                        title="<?= htmlspecialchars($clientLabel) ?>"
+                        class="block font-semibold text-slate-400 line-through"
                     >
                         <?= htmlspecialchars($clientLabel) ?>
                     </span>
                 <?php else: ?>
-                    <span class="block md:max-w-[170px] md:truncate font-semibold text-slate-900" title="<?= htmlspecialchars($clientLabel) ?>">
+                    <span class="block font-semibold text-slate-900">
                         <?= htmlspecialchars($clientLabel) ?>
                     </span>
                 <?php endif; ?>
@@ -127,7 +126,7 @@
                     <?= htmlspecialchars($fgoNumber !== '' ? $fgoNumber : '—') ?>
                 <?php endif; ?>
             </td>
-            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Data factura client">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap date-col block md:table-cell" data-label="Data factura client">
                 <?= htmlspecialchars($clientDateLabel) ?>
             </td>
             <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Total factura client">
