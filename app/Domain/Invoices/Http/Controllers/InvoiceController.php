@@ -959,6 +959,27 @@ class InvoiceController
         }
         unset($row);
 
+        $autoTriggered = false;
+        foreach ($rows as &$row) {
+            $status = (string) ($row['saga_status'] ?? '');
+            if (
+                !empty($row['all_saga'])
+                && !empty($row['has_fgo_invoice'])
+                && !in_array($status, ['pending', 'processing', 'executed', 'imported'], true)
+            ) {
+                if (!$autoTriggered) {
+                    $this->sagaStatusService->ensureSagaStatusColumn();
+                    $autoTriggered = true;
+                }
+                $packageId = (int) ($row['id'] ?? 0);
+                if ($packageId > 0) {
+                    $this->sagaStatusService->markProcessing($packageId);
+                    $row['saga_status'] = 'processing';
+                }
+            }
+        }
+        unset($row);
+
         Response::view('admin/invoices/confirmed', [
             'packages' => $rows,
             'totals' => $totals,
