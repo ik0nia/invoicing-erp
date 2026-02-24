@@ -20,6 +20,7 @@ use App\Domain\Tools\Http\Controllers\PdfToolsController;
 
 $router->get('/admin/setari', [SettingsController::class, 'edit']);
 $router->post('/admin/setari', [SettingsController::class, 'update']);
+$router->get('/admin/setari/fgo/nomenclator-judete', [SettingsController::class, 'fgoNomenclatorJudete']);
 $router->post('/admin/setari/demo-generate', [SettingsController::class, 'generateDemo']);
 $router->post('/admin/setari/demo-reset', [SettingsController::class, 'resetDemo']);
 $router->get('/admin/utile/prelucrare-pdf', [PdfToolsController::class, 'index']);

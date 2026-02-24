@@ -36,6 +36,45 @@ class FgoClient
         return $scheme . '://' . $host . $base;
     }
 
+    public function get(string $endpoint): array
+    {
+        $url = $this->baseUrl . '/' . ltrim($endpoint, '/');
+        $ch = curl_init($url);
+
+        if ($ch === false) {
+            return [
+                'Success' => false,
+                'Message' => 'Nu pot initializa conexiunea catre FGO.',
+            ];
+        }
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+
+        $response = curl_exec($ch);
+        $error = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($response === false) {
+            return [
+                'Success' => false,
+                'Message' => 'Eroare conectare FGO: ' . ($error ?: 'necunoscuta'),
+            ];
+        }
+
+        $decoded = json_decode($response, true);
+        if (!is_array($decoded)) {
+            return [
+                'Success' => false,
+                'Message' => 'Raspuns FGO invalid (HTTP ' . $status . ').',
+            ];
+        }
+
+        return $decoded;
+    }
+
     public function post(string $endpoint, array $payload): array
     {
         $url = $this->baseUrl . '/' . ltrim($endpoint, '/');

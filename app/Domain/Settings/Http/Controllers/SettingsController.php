@@ -7,6 +7,7 @@ use App\Domain\Invoices\Models\InvoiceIn;
 use App\Domain\Invoices\Models\InvoiceInLine;
 use App\Domain\Invoices\Models\Package;
 use App\Domain\Partners\Models\Commission;
+use App\Domain\Invoices\Services\FgoClient;
 use App\Domain\Settings\Services\SettingsService;
 use App\Support\CompanyName;
 use App\Support\Auth;
@@ -868,5 +869,22 @@ class SettingsController
         }
 
         return $releases;
+    }
+
+    public function fgoNomenclatorJudete(): void
+    {
+        Auth::requireSuperAdmin();
+
+        $baseUrl = trim((string) $this->settings->get('fgo.base_url', ''));
+        if ($baseUrl === '') {
+            $baseUrl = 'https://api.fgo.ro/v1';
+        }
+
+        $client = new FgoClient($baseUrl);
+        $data = $client->get('nomenclator/judet');
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
     }
 }
