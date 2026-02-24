@@ -312,16 +312,34 @@
             <tr>
                 <th class="px-2 py-2">Creat</th>
                 <th class="px-2 py-2">Furnizor</th>
-                <th class="px-2 py-2">Factura furnizor</th>
-                <th class="px-2 py-2">Data factura furnizor</th>
-                <th class="px-2 py-2">Total factura furnizor</th>
-                <th class="px-2 py-2">Client final</th>
-                <th class="px-2 py-2">Factura client</th>
-                <th class="px-2 py-2">Data factura client</th>
-                <th class="px-2 py-2">Total factura client</th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Factura<br>furnizor</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Data factura<br>furnizor</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Total factura<br>furnizor</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Client<br>final</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Factura<br>client</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Data factura<br>client</span>
+                </th>
+                <th class="px-2 py-2 whitespace-normal">
+                    <span class="inline-block leading-tight">Total factura<br>client</span>
+                </th>
                 <?php if (!empty($canViewPaymentDetails)): ?>
-                    <th class="px-2 py-2">Incasare client</th>
-                    <th class="px-2 py-2">Plata furnizor</th>
+                    <th class="px-2 py-2 whitespace-normal">
+                        <span class="inline-block leading-tight">Incasare<br>client</span>
+                    </th>
+                    <th class="px-2 py-2 whitespace-normal">
+                        <span class="inline-block leading-tight">Plata<br>furnizor</span>
+                    </th>
                 <?php endif; ?>
             </tr>
         </thead>
@@ -397,6 +415,13 @@
 <?php endif; ?>
 
 <style>
+    @media (min-width: 769px) {
+        #invoice-table-body td {
+            padding-top: 0.65rem !important;
+            padding-bottom: 0.65rem !important;
+        }
+    }
+
     @media (max-width: 768px) {
         table thead {
             display: none;
