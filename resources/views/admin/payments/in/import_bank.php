@@ -78,6 +78,8 @@
                             $isNew       = ($p['status'] === 'new');
                             $isProcessed = ($p['status'] === 'processed');
                             $client      = $p['client'] ?? null;
+                            // Sari randurile fara client potrivit
+                            if ($client === null) continue;
                             $rowClass    = $isNew
                                 ? 'border-b border-emerald-100 bg-emerald-50'
                                 : 'border-b border-slate-100';
@@ -115,9 +117,9 @@
                                 <?php endif; ?>
                             </td>
                             <td class="px-3 py-2 text-right">
-                                <?php if ($isNew && !$isProcessed): ?>
+                                <?php if (!$isProcessed): ?>
                                     <?php
-                                        $notesDefault = trim($p['details']);
+                                        $notesDefault  = trim($p['details']);
                                         $formClientCui = $client ? $client['cui'] : $p['counterpart_cui'];
                                     ?>
                                     <form method="POST" action="<?= App\Support\Url::to('admin/incasari/import-extras/executa') ?>">
@@ -129,16 +131,14 @@
 
                                         <div class="flex flex-wrap items-end gap-2">
                                             <div>
-                                                <label class="mb-0.5 block text-[10px] font-semibold text-slate-500">Client CUI</label>
-                                                <input
-                                                    type="text"
-                                                    name="client_cui"
-                                                    value="<?= htmlspecialchars($formClientCui) ?>"
-                                                    placeholder="CUI client"
-                                                    class="w-28 rounded border border-slate-300 px-2 py-1 text-xs text-slate-800"
-                                                    required
-                                                >
+                                                <label class="mb-0.5 block text-[10px] font-semibold text-slate-500">Client</label>
+                                                <div class="text-xs font-semibold text-blue-700 mb-0.5"><?= htmlspecialchars($client['name']) ?></div>
                                             </div>
+                                            <div>
+                                                <label class="mb-0.5 block text-[10px] font-semibold text-slate-500">Suma</label>
+                                                <div class="text-xs font-semibold text-slate-700 mb-0.5"><?= number_format($p['amount'], 2, '.', ' ') ?> <?= htmlspecialchars($p['currency']) ?></div>
+                                            </div>
+                                            <input type="hidden" name="client_cui" value="<?= htmlspecialchars($formClientCui) ?>">
                                             <button
                                                 class="rounded border border-emerald-500 bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
                                             >
@@ -146,6 +146,8 @@
                                             </button>
                                         </div>
                                     </form>
+                                <?php else: ?>
+                                    <span class="text-xs text-slate-400">—</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
