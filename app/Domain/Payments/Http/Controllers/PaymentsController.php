@@ -10,7 +10,6 @@ use App\Domain\Payments\Services\BankImportService;
 use App\Domain\Settings\Services\SettingsService;
 use App\Domain\Users\Models\UserSupplierAccess;
 use App\Support\Auth;
-use App\Support\Csrf;
 use App\Support\Database;
 use App\Support\Response;
 use App\Support\Session;
@@ -57,8 +56,6 @@ class PaymentsController
         $importInfo = null;
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            Csrf::verify();
-
             $file = $_FILES['csv_file'] ?? null;
             if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                 $importError = 'Nu a fost incarcat niciun fisier CSV.';
@@ -89,7 +86,6 @@ class PaymentsController
     public function executeBankProposal(): void
     {
         Auth::requireAdminWithoutOperator();
-        Csrf::verify();
 
         if (!$this->ensurePaymentTables()) {
             Session::flash('error', 'Nu pot initializa tabelele.');
