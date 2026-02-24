@@ -1,7 +1,5 @@
 <?php
     $title = 'Pachete confirmate';
-    $canImportSaga = $canImportSaga ?? false;
-    $sagaDebug = $sagaDebug ?? null;
 ?>
 
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -24,79 +22,6 @@
         Nu exista pachete confirmate.
     </div>
 <?php else: ?>
-    <?php if ($canImportSaga): ?>
-        <form
-            method="POST"
-            action="<?= App\Support\Url::to('admin/pachete-confirmate/import-saga') ?>"
-            enctype="multipart/form-data"
-            class="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-        >
-            <?= App\Support\Csrf::input() ?>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <div class="text-sm font-semibold text-slate-700">Import CSV SAGA</div>
-                    <p class="mt-1 text-xs text-slate-500">CSV cu coloane: denumire, pret_vanz (tva optional).</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                    <input
-                        type="file"
-                        name="saga_csv"
-                        accept=".csv"
-                        class="text-sm text-slate-600"
-                        required
-                    >
-                    <button class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                        Importa CSV
-                    </button>
-                </div>
-            </div>
-        </form>
-    <?php endif; ?>
-
-    <?php if (!empty($sagaDebug)): ?>
-        <details class="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-600">
-            <summary class="cursor-pointer text-sm font-semibold text-slate-700">Debug comparare CSV</summary>
-            <div class="mt-2 space-y-2">
-                <div>
-                    <span class="font-semibold">Coloane detectate:</span>
-                    <?= htmlspecialchars(implode(', ', (array) ($sagaDebug['header'] ?? []))) ?>
-                </div>
-                <div>
-                    <span class="font-semibold">Chei CSV (primele <?= count($sagaDebug['saga_keys'] ?? []) ?> din <?= (int) ($sagaDebug['saga_keys_count'] ?? 0) ?>):</span>
-                    <?= htmlspecialchars(implode(' | ', (array) ($sagaDebug['saga_keys'] ?? []))) ?>
-                </div>
-            </div>
-            <div class="mt-3 overflow-x-auto rounded border border-slate-200">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-50 text-slate-600">
-                        <tr>
-                            <th class="px-3 py-2">Pachet</th>
-                            <th class="px-3 py-2">#</th>
-                            <th class="px-3 py-2">Cheie comparata</th>
-                            <th class="px-3 py-2">Gasit</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ((array) ($sagaDebug['packages'] ?? []) as $row): ?>
-                            <tr class="border-t border-slate-100">
-                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($row['label'] ?? '')) ?></td>
-                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($row['package_no'] ?? '')) ?></td>
-                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($row['match_key'] ?? '')) ?></td>
-                                <td class="px-3 py-2">
-                                    <?php if (!empty($row['matched'])): ?>
-                                        <span class="font-semibold text-emerald-600">DA</span>
-                                    <?php else: ?>
-                                        <span class="text-rose-600">NU</span>
-                                    <?php endif; ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </details>
-    <?php endif; ?>
-
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
         <div>Pachetele gata pentru productie sunt marcate cu violet.</div>
         <label class="flex items-center gap-2">
