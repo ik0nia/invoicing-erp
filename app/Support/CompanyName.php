@@ -31,11 +31,7 @@ class CompanyName
         $judet = preg_replace('/^municipiul\s+/iu', '', $judet);
         $judet = trim($judet);
 
-        $judet = str_replace(
-            ['ș', 'Ș', 'ş', 'Ş', 'ț', 'Ț', 'ţ', 'Ţ', 'ă', 'Ă', 'â', 'Â', 'î', 'Î'],
-            ['s', 'S', 's', 'S', 't', 'T', 't', 'T', 'a', 'A', 'a', 'A', 'i', 'I'],
-            $judet
-        );
+        $judet = str_replace(['București', 'Bucuresti'], 'Bucuresti', $judet);
 
         return $judet;
     }
