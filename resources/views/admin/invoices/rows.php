@@ -61,13 +61,15 @@
             }
         ?>
         <tr class="<?= $rowClass ?> invoice-row cursor-pointer <?= $hoverClass ?>" data-url="<?= htmlspecialchars($rowUrl) ?>">
-            <td class="px-3 py-3 text-xs text-slate-500 block md:table-cell" data-label="Creat">
+            <td class="px-2 py-2 text-xs text-slate-500 whitespace-nowrap block md:table-cell" data-label="Creat">
                 <?= htmlspecialchars($createdLabel) ?>
             </td>
-            <td class="px-3 py-3 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
-                <?= htmlspecialchars($invoice->supplier_name) ?>
+            <td class="px-2 py-2 font-medium text-slate-900 block md:table-cell" data-label="Furnizor">
+                <span class="block md:max-w-[160px] md:truncate" title="<?= htmlspecialchars($invoice->supplier_name) ?>">
+                    <?= htmlspecialchars($invoice->supplier_name) ?>
+                </span>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura furnizor">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Factura furnizor">
                 <div class="inline-flex items-center gap-2">
                     <?php if (empty($invoice->xml_path) && !empty($canShowRequestAlert)): ?>
                         <?php
@@ -96,20 +98,27 @@
                     <?php endif; ?>
                 </div>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura furnizor">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Data factura furnizor">
                 <?= htmlspecialchars($supplierDateLabel) ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Total factura furnizor">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Total factura furnizor">
                 <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Client final">
+            <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Client final">
                 <?php if ($hasStorno): ?>
-                    <span class="font-semibold text-slate-400 line-through"><?= htmlspecialchars($clientLabel) ?></span>
+                    <span
+                        class="block md:max-w-[170px] md:truncate font-semibold text-slate-400 line-through"
+                        title="<?= htmlspecialchars($clientLabel) ?>"
+                    >
+                        <?= htmlspecialchars($clientLabel) ?>
+                    </span>
                 <?php else: ?>
-                    <span class="font-semibold text-slate-900"><?= htmlspecialchars($clientLabel) ?></span>
+                    <span class="block md:max-w-[170px] md:truncate font-semibold text-slate-900" title="<?= htmlspecialchars($clientLabel) ?>">
+                        <?= htmlspecialchars($clientLabel) ?>
+                    </span>
                 <?php endif; ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Factura client">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Factura client">
                 <?php if ($fgoNumber !== '' && $fgoLink !== ''): ?>
                     <a href="<?= htmlspecialchars($fgoLink) ?>" target="_blank" rel="noopener" class="text-blue-700 hover:text-blue-800">
                         <?= htmlspecialchars($fgoNumber) ?>
@@ -118,32 +127,36 @@
                     <?= htmlspecialchars($fgoNumber !== '' ? $fgoNumber : '—') ?>
                 <?php endif; ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Data factura client">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Data factura client">
                 <?= htmlspecialchars($clientDateLabel) ?>
             </td>
-            <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Total factura client">
+            <td class="px-2 py-2 text-slate-600 whitespace-nowrap block md:table-cell" data-label="Total factura client">
                 <?= $clientTotal !== null ? number_format($clientTotal, 2, '.', ' ') : '—' ?>
             </td>
             <?php if (!empty($canViewPaymentDetails)): ?>
-                <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Incasare client">
+                <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Incasare client">
                     <?php if ($status && $status['client_total'] !== null): ?>
-                        <div class="font-medium text-slate-900">
-                            <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
-                        </div>
-                        <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['client_class'] ?>">
-                            <?= htmlspecialchars($status['client_label']) ?>
+                        <div class="inline-flex items-center gap-1 whitespace-nowrap text-xs">
+                            <span class="font-medium text-slate-900 whitespace-nowrap">
+                                <?= number_format($status['collected'], 2, '.', ' ') ?> / <?= number_format($status['client_total'], 2, '.', ' ') ?>
+                            </span>
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['client_class'] ?>">
+                                <?= htmlspecialchars($status['client_label']) ?>
+                            </span>
                         </div>
                     <?php else: ?>
                         <div class="text-xs text-slate-500">Client nesetat</div>
                     <?php endif; ?>
                 </td>
-                <td class="px-3 py-3 text-slate-600 block md:table-cell" data-label="Plata furnizor">
+                <td class="px-2 py-2 text-slate-600 block md:table-cell" data-label="Plata furnizor">
                     <?php if ($status): ?>
-                        <div class="font-medium text-slate-900">
-                            <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
-                        </div>
-                        <div class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold <?= $status['supplier_class'] ?>">
-                            <?= htmlspecialchars($status['supplier_label']) ?>
+                        <div class="inline-flex items-center gap-1 whitespace-nowrap text-xs">
+                            <span class="font-medium text-slate-900 whitespace-nowrap">
+                                <?= number_format($status['paid'], 2, '.', ' ') ?> / <?= number_format($invoice->total_with_vat, 2, '.', ' ') ?>
+                            </span>
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold <?= $status['supplier_class'] ?>">
+                                <?= htmlspecialchars($status['supplier_label']) ?>
+                            </span>
                         </div>
                     <?php else: ?>
                         <div class="text-xs text-slate-500">—</div>

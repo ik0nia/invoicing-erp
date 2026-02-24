@@ -306,22 +306,22 @@
     </div>
 </form>
 
-<div class="mt-6 rounded-lg border border-slate-200 bg-white shadow-sm">
+<div class="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
     <table class="w-full text-left text-sm md:table">
-        <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
+        <thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-600">
             <tr>
-                <th class="px-3 py-3">Creat</th>
-                <th class="px-3 py-3">Furnizor</th>
-                <th class="px-3 py-3">Factura furnizor</th>
-                <th class="px-3 py-3">Data factura furnizor</th>
-                <th class="px-3 py-3">Total factura furnizor</th>
-                <th class="px-3 py-3">Client final</th>
-                <th class="px-3 py-3">Factura client</th>
-                <th class="px-3 py-3">Data factura client</th>
-                <th class="px-3 py-3">Total factura client</th>
+                <th class="px-2 py-2">Creat</th>
+                <th class="px-2 py-2">Furnizor</th>
+                <th class="px-2 py-2">Factura furnizor</th>
+                <th class="px-2 py-2">Data factura furnizor</th>
+                <th class="px-2 py-2">Total factura furnizor</th>
+                <th class="px-2 py-2">Client final</th>
+                <th class="px-2 py-2">Factura client</th>
+                <th class="px-2 py-2">Data factura client</th>
+                <th class="px-2 py-2">Total factura client</th>
                 <?php if (!empty($canViewPaymentDetails)): ?>
-                    <th class="px-3 py-3">Incasare client</th>
-                    <th class="px-3 py-3">Plata furnizor</th>
+                    <th class="px-2 py-2">Incasare client</th>
+                    <th class="px-2 py-2">Plata furnizor</th>
                 <?php endif; ?>
             </tr>
         </thead>
