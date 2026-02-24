@@ -284,7 +284,7 @@ class BankImportService
             );
 
             return true;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             return false;
         }
     }
