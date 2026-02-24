@@ -808,10 +808,12 @@ class InvoiceController
         $settings = new SettingsService();
         $logoPath = $settings->get('branding.logo_path');
         $logoUrl = null;
+        $logoDataUri = null;
         if ($logoPath) {
             $absolutePath = BASE_PATH . '/' . ltrim($logoPath, '/');
             if (file_exists($absolutePath)) {
                 $logoUrl = \App\Support\Url::asset($logoPath);
+                $logoDataUri = $this->imageDataUriFromPath($absolutePath) ?: null;
             }
         }
         $company = [
@@ -831,9 +833,11 @@ class InvoiceController
             'invoiceStatuses' => $invoiceStatuses,
             'clientFinals' => $clientFinals,
             'logoUrl' => $logoUrl,
+            'logoDataUri' => $logoDataUri,
             'company' => $company,
             'printedAt' => date('d.m.Y H:i'),
             'titleText' => $titleText,
+            'pdfMode' => false,
         ];
 
         if ($this->wantsPdfDocument()) {
@@ -853,6 +857,7 @@ class InvoiceController
             }
             $filenamePrefix = implode('-', $filenameParts);
 
+            $viewData['pdfMode'] = true;
             $html = \App\Support\View::render('admin/invoices/print_situation', $viewData, null);
             $pdfBinary = (new \App\Domain\Contracts\Services\ContractPdfService())->generatePdfBinaryFromHtml($html, $filenamePrefix);
             if ($pdfBinary !== '') {

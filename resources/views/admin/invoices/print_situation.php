@@ -38,8 +38,13 @@
 <div class="page">
     <div class="header">
         <div class="header-left">
-            <?php if (!empty($logoUrl)): ?>
-                <img src="<?= htmlspecialchars($logoUrl) ?>" alt="Logo" class="logo">
+            <?php
+                $logoSrc = !empty($pdfMode) && !empty($logoDataUri)
+                    ? $logoDataUri
+                    : ($logoUrl ?? '');
+            ?>
+            <?php if ($logoSrc !== ''): ?>
+                <img src="<?= htmlspecialchars($logoSrc) ?>" alt="Logo" class="logo">
             <?php endif; ?>
             <div class="company">
                 <div><strong><?= htmlspecialchars($company['denumire'] ?? '') ?></strong></div>
@@ -69,10 +74,12 @@
     <div class="title"><?= htmlspecialchars($titleText ?? 'Situatie facturi') ?></div>
     <div class="subtitle">Situatie la data <?= htmlspecialchars($printedAt ?? '') ?></div>
 
+    <?php if (empty($pdfMode)): ?>
     <div class="actions no-print">
         <button class="btn" onclick="window.print()">Printeaza</button>
         <button class="btn secondary" onclick="window.print()">Salveaza PDF</button>
     </div>
+    <?php endif; ?>
 
     <table>
         <thead>
