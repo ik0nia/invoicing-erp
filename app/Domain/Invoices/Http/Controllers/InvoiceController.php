@@ -1485,7 +1485,7 @@ class InvoiceController
         $this->renderInvoicePrintDocument(
             'admin/invoices/aviz',
             $viewData,
-            'anexa-factura-' . (int) $invoice->id
+            'anexa-' . $this->fgoRef($invoice)
         );
     }
 
@@ -2531,7 +2531,7 @@ class InvoiceController
         }
 
         if ($link !== '') {
-            $filename = 'factura_' . $this->safeFileName(trim($invoice->fgo_series . '_' . $invoice->fgo_number)) . '.pdf';
+            $filename = 'factura-' . $this->fgoRef($invoice) . '.pdf';
             $content = $this->fetchRemoteFile($link);
             if ($content !== null) {
                 header('Content-Type: application/pdf');
@@ -5230,6 +5230,15 @@ class InvoiceController
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $value);
 
         return $safe !== '' ? $safe : 'document';
+    }
+
+    private function fgoRef(object $invoice): string
+    {
+        $series = trim((string) ($invoice->fgo_series ?? ''));
+        $number = trim((string) ($invoice->fgo_number ?? ''));
+        $ref = $series . $number;
+
+        return $ref !== '' ? $this->safeFileName($ref) : (string) ($invoice->id ?? 'doc');
     }
 
     private function imageDataUriFromPath(string $absolutePath): string
