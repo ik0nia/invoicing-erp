@@ -20,4 +20,16 @@ class CompanyName
 
         return strtoupper($name);
     }
+
+    public static function normalizeJudet(string $value): string
+    {
+        $judet = trim($value);
+        if ($judet === '') {
+            return '';
+        }
+
+        $judet = preg_replace('/^municipiul\s+/iu', '', $judet);
+
+        return trim($judet);
+    }
 }

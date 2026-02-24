@@ -176,7 +176,7 @@ class CompanyController
             'nr_reg_comertului' => (string) ($data['numar_reg_com'] ?? ''),
             'adresa' => $adresa,
             'localitate' => $localitate,
-            'judet' => (string) ($data['judet'] ?? ''),
+            'judet' => CompanyName::normalizeJudet((string) ($data['judet'] ?? '')),
             'telefon' => (string) ($data['telefon'] ?? ''),
             'platitor_tva' => $platitorTva,
             'activ' => $radiata === null ? null : !$radiata,
