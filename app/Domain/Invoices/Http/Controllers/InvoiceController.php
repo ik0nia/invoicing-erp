@@ -146,6 +146,10 @@ class InvoiceController
                 // Discount invoices are sold at product price; configured client commission is ignored.
                 $commissionPercent = 0.0;
             }
+            if ($invoice->commission_percent !== null) {
+                // Persisted invoice commission (including manual overrides) takes precedence.
+                $commissionPercent = (float) $invoice->commission_percent;
+            }
 
             $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
             $collectedTotal = 0.0;
@@ -208,6 +212,10 @@ class InvoiceController
                 ? $this->buildInvoiceAdjustmentCandidates($invoice->id, $packages, $linesByPackage, $packageStats)
                 : [];
             $invoiceAdjustments = $this->loadInvoiceAdjustments($invoice->id, 10);
+            $invoicePriceAdjustForm = Session::pull('invoice_price_adjust_form', []);
+            if (!is_array($invoicePriceAdjustForm)) {
+                $invoicePriceAdjustForm = [];
+            }
 
             Response::view('admin/invoices/show', [
                 'invoice' => $invoice,
@@ -247,6 +255,7 @@ class InvoiceController
                 'refacerePackages' => $refacerePackages,
                 'invoiceAdjustments' => $invoiceAdjustments,
                 'hasDiscountPricing' => $hasDiscountPricing,
+                'invoicePriceAdjustForm' => $invoicePriceAdjustForm,
             ]);
         }
 
@@ -1965,6 +1974,137 @@ class InvoiceController
         exit;
     }
 
+    public function applyTotalsAdjustment(): void
+    {
+        $this->requireInvoiceRole();
+
+        $invoiceId = isset($_POST['invoice_id']) ? (int) $_POST['invoice_id'] : 0;
+        if (!$invoiceId) {
+            Response::redirect('/admin/facturi');
+        }
+
+        if (!$this->ensureInvoiceTables()) {
+            Session::flash('error', 'Nu pot crea tabelele pentru facturi.');
+            Response::redirect('/admin/facturi');
+        }
+
+        $rawTargetNet = trim((string) ($_POST['target_total_without_vat'] ?? ''));
+        $rawTargetGross = trim((string) ($_POST['target_total_with_vat'] ?? ''));
+        Session::flash('invoice_price_adjust_form', [
+            'target_total_without_vat' => $rawTargetNet,
+            'target_total_with_vat' => $rawTargetGross,
+        ]);
+
+        $targetNet = $rawTargetNet !== '' ? $this->parseNumber($rawTargetNet) : null;
+        $targetGross = $rawTargetGross !== '' ? $this->parseNumber($rawTargetGross) : null;
+
+        if (($rawTargetNet !== '' && $targetNet === null) || ($rawTargetGross !== '' && $targetGross === null)) {
+            Session::flash('error', 'Valorile ajustarii trebuie sa fie numere valide.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+        if ($targetNet === null && $targetGross === null) {
+            Session::flash('error', 'Completeaza cel putin Total fara TVA sau Total cu TVA.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+        if (($targetNet !== null && $targetNet < 0.0) || ($targetGross !== null && $targetGross < 0.0)) {
+            Session::flash('error', 'Valorile ajustarii nu pot fi negative.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $invoice = $this->guardInvoice($invoiceId);
+        if ($this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed])) {
+            Session::flash('error', 'Ajustarea este disponibila doar inainte de confirmarea pachetelor.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+        if ($this->hasFgoInvoice($invoice)) {
+            Session::flash('error', 'Nu poti ajusta factura dupa emiterea in FGO.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $lines = InvoiceInLine::forInvoice($invoiceId);
+        $packages = Package::forInvoice($invoiceId);
+        if (empty($lines) || empty($packages)) {
+            Session::flash('error', 'Factura nu are suficiente date pentru ajustare.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $targetNetCents = $targetNet !== null ? (int) round($targetNet * 100) : null;
+        $targetGrossCents = $targetGross !== null ? (int) round($targetGross * 100) : null;
+
+        $adjustment = $this->buildAdjustedLinePricing($lines, $targetNetCents, $targetGrossCents);
+        if (!$adjustment['ok']) {
+            Session::flash('error', (string) ($adjustment['error'] ?? 'Nu am putut aplica ajustarea.'));
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $pdo = Database::pdo();
+        $now = date('Y-m-d H:i:s');
+        $updateLine = $pdo->prepare(
+            'UPDATE invoice_in_lines
+             SET unit_price = :unit_price,
+                 line_total = :line_total,
+                 line_total_vat = :line_total_vat
+             WHERE id = :id AND invoice_in_id = :invoice'
+        );
+
+        $pdo->beginTransaction();
+        try {
+            foreach ((array) ($adjustment['lines'] ?? []) as $lineRow) {
+                $updateLine->execute([
+                    'unit_price' => (float) ($lineRow['unit_price'] ?? 0.0),
+                    'line_total' => (float) ($lineRow['line_total'] ?? 0.0),
+                    'line_total_vat' => (float) ($lineRow['line_total_vat'] ?? 0.0),
+                    'id' => (int) ($lineRow['id'] ?? 0),
+                    'invoice' => $invoiceId,
+                ]);
+            }
+
+            $totalWithoutVat = round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2);
+            $totalWithVat = round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2);
+            $totalVat = round($totalWithVat - $totalWithoutVat, 2);
+
+            Database::execute(
+                'UPDATE invoices_in
+                 SET total_without_vat = :without_vat,
+                     total_vat = :vat,
+                     total_with_vat = :with_vat,
+                     commission_percent = :commission,
+                     updated_at = :updated_at
+                 WHERE id = :id',
+                [
+                    'without_vat' => $totalWithoutVat,
+                    'vat' => $totalVat,
+                    'with_vat' => $totalWithVat,
+                    'commission' => 0.0,
+                    'updated_at' => $now,
+                    'id' => $invoiceId,
+                ]
+            );
+
+            $pdo->commit();
+        } catch (\Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            Session::flash('error', 'Nu am putut aplica ajustarea facturii.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        Audit::record('invoice.manual_totals_adjusted', 'invoice_in', $invoiceId, [
+            'target_total_without_vat' => $targetNet !== null ? round($targetNet, 2) : null,
+            'target_total_with_vat' => $targetGross !== null ? round($targetGross, 2) : null,
+            'applied_total_without_vat' => round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2),
+            'applied_total_with_vat' => round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2),
+        ]);
+
+        Session::flash('invoice_price_adjust_form', [
+            'target_total_without_vat' => number_format(round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2), 2, '.', ''),
+            'target_total_with_vat' => number_format(round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2), 2, '.', ''),
+        ]);
+        Session::flash('status', 'Ajustarile facturii au fost aplicate pe toate pozitiile.');
+        Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+    }
+
     public function packages(): void
     {
         $this->requireInvoiceRole();
@@ -2204,12 +2344,16 @@ class InvoiceController
         if ($hasDiscountPricing) {
             $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $packageGrossTotal);
         } else {
-            $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
-            if (!$commission) {
-                Session::flash('error', 'Nu exista comision pentru acest client.');
-                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+            if ($invoice->commission_percent !== null) {
+                $commissionPercent = (float) $invoice->commission_percent;
+            } else {
+                $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
+                if (!$commission) {
+                    Session::flash('error', 'Nu exista comision pentru acest client.');
+                    Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#client-select');
+                }
+                $commissionPercent = (float) $commission->commission;
             }
-            $commissionPercent = (float) $commission->commission;
         }
 
         Database::execute(
@@ -5529,6 +5673,340 @@ class InvoiceController
         }
 
         return $value;
+    }
+
+    private function buildAdjustedLinePricing(array $lines, ?int $targetNetCents, ?int $targetGrossCents): array
+    {
+        $items = [];
+        $currentNetCents = 0;
+        $currentGrossCents = 0;
+
+        foreach ($lines as $line) {
+            if (!$line instanceof InvoiceInLine) {
+                continue;
+            }
+            $factor = 1.0 + ((float) ($line->tax_percent ?? 0.0) / 100.0);
+            $netCents = (int) round(((float) ($line->line_total ?? 0.0)) * 100);
+            $grossCents = $this->lineGrossCentsFromNetCents($netCents, $factor);
+
+            $items[] = [
+                'id' => (int) $line->id,
+                'qty' => (float) ($line->quantity ?? 0.0),
+                'tax_percent' => (float) ($line->tax_percent ?? 0.0),
+                'factor' => $factor,
+                'base_net_cents' => $netCents,
+                'net_cents' => $netCents,
+                'unit_price' => (float) ($line->unit_price ?? 0.0),
+            ];
+
+            $currentNetCents += $netCents;
+            $currentGrossCents += $grossCents;
+        }
+
+        if (empty($items)) {
+            return ['ok' => false, 'error' => 'Factura nu are pozitii de ajustat.'];
+        }
+
+        if ($targetNetCents !== null && $currentNetCents === 0 && $targetNetCents !== 0) {
+            return ['ok' => false, 'error' => 'Nu se poate ajusta totalul fara TVA pe o factura fara valoare.'];
+        }
+        if ($targetGrossCents !== null && $currentGrossCents === 0 && $targetGrossCents !== 0) {
+            return ['ok' => false, 'error' => 'Nu se poate ajusta totalul cu TVA pe o factura fara valoare.'];
+        }
+
+        $scale = 1.0;
+        if ($targetNetCents !== null && $currentNetCents !== 0) {
+            $scale = $targetNetCents / $currentNetCents;
+        } elseif ($targetGrossCents !== null && $currentGrossCents !== 0) {
+            $scale = $targetGrossCents / $currentGrossCents;
+        }
+
+        foreach ($items as $index => $item) {
+            $scaled = (int) round(((int) $item['base_net_cents']) * $scale);
+            if ((int) $item['base_net_cents'] >= 0 && $scaled < 0) {
+                $scaled = 0;
+            }
+            $items[$index]['net_cents'] = $scaled;
+        }
+
+        if ($targetNetCents !== null && !$this->rebalanceNetCents($items, $targetNetCents)) {
+            return ['ok' => false, 'error' => 'Nu am putut distribui ajustarea fara TVA pe toate pozitiile.'];
+        }
+
+        if ($targetGrossCents !== null) {
+            $keepNetFixed = $targetNetCents !== null;
+            if (!$this->rebalanceGrossCents($items, $targetGrossCents, $keepNetFixed)) {
+                if ($keepNetFixed) {
+                    return ['ok' => false, 'error' => 'Nu pot atinge simultan totalul fara TVA si totalul cu TVA pentru cotele TVA curente.'];
+                }
+                return ['ok' => false, 'error' => 'Nu am putut atinge totalul cu TVA cerut.'];
+            }
+        }
+
+        $finalNetCents = $this->sumNetCents($items);
+        $finalGrossCents = $this->sumGrossCents($items);
+
+        if ($targetNetCents !== null && $finalNetCents !== $targetNetCents) {
+            return ['ok' => false, 'error' => 'Nu am putut aplica exact totalul fara TVA cerut.'];
+        }
+        if ($targetGrossCents !== null && $finalGrossCents !== $targetGrossCents) {
+            return ['ok' => false, 'error' => 'Nu am putut aplica exact totalul cu TVA cerut.'];
+        }
+
+        $updatedLines = [];
+        foreach ($items as $item) {
+            $net = round(((int) $item['net_cents']) / 100, 2);
+            $gross = round($this->lineGrossCentsFromNetCents((int) $item['net_cents'], (float) $item['factor']) / 100, 2);
+            $qty = (float) ($item['qty'] ?? 0.0);
+            $unitPrice = $qty > 0.000001
+                ? round($net / $qty, 4)
+                : (float) ($item['unit_price'] ?? 0.0);
+
+            $updatedLines[] = [
+                'id' => (int) $item['id'],
+                'unit_price' => $unitPrice,
+                'line_total' => $net,
+                'line_total_vat' => $gross,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'lines' => $updatedLines,
+            'total_net_cents' => $finalNetCents,
+            'total_gross_cents' => $finalGrossCents,
+        ];
+    }
+
+    private function rebalanceNetCents(array &$items, int $targetNetCents): bool
+    {
+        $diff = $targetNetCents - $this->sumNetCents($items);
+        if ($diff === 0) {
+            return true;
+        }
+
+        $indices = array_keys($items);
+        usort($indices, function (int $left, int $right) use ($items): int {
+            $leftWeight = abs((int) ($items[$left]['base_net_cents'] ?? 0));
+            $rightWeight = abs((int) ($items[$right]['base_net_cents'] ?? 0));
+            if ($leftWeight === $rightWeight) {
+                return $left <=> $right;
+            }
+
+            return $rightWeight <=> $leftWeight;
+        });
+
+        if (empty($indices)) {
+            return false;
+        }
+
+        $safety = 0;
+        $maxIterations = max(1000, abs($diff) * 5);
+        while ($diff !== 0 && $safety < $maxIterations) {
+            $changed = false;
+            foreach ($indices as $index) {
+                if ($diff === 0) {
+                    break;
+                }
+
+                if ($diff > 0) {
+                    $items[$index]['net_cents'] = (int) ($items[$index]['net_cents'] ?? 0) + 1;
+                    $diff--;
+                    $changed = true;
+                    continue;
+                }
+
+                if (!$this->canDecreaseNetCents($items[$index])) {
+                    continue;
+                }
+
+                $items[$index]['net_cents'] = (int) ($items[$index]['net_cents'] ?? 0) - 1;
+                $diff++;
+                $changed = true;
+            }
+
+            if (!$changed) {
+                break;
+            }
+            $safety++;
+        }
+
+        return $diff === 0;
+    }
+
+    private function rebalanceGrossCents(array &$items, int $targetGrossCents, bool $keepNetFixed): bool
+    {
+        $diff = $targetGrossCents - $this->sumGrossCents($items);
+        if ($diff === 0) {
+            return true;
+        }
+
+        $safety = 0;
+        $maxIterations = max(2000, abs($diff) * 12);
+
+        while ($diff !== 0 && $safety < $maxIterations) {
+            if ($keepNetFixed) {
+                $pair = $this->chooseGrossPairAdjustment($items, $diff);
+                if ($pair === null) {
+                    return false;
+                }
+                $incIndex = (int) ($pair['inc_index'] ?? -1);
+                $decIndex = (int) ($pair['dec_index'] ?? -1);
+                if ($incIndex < 0 || $decIndex < 0 || !isset($items[$incIndex], $items[$decIndex])) {
+                    return false;
+                }
+                $items[$incIndex]['net_cents'] = (int) ($items[$incIndex]['net_cents'] ?? 0) + 1;
+                $items[$decIndex]['net_cents'] = (int) ($items[$decIndex]['net_cents'] ?? 0) - 1;
+            } else {
+                $index = $this->chooseGrossSingleAdjustmentIndex($items, $diff);
+                if ($index === null || !isset($items[$index])) {
+                    return false;
+                }
+                if ($diff > 0) {
+                    $items[$index]['net_cents'] = (int) ($items[$index]['net_cents'] ?? 0) + 1;
+                } else {
+                    if (!$this->canDecreaseNetCents($items[$index])) {
+                        return false;
+                    }
+                    $items[$index]['net_cents'] = (int) ($items[$index]['net_cents'] ?? 0) - 1;
+                }
+            }
+
+            $newDiff = $targetGrossCents - $this->sumGrossCents($items);
+            if ($newDiff === $diff) {
+                return false;
+            }
+            $diff = $newDiff;
+            $safety++;
+        }
+
+        return $diff === 0;
+    }
+
+    private function chooseGrossSingleAdjustmentIndex(array $items, int $diff): ?int
+    {
+        $bestIndex = null;
+        $bestScore = null;
+        $bestDelta = null;
+
+        foreach ($items as $index => $item) {
+            if ($diff < 0 && !$this->canDecreaseNetCents($item)) {
+                continue;
+            }
+
+            $delta = $this->grossDeltaForCentChange($item, $diff > 0 ? 1 : -1);
+            if (($diff > 0 && $delta <= 0) || ($diff < 0 && $delta >= 0)) {
+                continue;
+            }
+
+            $score = abs($diff - $delta);
+            if (
+                $bestScore === null
+                || $score < $bestScore
+                || ($score === $bestScore && $bestDelta !== null && abs($delta) > abs($bestDelta))
+            ) {
+                $bestScore = $score;
+                $bestDelta = $delta;
+                $bestIndex = (int) $index;
+            }
+        }
+
+        return $bestIndex;
+    }
+
+    private function chooseGrossPairAdjustment(array $items, int $diff): ?array
+    {
+        $best = null;
+        $bestScore = null;
+        $bestDelta = null;
+
+        foreach ($items as $incIndex => $incItem) {
+            $incDelta = $this->grossDeltaForCentChange($incItem, 1);
+            if ($incDelta <= 0) {
+                continue;
+            }
+
+            foreach ($items as $decIndex => $decItem) {
+                if ($incIndex === $decIndex || !$this->canDecreaseNetCents($decItem)) {
+                    continue;
+                }
+
+                $decDelta = $this->grossDeltaForCentChange($decItem, -1);
+                if ($decDelta >= 0) {
+                    continue;
+                }
+
+                $pairDelta = $incDelta + $decDelta;
+                if (($diff > 0 && $pairDelta <= 0) || ($diff < 0 && $pairDelta >= 0)) {
+                    continue;
+                }
+
+                $score = abs($diff - $pairDelta);
+                if (
+                    $bestScore === null
+                    || $score < $bestScore
+                    || ($score === $bestScore && $bestDelta !== null && abs($pairDelta) > abs($bestDelta))
+                ) {
+                    $bestScore = $score;
+                    $bestDelta = $pairDelta;
+                    $best = [
+                        'inc_index' => (int) $incIndex,
+                        'dec_index' => (int) $decIndex,
+                    ];
+                }
+            }
+        }
+
+        return $best;
+    }
+
+    private function canDecreaseNetCents(array $item): bool
+    {
+        $current = (int) ($item['net_cents'] ?? 0);
+        $base = (int) ($item['base_net_cents'] ?? 0);
+        if ($base >= 0) {
+            return $current > 0;
+        }
+
+        return true;
+    }
+
+    private function grossDeltaForCentChange(array $item, int $netChangeCents): int
+    {
+        $currentNet = (int) ($item['net_cents'] ?? 0);
+        $factor = (float) ($item['factor'] ?? 1.0);
+        $currentGross = $this->lineGrossCentsFromNetCents($currentNet, $factor);
+        $newGross = $this->lineGrossCentsFromNetCents($currentNet + $netChangeCents, $factor);
+
+        return $newGross - $currentGross;
+    }
+
+    private function lineGrossCentsFromNetCents(int $netCents, float $factor): int
+    {
+        return (int) round($netCents * $factor);
+    }
+
+    private function sumNetCents(array $items): int
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            $total += (int) ($item['net_cents'] ?? 0);
+        }
+
+        return $total;
+    }
+
+    private function sumGrossCents(array $items): int
+    {
+        $total = 0;
+        foreach ($items as $item) {
+            $total += $this->lineGrossCentsFromNetCents(
+                (int) ($item['net_cents'] ?? 0),
+                (float) ($item['factor'] ?? 1.0)
+            );
+        }
+
+        return $total;
     }
 
     private function parseNumber(mixed $value): ?float

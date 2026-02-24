@@ -113,6 +113,7 @@ $router->get('/admin/facturi/nota-comanda', [InvoiceController::class, 'showOrde
 $router->get('/admin/facturi/import', [InvoiceController::class, 'showImport']);
 $router->post('/admin/facturi/import', [InvoiceController::class, 'import']);
 $router->post('/admin/facturi/pachete', [InvoiceController::class, 'packages']);
+$router->post('/admin/facturi/ajustare-totaluri', [InvoiceController::class, 'applyTotalsAdjustment']);
 $router->post('/admin/facturi/muta-linie', [InvoiceController::class, 'moveLine']);
 $router->post('/admin/facturi/split-linie', [InvoiceController::class, 'splitLine']);
 $router->post('/admin/facturi/genereaza', [InvoiceController::class, 'generateInvoice']);
