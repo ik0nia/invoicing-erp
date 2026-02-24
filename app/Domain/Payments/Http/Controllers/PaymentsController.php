@@ -87,71 +87,24 @@ class PaymentsController
     {
         Auth::requireAdminWithoutOperator();
 
-        if (!$this->ensurePaymentTables()) {
-            Session::flash('error', 'Nu pot initializa tabelele.');
-            Response::redirect('/admin/incasari/import-extras');
-        }
-
-        $service = new BankImportService();
-        if (!$service->ensureTable()) {
-            Session::flash('error', 'Tabela bank_transactions lipseste.');
-            Response::redirect('/admin/incasari/import-extras');
-        }
-
         $rowHash   = trim((string) ($_POST['row_hash'] ?? ''));
         $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
         $paidAt    = trim((string) ($_POST['paid_at'] ?? ''));
-        $amount    = (float) str_replace(',', '.', (string) ($_POST['amount'] ?? '0'));
+        $amount    = trim((string) ($_POST['amount'] ?? ''));
         $notes     = trim((string) ($_POST['notes'] ?? ''));
 
-        if ($rowHash === '' || $clientCui === '' || $paidAt === '' || $amount <= 0) {
+        if ($rowHash === '' || $clientCui === '' || $paidAt === '') {
             Session::flash('error', 'Date incomplete pentru executarea incasarii.');
             Response::redirect('/admin/incasari/import-extras');
         }
 
-        $tx = Database::fetchOne(
-            'SELECT id, payment_in_id FROM bank_transactions WHERE row_hash = :h LIMIT 1',
-            ['h' => $rowHash]
-        );
-        if (!$tx) {
-            Session::flash('error', 'Tranzactia bancara nu a fost gasita.');
-            Response::redirect('/admin/incasari/import-extras');
-        }
-        if (!empty($tx['payment_in_id'])) {
-            Session::flash('error', 'Tranzactia a fost deja procesata.');
-            Response::redirect('/admin/incasari/import-extras');
-        }
-
-        $clientCompany = Company::findByCui($clientCui);
-        if ($clientCompany) {
-            $clientName = $clientCompany->denumire;
-        } else {
-            $partner = Partner::findByCui($clientCui);
-            $clientName = $partner ? $partner->denumire : $clientCui;
-        }
-
-        Database::execute(
-            'INSERT INTO payments_in (client_cui, client_name, amount, paid_at, notes, created_at)
-             VALUES (:client_cui, :client_name, :amount, :paid_at, :notes, :created_at)',
-            [
-                'client_cui'  => $clientCui,
-                'client_name' => $clientName,
-                'amount'      => $amount,
-                'paid_at'     => $paidAt,
-                'notes'       => $notes,
-                'created_at'  => date('Y-m-d H:i:s'),
-            ]
-        );
-
-        $paymentInId = (int) Database::lastInsertId();
-
-        Database::execute(
-            'UPDATE bank_transactions SET payment_in_id = :pid WHERE row_hash = :h',
-            ['pid' => $paymentInId, 'h' => $rowHash]
-        );
-
-        Session::flash('status', 'Incasare creata. Poti aloca facturile acum.');
-        Response::redirect('/admin/incasari/adauga?client_cui=' . $clientCui . '&payment_id=' . $paymentInId);
+        Response::redirect('/admin/incasari/adauga?' . http_build_query([
+            'client_cui' => $clientCui,
+            'amount'     => $amount,
+            'paid_at'    => $paidAt,
+            'notes'      => $notes,
+            'row_hash'   => $rowHash,
+        ]));
     }
 
     public function deleteIn(): void
@@ -269,7 +222,11 @@ class PaymentsController
             Response::view('errors/schema', [], 'layouts/app');
         }
 
-        $clientCui = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
+        $clientCui      = preg_replace('/\D+/', '', (string) ($_GET['client_cui'] ?? ''));
+        $prefillAmount  = trim((string) ($_GET['amount'] ?? ''));
+        $prefillPaidAt  = trim((string) ($_GET['paid_at'] ?? ''));
+        $prefillNotes   = trim((string) ($_GET['notes'] ?? ''));
+        $rowHash        = trim((string) ($_GET['row_hash'] ?? ''));
         $clients = $this->availableClients();
         $invoices = [];
 
@@ -278,9 +235,13 @@ class PaymentsController
         }
 
         Response::view('admin/payments/in/create', [
-            'clients' => $clients,
-            'clientCui' => $clientCui,
-            'invoices' => $invoices,
+            'clients'       => $clients,
+            'clientCui'     => $clientCui,
+            'invoices'      => $invoices,
+            'prefillAmount' => $prefillAmount,
+            'prefillPaidAt' => $prefillPaidAt,
+            'prefillNotes'  => $prefillNotes,
+            'rowHash'       => $rowHash,
         ]);
     }
 
@@ -298,6 +259,7 @@ class PaymentsController
         $amountInput = $this->parseNumber($_POST['amount'] ?? null);
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $allocationsInput = $_POST['allocations'] ?? [];
+        $rowHash = trim((string) ($_POST['row_hash'] ?? ''));
 
         if ($clientCui === '' || $paidAt === '') {
             Session::flash('error', 'Completeaza clientul si data incasarii.');
@@ -374,6 +336,13 @@ class PaymentsController
                     'amount' => $allocation['amount'],
                     'created_at' => date('Y-m-d H:i:s'),
                 ]
+            );
+        }
+
+        if ($rowHash !== '' && Database::tableExists('bank_transactions')) {
+            Database::execute(
+                'UPDATE bank_transactions SET payment_in_id = :pid WHERE row_hash = :h AND payment_in_id IS NULL',
+                ['pid' => $paymentId, 'h' => $rowHash]
             );
         }
 

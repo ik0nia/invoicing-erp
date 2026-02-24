@@ -13,7 +13,26 @@
     </a>
 </div>
 
+<?php
+    $prefillAmount = $prefillAmount ?? '';
+    $prefillPaidAt = $prefillPaidAt ?? '';
+    $prefillNotes  = $prefillNotes  ?? '';
+    $rowHash       = $rowHash       ?? '';
+?>
+
 <form method="GET" action="<?= App\Support\Url::to('admin/incasari/adauga') ?>" class="mt-4">
+    <?php if ($prefillAmount !== ''): ?>
+        <input type="hidden" name="amount" value="<?= htmlspecialchars($prefillAmount) ?>">
+    <?php endif; ?>
+    <?php if ($prefillPaidAt !== ''): ?>
+        <input type="hidden" name="paid_at" value="<?= htmlspecialchars($prefillPaidAt) ?>">
+    <?php endif; ?>
+    <?php if ($prefillNotes !== ''): ?>
+        <input type="hidden" name="notes" value="<?= htmlspecialchars($prefillNotes) ?>">
+    <?php endif; ?>
+    <?php if ($rowHash !== ''): ?>
+        <input type="hidden" name="row_hash" value="<?= htmlspecialchars($rowHash) ?>">
+    <?php endif; ?>
     <label class="block text-sm font-medium text-slate-700" for="client_cui">Client</label>
     <select
         id="client_cui"
@@ -33,6 +52,9 @@
 <form method="POST" action="<?= App\Support\Url::to('admin/incasari/adauga') ?>" class="mt-6 space-y-6">
     <?= App\Support\Csrf::input() ?>
     <input type="hidden" name="client_cui" value="<?= htmlspecialchars($clientCui) ?>">
+    <?php if ($rowHash !== ''): ?>
+        <input type="hidden" name="row_hash" value="<?= htmlspecialchars($rowHash) ?>">
+    <?php endif; ?>
 
     <div class="grid gap-4 md:grid-cols-3">
         <div>
@@ -41,7 +63,7 @@
                 id="paid_at"
                 name="paid_at"
                 type="date"
-                value="<?= htmlspecialchars(date('Y-m-d')) ?>"
+                value="<?= htmlspecialchars($prefillPaidAt ?: date('Y-m-d')) ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
@@ -51,6 +73,7 @@
                 id="amount"
                 name="amount"
                 type="text"
+                value="<?= htmlspecialchars($prefillAmount) ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
@@ -60,6 +83,7 @@
                 id="notes"
                 name="notes"
                 type="text"
+                value="<?= htmlspecialchars($prefillNotes) ?>"
                 class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
             >
         </div>
