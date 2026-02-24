@@ -69,13 +69,22 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-700" for="amount">Suma incasata</label>
-            <input
-                id="amount"
-                name="amount"
-                type="text"
-                value="<?= htmlspecialchars($prefillAmount) ?>"
-                class="mt-1 block w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            >
+            <div class="mt-1 flex gap-2">
+                <input
+                    id="amount"
+                    name="amount"
+                    type="text"
+                    value="<?= htmlspecialchars($prefillAmount) ?>"
+                    class="block w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                >
+                <button
+                    type="button"
+                    id="btn-distribute"
+                    class="shrink-0 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                    Aloca
+                </button>
+            </div>
         </div>
         <div class="md:col-span-2">
             <label class="block text-sm font-medium text-slate-700" for="notes">Observatii</label>
@@ -210,6 +219,16 @@
 
         if (amountInput) {
             amountInput.addEventListener('input', distribute);
+        }
+
+        const btnDistribute = document.getElementById('btn-distribute');
+        if (btnDistribute) {
+            btnDistribute.addEventListener('click', distribute);
+        }
+
+        // Auto-aloca daca suma e precompletata (venit din import extras bancar)
+        if (amountInput && amountInput.value.trim() !== '') {
+            distribute();
         }
     })();
 </script>
