@@ -19,7 +19,7 @@
             </button>
         </form>
         <a
-            href="<?= App\Support\Url::to('admin/incasari/import-extras') ?>"
+            href="<?= App\Support\Url::to('admin/incasari/extras') ?>"
             class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
             Extras bancar

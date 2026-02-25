@@ -13,10 +13,16 @@
             Istoric
         </a>
         <a
+            href="<?= App\Support\Url::to('admin/incasari/extras') ?>"
+            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Extras bancar
+        </a>
+        <a
             href="<?= App\Support\Url::to('admin/incasari/import-extras') ?>"
             class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
-            Import extras bancar
+            Import extras
         </a>
         <a
             href="<?= App\Support\Url::to('admin/incasari/adauga') ?>"
@@ -36,7 +42,7 @@
         Exista <strong><?= (int) $unprocessedBankCount ?></strong>
         <?= (int) $unprocessedBankCount === 1 ? 'tranzactie bancara neprocesata' : 'tranzactii bancare neprocesate' ?>.
         <a
-            href="<?= App\Support\Url::to('admin/incasari/import-extras') ?>"
+            href="<?= App\Support\Url::to('admin/incasari/extras') ?>"
             class="ml-1 font-semibold underline hover:text-amber-900"
         >
             Vezi extrasul bancar

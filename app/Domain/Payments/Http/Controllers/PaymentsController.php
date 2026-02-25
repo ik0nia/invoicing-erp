@@ -50,6 +50,27 @@ class PaymentsController
         ]);
     }
 
+    /** Extras bancar — vizualizare tranzactii importate din DB */
+    public function bankStatement(): void
+    {
+        Auth::requireAdminWithoutOperator();
+
+        $service = new BankImportService();
+        $service->ensureColumns();
+
+        $proposals = $service->loadProposalsFromDb();
+        $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
+        $outgoing  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
+        $clients   = $this->availableClients();
+
+        Response::view('admin/payments/in/bank_statement', [
+            'incoming' => $incoming,
+            'outgoing' => $outgoing,
+            'clients'  => $clients,
+        ]);
+    }
+
+    /** Import extras bancar — doar upload CSV */
     public function importBankStatement(): void
     {
         Auth::requireAdminWithoutOperator();
@@ -62,10 +83,6 @@ class PaymentsController
         }
 
         $importError = null;
-        $importInfo  = null;
-        $incoming    = [];
-        $outgoing    = [];
-        $clients     = $this->availableClients();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $file = $_FILES['csv_file'] ?? null;
@@ -80,30 +97,16 @@ class PaymentsController
                     $service->ensureColumns();
                     $rows       = $service->parseCsv($content);
                     $normalized = array_map([$service, 'normalizeRow'], $rows);
-                    $service->storeRows($normalized);
-                    $proposals  = $service->buildProposals($normalized);
-
-                    $incoming = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
-                    $outgoing = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
-
-                    $newCount   = count(array_filter($incoming, static fn($p) => $p['status'] === 'new'));
-                    $importInfo = count($normalized) . ' tranzactii gasite (' . count($incoming) . ' intrari, ' . count($outgoing) . ' iesiri), din care ' . $newCount . ' noi.';
+                    $newCount   = $service->storeRows($normalized);
+                    $total      = count($normalized);
+                    Session::flash('status', $total . ' tranzactii procesate, ' . $newCount . ' noi importate.');
+                    Response::redirect('/admin/incasari/extras');
                 }
             }
-        } else {
-            // GET: incarca tranzactiile existente din DB fara re-upload
-            $service->ensureColumns();
-            $proposals = $service->loadProposalsFromDb();
-            $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
-            $outgoing  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
         }
 
         Response::view('admin/payments/in/import_bank', [
-            'incoming'    => $incoming,
-            'outgoing'    => $outgoing,
-            'clients'     => $clients,
             'importError' => $importError,
-            'importInfo'  => $importInfo,
         ]);
     }
 
@@ -122,7 +125,7 @@ class PaymentsController
 
         if ($rowHash === '' || $clientCui === '' || $paidAt === '') {
             Session::flash('error', 'Date incomplete pentru executarea incasarii. Selecteaza un client.');
-            Response::redirect('/admin/incasari/import-extras');
+            Response::redirect('/admin/incasari/extras');
         }
 
         Response::redirect('/admin/incasari/adauga?' . http_build_query([
@@ -149,7 +152,7 @@ class PaymentsController
             Session::flash('status', $ignored ? 'Tranzactia a fost ignorata.' : 'Tranzactia a fost reactivata.');
         }
 
-        Response::redirect('/admin/incasari/import-extras');
+        Response::redirect('/admin/incasari/extras');
     }
 
     public function deleteIn(): void
