@@ -94,8 +94,7 @@
                         <table class="w-full text-left text-xs">
                             <thead class="bg-slate-50 text-slate-600">
                                 <tr>
-                                    <th class="px-3 py-2">Factura</th>
-                                    <th class="px-3 py-2">Factură client (FGO)</th>
+                                    <th class="px-3 py-2">Factură client</th>
                                     <th class="px-3 py-2">Suma alocata</th>
                                 </tr>
                             </thead>
@@ -105,7 +104,6 @@
                                         $fgoInvoice = trim(($row['fgo_series'] ?? '') . ' ' . ($row['fgo_number'] ?? ''));
                                     ?>
                                     <tr class="border-t border-slate-100">
-                                        <td class="px-3 py-2"><?= htmlspecialchars($row['invoice_number'] ?? '') ?></td>
                                         <td class="px-3 py-2 font-mono text-slate-700"><?= htmlspecialchars($fgoInvoice !== '' ? $fgoInvoice : '—') ?></td>
                                         <td class="px-3 py-2"><?= number_format((float) $row['amount'], 2, '.', ' ') ?> RON</td>
                                     </tr>
