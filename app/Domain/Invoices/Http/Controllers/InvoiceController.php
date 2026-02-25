@@ -2397,14 +2397,13 @@ class InvoiceController
         }
 
         $packageStats = $this->packageStats($lines, $packages);
-        $packageGrossTotal = 0.0;
-        foreach ($packageStats as $stat) {
-            $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
-        }
-        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+        // Preturi de vanzare (line_total_vat) per pachet — exclud liniile de discount, folosite la FGO
+        $rawPackageSalesTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
+        $rawPackageGrossTotal  = (float) array_sum($rawPackageSalesTotals);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
 
         if ($hasDiscountPricing) {
-            $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $packageGrossTotal);
+            $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $rawPackageGrossTotal);
         } else {
             if ($invoice->commission_percent !== null) {
                 $commissionPercent = (float) $invoice->commission_percent;
@@ -2435,8 +2434,10 @@ class InvoiceController
             }
 
             $stat = $packageStats[$package->id];
+            // Discount invoices: pretul catre client = line_total_vat (pretul de vanzare original)
+            // Facturi normale: costul ajustat x comision
             $total = $hasDiscountPricing
-                ? round((float) ($stat['total_vat'] ?? 0.0), 2)
+                ? round((float) ($rawPackageSalesTotals[$package->id] ?? 0.0), 2)
                 : $this->commissionService->applyCommission((float) ($stat['total_vat'] ?? 0.0), $commissionPercent);
 
             $content[] = [
@@ -2986,7 +2987,10 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($selectedClientCui));
         }
 
-        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
+        // Detecție discount: folosim suma de line_total_vat per pachet (exclude linii discount fara package_id)
+        $refacereRawSalesTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
+        $refacereRawGrossTotal  = (float) array_sum($refacereRawSalesTotals);
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $refacereRawGrossTotal);
         $commissionPercent = 0.0;
         if (!$hasDiscountPricing) {
             $commissionPercent = isset($adjustment['commission_percent']) && $adjustment['commission_percent'] !== null
