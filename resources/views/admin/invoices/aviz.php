@@ -11,6 +11,8 @@
     $companyPhone = trim((string) ($company['telefon'] ?? ''));
     $companyLogo = trim((string) ($company['logo_data_uri'] ?? ($company['logo_url'] ?? '')));
     $isPdfMode = !empty($pdfMode);
+    $hasDiscountPricing = !empty($hasDiscountPricing);
+    $discountPackageSalesTotals = is_array($discountPackageSalesTotals ?? null) ? $discountPackageSalesTotals : [];
 ?>
 
 <style>
@@ -133,7 +135,11 @@
             <?php
                 $stat = $packageStats[$package->id] ?? ['line_count' => 0, 'total' => 0];
                 $lines = $linesByPackage[$package->id] ?? [];
-                $packageTotal = $applyCommission((float) ($stat['total'] ?? 0));
+                if ($hasDiscountPricing && isset($discountPackageSalesTotals[$package->id])) {
+                    $packageTotal = (float) $discountPackageSalesTotals[$package->id]['total_net'];
+                } else {
+                    $packageTotal = $applyCommission((float) ($stat['total'] ?? 0));
+                }
             ?>
             <div class="aviz-package rounded border border-slate-200">
                 <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2 py-1">
@@ -177,6 +183,9 @@
                             <?php $index = 1; ?>
                             <?php foreach ($lines as $line): ?>
                                 <?php
+                                    if ($hasDiscountPricing && ((float) ($line->line_total_vat ?? 0)) <= 0.0) {
+                                        continue; // sare liniile de discount (negative)
+                                    }
                                     $unitPrice = $applyCommission((float) $line->unit_price);
                                     $lineTotal = $applyCommission((float) $line->line_total);
                                 ?>

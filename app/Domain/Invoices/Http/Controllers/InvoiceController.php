@@ -1458,7 +1458,9 @@ class InvoiceController
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packageStats = $this->packageStats($lines, $packages);
         $linesByPackage = $this->groupLinesByPackage($lines, $packages);
-        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice);
+        $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoiceId);
+        $avizRawGrossTotal = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
+        $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
 
         $clientCui = $invoice->selected_client_cui ?? '';
         $clientName = '';
@@ -1488,17 +1490,22 @@ class InvoiceController
         $totalWithout = 0.0;
         $totalWith = 0.0;
 
-        foreach ($packageStats as $stat) {
-            $without = (float) ($stat['total'] ?? 0);
-            $with = (float) ($stat['total_vat'] ?? 0);
+        if ($hasDiscountPricing) {
+            $totalWithout = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_net')), 2);
+            $totalWith    = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_vat')), 2);
+        } else {
+            foreach ($packageStats as $stat) {
+                $without = (float) ($stat['total'] ?? 0);
+                $with = (float) ($stat['total_vat'] ?? 0);
 
-            if ($commissionPercent !== null) {
-                $without = $this->commissionService->applyCommission($without, $commissionPercent);
-                $with = $this->commissionService->applyCommission($with, $commissionPercent);
+                if ($commissionPercent !== null) {
+                    $without = $this->commissionService->applyCommission($without, $commissionPercent);
+                    $with = $this->commissionService->applyCommission($with, $commissionPercent);
+                }
+
+                $totalWithout += $without;
+                $totalWith += $with;
             }
-
-            $totalWithout += $without;
-            $totalWith += $with;
         }
 
         $settings = new SettingsService();
@@ -1542,6 +1549,7 @@ class InvoiceController
             'clientCompany' => $clientCompany,
             'commissionPercent' => $commissionPercent,
             'hasDiscountPricing' => $hasDiscountPricing,
+            'discountPackageSalesTotals' => $discountPackageSalesTotals,
         ];
         $this->renderInvoicePrintDocument(
             'admin/invoices/aviz',
