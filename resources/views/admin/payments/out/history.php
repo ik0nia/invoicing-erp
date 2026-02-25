@@ -113,17 +113,18 @@
                             // Prefer lookup per plata individuala; fallback la supplier_cui pentru instalatii vechi
                             $mark = $orderMarks[$paymentOutId] ?? $orderMarks[$cui] ?? '';
                         ?>
-                        <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
+                        <label class="inline-flex items-center gap-2 rounded border border-slate-200 px-2 py-1 text-[11px] <?= $mark !== '' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-700' ?>">
                             <input
                                 type="checkbox"
                                 name="payment_ids[]"
                                 value="<?= (int) $payment['id'] ?>"
                                 form="payment-order-form"
                                 data-has-order="<?= $mark !== '' ? '1' : '0' ?>"
+                                <?= $mark !== '' ? 'disabled' : '' ?>
                             >
                             <span>OP</span>
                             <?php if ($mark !== ''): ?>
-                                <span class="text-[10px] text-amber-700">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
+                                <span class="text-[10px] text-slate-400">OP: <?= htmlspecialchars(date('d.m.Y', strtotime($mark))) ?></span>
                             <?php endif; ?>
                         </label>
                     <?php endif; ?>
