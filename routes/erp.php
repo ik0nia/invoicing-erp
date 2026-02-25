@@ -134,6 +134,7 @@ $router->post('/admin/incasari/adauga', [PaymentsController::class, 'storeIn']);
 $router->get('/admin/incasari/istoric', [PaymentsController::class, 'historyIn']);
 $router->post('/admin/incasari/sterge', [PaymentsController::class, 'deleteIn']);
 $router->get('/admin/incasari/extras', [PaymentsController::class, 'bankStatement']);
+$router->get('/admin/incasari/extras/brut', [PaymentsController::class, 'bankStatementRaw']);
 $router->get('/admin/incasari/import-extras', [PaymentsController::class, 'importBankStatement']);
 $router->post('/admin/incasari/import-extras', [PaymentsController::class, 'importBankStatement']);
 $router->post('/admin/incasari/import-extras/executa', [PaymentsController::class, 'executeBankProposal']);

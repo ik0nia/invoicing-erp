@@ -70,6 +70,24 @@ class PaymentsController
         ]);
     }
 
+    /** Extras bancar brut — toate tranzactiile in ordine cronologica, fara procesare */
+    public function bankStatementRaw(): void
+    {
+        Auth::requireAdminWithoutOperator();
+
+        $rows = [];
+        if (Database::tableExists('bank_transactions')) {
+            (new BankImportService())->ensureColumns();
+            $rows = Database::fetchAll(
+                'SELECT * FROM bank_transactions ORDER BY processed_at ASC, id ASC'
+            );
+        }
+
+        Response::view('admin/payments/in/bank_statement_raw', [
+            'rows' => $rows,
+        ]);
+    }
+
     /** Import extras bancar — doar upload CSV */
     public function importBankStatement(): void
     {

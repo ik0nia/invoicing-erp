@@ -25,6 +25,12 @@ $clients  = $clients  ?? [];
     </div>
     <div class="flex flex-wrap items-center gap-2">
         <a
+            href="<?= App\Support\Url::to('admin/incasari/extras/brut') ?>"
+            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Vezi brut
+        </a>
+        <a
             href="<?= App\Support\Url::to('admin/incasari/import-extras') ?>"
             class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
