@@ -419,23 +419,34 @@
                 : round($amount / $factor, 2);
         };
         $lineClientPricing = function ($line) use ($applyCommission): ?array {
-            $netTotal = $applyCommission((float) ($line->line_total ?? 0.0));
-            $grossTotal = $applyCommission((float) ($line->line_total_vat ?? 0.0));
+            // Foloseste costul ajustat (cost_line_total_vat) daca exista — aplicabil la facturi cu discount
+            $effectiveNet   = ($line->cost_line_total !== null)
+                ? (float) $line->cost_line_total
+                : (float) ($line->line_total ?? 0.0);
+            $effectiveGross = ($line->cost_line_total_vat !== null)
+                ? (float) $line->cost_line_total_vat
+                : (float) ($line->line_total_vat ?? 0.0);
+
+            $netTotal   = $applyCommission($effectiveNet);
+            $grossTotal = $applyCommission($effectiveGross);
             if ($netTotal === null || $grossTotal === null) {
                 return null;
             }
 
             $qty = (float) ($line->quantity ?? 0.0);
             if ($qty > 0.000001) {
-                $unitNet = round($netTotal / $qty, 4);
+                $unitNet   = round($netTotal / $qty, 4);
                 $unitGross = round($grossTotal / $qty, 4);
             } else {
-                $unitNet = $applyCommission((float) ($line->unit_price ?? 0.0));
+                $effectiveUnitPrice = ($line->cost_line_total !== null && (float) ($line->quantity ?? 0) > 0)
+                    ? ($effectiveNet / max((float) $line->quantity, 0.000001))
+                    : (float) ($line->unit_price ?? 0.0);
+                $unitNet = $applyCommission($effectiveUnitPrice);
                 if ($unitNet === null) {
                     return null;
                 }
                 $taxPercent = (float) ($line->tax_percent ?? 0.0);
-                $unitGross = round($unitNet * (1 + ($taxPercent / 100)), 4);
+                $unitGross  = round($unitNet * (1 + ($taxPercent / 100)), 4);
             }
 
             return [

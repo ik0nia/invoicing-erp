@@ -82,13 +82,18 @@ class InvoiceController
             $lines = InvoiceInLine::forInvoice($invoiceId);
             $packages = Package::forInvoice($invoiceId);
             $packageStats = $this->packageStats($lines, $packages);
+            // $packageGrossTotal = suma costurilor ajustate (cost_line_total_vat) — pt afisare
             $packageGrossTotal = 0.0;
             foreach ($packageStats as $stat) {
                 $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
             }
-            $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $packageGrossTotal);
+            // $rawPackageGrossTotal = suma preturilor de vanzare (line_total_vat) per pachet,
+            // fara linii de discount — folosit pentru detectia discount-pricing si sincronizarea comisionului
+            $rawPackageSalesTotals  = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
+            $rawPackageGrossTotal   = (float) array_sum($rawPackageSalesTotals);
+            $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
             if ($hasDiscountPricing) {
-                $this->syncDiscountCommissionPercent($invoice, $packageGrossTotal);
+                $this->syncDiscountCommissionPercent($invoice, $rawPackageGrossTotal);
             }
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
@@ -200,7 +205,7 @@ class InvoiceController
                 $commissionBase = 0.0;
             }
             if ($hasDiscountPricing && $selectedClientCui !== '') {
-                $clientTotal = round($packageGrossTotal, 2);
+                $clientTotal = round($rawPackageGrossTotal, 2);
             } elseif ($commissionBase !== null) {
                 $clientTotal = $this->clientTotalFromPackageStats($packageStats, (float) $commissionBase);
                 if ($clientTotal === null) {
