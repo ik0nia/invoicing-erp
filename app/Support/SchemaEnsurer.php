@@ -79,6 +79,20 @@ class SchemaEnsurer
         self::runStep('relation_documents_table', static function (): void {
             self::ensureRelationDocumentsTable();
         });
+
+        self::runStep('payments_out_payment_order_id', static function (): void {
+            if (!self::tableExists('payments_out')) {
+                return;
+            }
+            if (!self::columnExists('payments_out', 'payment_order_id')) {
+                self::safeExecute(
+                    'ALTER TABLE payments_out ADD COLUMN payment_order_id BIGINT UNSIGNED NULL DEFAULT NULL',
+                    [],
+                    'payments_out_add_payment_order_id'
+                );
+                unset(self::$columnCache['payments_out.payment_order_id']);
+            }
+        });
     }
 
     public static function ensureAuditLogTable(): void

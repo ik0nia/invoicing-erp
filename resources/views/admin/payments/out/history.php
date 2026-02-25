@@ -109,7 +109,9 @@
                     <?php if ($canManagePayments): ?>
                         <?php
                             $cui = (string) ($payment['supplier_cui'] ?? '');
-                            $mark = $orderMarks[$cui] ?? '';
+                            $paymentOutId = (int) ($payment['id'] ?? 0);
+                            // Prefer lookup per plata individuala; fallback la supplier_cui pentru instalatii vechi
+                            $mark = $orderMarks[$paymentOutId] ?? $orderMarks[$cui] ?? '';
                         ?>
                         <label class="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700">
                             <input

@@ -734,6 +734,8 @@ class PaymentsController
         }
 
         $now = date('Y-m-d H:i:s');
+        $canLinkPayments = Database::tableExists('payments_out')
+            && Database::columnExists('payments_out', 'payment_order_id');
         foreach ($orderData as $supplierCui => $row) {
             Database::execute(
                 'INSERT INTO payment_orders (supplier_cui, supplier_name, date_from, date_to, total_amount, invoice_numbers, generated_at, created_at)
@@ -749,6 +751,22 @@ class PaymentsController
                     'created_at' => $now,
                 ]
             );
+
+            // Marcheaza fiecare payments_out inclus in acest OP pentru detectie per-plata
+            $newOrderId = (int) Database::lastInsertId();
+            $paymentIds = array_filter(array_map('intval', array_keys($row['payments'] ?? [])));
+            if ($canLinkPayments && $newOrderId > 0 && !empty($paymentIds)) {
+                $ph = [];
+                $pp = ['order_id' => $newOrderId];
+                foreach (array_values($paymentIds) as $k => $pid) {
+                    $ph[] = ':pid' . $k;
+                    $pp['pid' . $k] = $pid;
+                }
+                Database::execute(
+                    'UPDATE payments_out SET payment_order_id = :order_id WHERE id IN (' . implode(',', $ph) . ')',
+                    $pp
+                );
+            }
         }
 
         $filename = 'ordine_plata_' . date('Ymd_His') . '.csv';
@@ -1231,6 +1249,23 @@ class PaymentsController
             return [];
         }
 
+        // Detectie per plata individuala (necesita coloana payment_order_id pe payments_out)
+        if (Database::tableExists('payments_out')
+            && Database::columnExists('payments_out', 'payment_order_id')) {
+            $rows = Database::fetchAll(
+                'SELECT o.id AS payment_out_id, po.generated_at
+                 FROM payments_out o
+                 JOIN payment_orders po ON po.id = o.payment_order_id
+                 WHERE o.payment_order_id IS NOT NULL'
+            );
+            $marks = [];
+            foreach ($rows as $row) {
+                $marks[(int) $row['payment_out_id']] = (string) $row['generated_at'];
+            }
+            return $marks;
+        }
+
+        // Fallback: detectie per furnizor (comportament vechi, pana la migrarea schemei)
         $rows = Database::fetchAll(
             'SELECT supplier_cui, MAX(generated_at) AS last_generated_at
              FROM payment_orders
