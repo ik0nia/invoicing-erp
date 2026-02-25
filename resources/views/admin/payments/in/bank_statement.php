@@ -193,7 +193,6 @@ $clients  = $clients  ?? [];
                     <th class="px-3 py-2 whitespace-nowrap">Suma</th>
                     <th class="px-3 py-2">Contraparte</th>
                     <th class="px-3 py-2">Detalii</th>
-                    <th class="px-3 py-2">Plata</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2 text-right">Actiuni</th>
                 </tr>
@@ -225,29 +224,24 @@ $clients  = $clients  ?? [];
                             </span>
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
+                            <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold <?= $statusClasses[$status] ?? '' ?>">
+                                <?= $statusLabels[$status] ?? $status ?>
+                            </span>
+                        </td>
+                        <td class="px-3 py-2 text-right whitespace-nowrap">
                             <?php if (!empty($paymentOutIds)): ?>
-                                <div class="flex flex-wrap gap-1">
+                                <div class="flex flex-wrap justify-end gap-1">
                                     <?php foreach ($paymentOutIds as $pid): ?>
                                         <a
                                             href="<?= App\Support\Url::to('admin/plati/print?payment_id=' . $pid) ?>"
-                                            class="inline-flex items-center rounded bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 hover:bg-orange-200"
+                                            class="inline-flex items-center rounded bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-200"
                                             target="_blank"
                                         >
                                             Plata #<?= $pid ?>
                                         </a>
                                     <?php endforeach; ?>
                                 </div>
-                            <?php else: ?>
-                                <span class="text-xs text-slate-400">—</span>
-                            <?php endif; ?>
-                        </td>
-                        <td class="px-3 py-2 whitespace-nowrap">
-                            <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold <?= $statusClasses[$status] ?? '' ?>">
-                                <?= $statusLabels[$status] ?? $status ?>
-                            </span>
-                        </td>
-                        <td class="px-3 py-2 text-right whitespace-nowrap">
-                            <?php if ($bankTxId > 0 && $status !== 'processed'): ?>
+                            <?php elseif ($bankTxId > 0 && $status !== 'processed'): ?>
                                 <form
                                     method="POST"
                                     action="<?= App\Support\Url::to('admin/incasari/import-extras/ignora') ?>"
