@@ -6,6 +6,7 @@
     $invoiceAdjustments = is_array($invoiceAdjustments ?? null) ? $invoiceAdjustments : [];
     $invoicePriceAdjustForm = is_array($invoicePriceAdjustForm ?? null) ? $invoicePriceAdjustForm : [];
     $hasDiscountPricing = !empty($hasDiscountPricing);
+    $discountPackageSalesTotals = is_array($discountPackageSalesTotals ?? null) ? $discountPackageSalesTotals : [];
     $configuredCommissionPercent = isset($configuredCommissionPercent) && $configuredCommissionPercent !== null
         ? (float) $configuredCommissionPercent
         : null;
@@ -418,7 +419,32 @@
                 ? round($amount * $factor, 2)
                 : round($amount / $factor, 2);
         };
-        $lineClientPricing = function ($line) use ($applyCommission): ?array {
+        $lineClientPricing = function ($line) use ($applyCommission, $hasDiscountPricing): ?array {
+            if ($hasDiscountPricing) {
+                // Factura cu discount: pretul de vanzare este line_total_vat (fara comision suplimentar).
+                // Liniile negative (discount-ul propriu-zis) sunt sarite.
+                $grossTotal = (float) ($line->line_total_vat ?? 0.0);
+                if ($grossTotal <= 0.0) {
+                    return null;
+                }
+                $netTotal = (float) ($line->line_total ?? 0.0);
+                $qty      = (float) ($line->quantity ?? 0.0);
+                if ($qty > 0.000001) {
+                    $unitNet   = round($netTotal / $qty, 4);
+                    $unitGross = round($grossTotal / $qty, 4);
+                } else {
+                    $taxPercent = (float) ($line->tax_percent ?? 0.0);
+                    $unitNet    = (float) ($line->unit_price ?? 0.0);
+                    $unitGross  = round($unitNet * (1 + ($taxPercent / 100)), 4);
+                }
+                return [
+                    'unit_net'    => $unitNet,
+                    'unit_gross'  => $unitGross,
+                    'total_net'   => $netTotal,
+                    'total_gross' => $grossTotal,
+                ];
+            }
+
             // Foloseste costul ajustat (cost_line_total_vat) daca exista — aplicabil la facturi cu discount
             $effectiveNet   = ($line->cost_line_total !== null)
                 ? (float) $line->cost_line_total
@@ -545,10 +571,18 @@
                 <div class="text-xs font-semibold text-slate-600">Cota TVA <?= number_format($package->vat_percent, 2, '.', ' ') ?>%</div>
                 <?php if ($stat): ?>
                     <?php
-                        $packagePricing = $packageClientPricing($stat);
-                        $packageGrossClient = $commissionTotal !== null
-                            ? (float) $commissionTotal
-                            : ($packagePricing['gross'] ?? null);
+                        if ($hasDiscountPricing && isset($discountPackageSalesTotals[$package->id])) {
+                            $packagePricing = [
+                                'net'   => (float) $discountPackageSalesTotals[$package->id]['total_net'],
+                                'gross' => (float) $discountPackageSalesTotals[$package->id]['total_vat'],
+                            ];
+                            $packageGrossClient = $packagePricing['gross'];
+                        } else {
+                            $packagePricing = $packageClientPricing($stat);
+                            $packageGrossClient = $commissionTotal !== null
+                                ? (float) $commissionTotal
+                                : ($packagePricing['gross'] ?? null);
+                        }
                     ?>
                     <div class="mt-1 text-xs text-slate-600">
                         <?= (int) $stat['line_count'] ?> produse
@@ -736,7 +770,10 @@
                 && $configuredCommissionPercent !== null
                 && ($realInvoiceCommissionPercent + 0.000001) < $configuredCommissionPercent;
             $commissionInfoClass = $isCommissionBelowConfigured ? 'text-rose-700' : 'text-blue-800';
-            if (!empty($packageStats)) {
+            if ($hasDiscountPricing && !empty($discountPackageSalesTotals)) {
+                $invoiceTotalsNet   = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_net')), 2);
+                $invoiceTotalsGross = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_vat')), 2);
+            } elseif (!empty($packageStats)) {
                 $computedNet = 0.0;
                 $computedGross = 0.0;
                 if ($commissionPercent !== null) {

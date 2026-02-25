@@ -87,10 +87,8 @@ class InvoiceController
             foreach ($packageStats as $stat) {
                 $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
             }
-            // $rawPackageGrossTotal = suma preturilor de vanzare (line_total_vat) per pachet,
-            // fara linii de discount — folosit pentru detectia discount-pricing si sincronizarea comisionului
-            $rawPackageSalesTotals  = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
-            $rawPackageGrossTotal   = (float) array_sum($rawPackageSalesTotals);
+            $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoice->id);
+            $rawPackageGrossTotal       = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
             $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
             if ($hasDiscountPricing) {
                 $this->syncDiscountCommissionPercent($invoice, $rawPackageGrossTotal);
@@ -260,6 +258,7 @@ class InvoiceController
                 'refacerePackages' => $refacerePackages,
                 'invoiceAdjustments' => $invoiceAdjustments,
                 'hasDiscountPricing' => $hasDiscountPricing,
+                'discountPackageSalesTotals' => $discountPackageSalesTotals,
                 'invoicePriceAdjustForm' => $invoicePriceAdjustForm,
             ]);
         }
@@ -2397,9 +2396,9 @@ class InvoiceController
         }
 
         $packageStats = $this->packageStats($lines, $packages);
-        // Preturi de vanzare (line_total_vat) per pachet — exclud liniile de discount, folosite la FGO
-        $rawPackageSalesTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
-        $rawPackageGrossTotal  = (float) array_sum($rawPackageSalesTotals);
+        // Preturi de vanzare pozitive (line_total_vat > 0) per pachet — exclud liniile discount negative
+        $rawPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoice->id);
+        $rawPackageGrossTotal  = (float) array_sum(array_column($rawPackageSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
 
         if ($hasDiscountPricing) {
@@ -2437,7 +2436,7 @@ class InvoiceController
             // Discount invoices: pretul catre client = line_total_vat (pretul de vanzare original)
             // Facturi normale: costul ajustat x comision
             $total = $hasDiscountPricing
-                ? round((float) ($rawPackageSalesTotals[$package->id] ?? 0.0), 2)
+                ? round((float) ($rawPackageSalesTotals[$package->id]['total_vat'] ?? 0.0), 2)
                 : $this->commissionService->applyCommission((float) ($stat['total_vat'] ?? 0.0), $commissionPercent);
 
             $content[] = [
@@ -2987,9 +2986,9 @@ class InvoiceController
             Response::redirect('/admin/companii/edit?cui=' . urlencode($selectedClientCui));
         }
 
-        // Detecție discount: folosim suma de line_total_vat per pachet (exclude linii discount fara package_id)
-        $refacereRawSalesTotals = $this->invoicePackageSalesGrossTotals((int) $invoice->id);
-        $refacereRawGrossTotal  = (float) array_sum($refacereRawSalesTotals);
+        // Detecție discount: suma POZITIVA de line_total_vat per pachet (exclude linii discount negative)
+        $refacereRawSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoice->id);
+        $refacereRawGrossTotal  = (float) array_sum(array_column($refacereRawSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $refacereRawGrossTotal);
         $commissionPercent = 0.0;
         if (!$hasDiscountPricing) {
@@ -5573,6 +5572,49 @@ class InvoiceController
             $totals[$packageId] = (float) ($row['total_vat'] ?? 0.0);
         }
         $this->invoicePackageSalesGrossCache[$invoiceId] = $totals;
+
+        return $totals;
+    }
+
+    /**
+     * Returneaza per pachet suma preturilor de vanzare (line_total / line_total_vat POZITIVE).
+     * Exclude liniile de discount (valori negative) indiferent de package_id.
+     * Folosit pentru afisarea pretului client pe facturi cu discount si pentru detectia discount-pricing.
+     */
+    private function invoicePackagePositiveSalesTotals(int $invoiceId): array
+    {
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id,
+                    COALESCE(SUM(CASE WHEN line_total_vat > 0 THEN line_total_vat ELSE 0 END), 0) AS total_vat,
+                    COALESCE(SUM(CASE WHEN line_total > 0 THEN line_total ELSE 0 END), 0) AS total_net
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = [
+                'total_vat' => (float) ($row['total_vat'] ?? 0.0),
+                'total_net' => (float) ($row['total_net'] ?? 0.0),
+            ];
+        }
 
         return $totals;
     }
