@@ -54,8 +54,11 @@
                         $ts = strtotime($row['imported_at']);
                         $importedFormatted = $ts ? date('d.m.Y H:i', $ts) : $row['imported_at'];
                     }
-                    $paymentInId = !empty($row['payment_in_id']) ? (int) $row['payment_in_id'] : null;
-                    $isIgnored   = (int) ($row['ignored'] ?? 0) === 1;
+                    $paymentInId  = !empty($row['payment_in_id']) ? (int) $row['payment_in_id'] : null;
+                    $isIgnored    = (int) ($row['ignored'] ?? 0) === 1;
+                    $paymentOutIds = array_values(array_filter(
+                        array_map('intval', explode(',', (string) ($row['payment_out_ids'] ?? '')))
+                    ));
                 ?>
                 <tr class="border-t border-slate-100 hover:bg-slate-50">
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-600"><?= htmlspecialchars($dateFormatted) ?></td>
@@ -79,7 +82,20 @@
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-400 font-mono text-[10px]"><?= htmlspecialchars($row['account_no'] ?? '') ?></td>
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-400"><?= htmlspecialchars($importedFormatted) ?></td>
                     <td class="px-3 py-1.5 whitespace-nowrap">
-                        <?php if ($paymentInId): ?>
+                        <?php if (!empty($paymentOutIds)): ?>
+                            <div class="flex flex-wrap gap-1">
+                                <?php foreach ($paymentOutIds as $pid): ?>
+                                    <a
+                                        href="<?= App\Support\Url::to('admin/plati/print?payment_id=' . $pid) ?>"
+                                        class="inline-flex items-center gap-1 rounded bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 hover:bg-orange-200"
+                                        title="Plata #<?= $pid ?>"
+                                        target="_blank"
+                                    >
+                                        Plata #<?= $pid ?>
+                                    </a>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php elseif ($paymentInId): ?>
                             <a
                                 href="<?= App\Support\Url::to('admin/incasari/istoric?payment_id=' . $paymentInId) ?>"
                                 class="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-200"

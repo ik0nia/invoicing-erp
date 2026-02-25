@@ -316,6 +316,7 @@ class BankImportService
                 'client'           => $client,
                 'row_type'         => $rowType,
                 'payment_in_id'    => $paymentInId,
+                'payment_out_ids'  => (string) ($dbRow['payment_out_ids'] ?? ''),
             ];
         }
 
@@ -333,6 +334,79 @@ class BankImportService
                 'ALTER TABLE bank_transactions ADD COLUMN ignored TINYINT(1) NOT NULL DEFAULT 0'
             );
         }
+        if (!Database::columnExists('bank_transactions', 'payment_out_ids')) {
+            Database::execute(
+                'ALTER TABLE bank_transactions ADD COLUMN payment_out_ids VARCHAR(255) NULL DEFAULT NULL'
+            );
+        }
+    }
+
+    /** Extrage ID-urile de plati din textul "Nr OP: 123" sau "Nr OP: 123, 456" */
+    private function extractPaymentOutIds(string $details): array
+    {
+        if (!preg_match('/Nr\s+OP\s*:\s*([\d,\s]+)/i', $details, $m)) {
+            return [];
+        }
+        $parts = preg_split('/[\s,]+/', trim($m[1]));
+        $ids   = [];
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if ($p !== '' && ctype_digit($p)) {
+                $ids[] = (int) $p;
+            }
+        }
+        return array_unique($ids);
+    }
+
+    /**
+     * Cauta tranzactii de iesire nemarcate care contin "Nr OP: X" in detalii
+     * si le asociaza cu payments_out.id corespunzatoare.
+     * Returneaza numarul de randuri actualizate.
+     */
+    public function matchPaymentOuts(int $limit = 500): int
+    {
+        if (!Database::tableExists('bank_transactions') || !Database::tableExists('payments_out')) {
+            return 0;
+        }
+        if (!Database::columnExists('bank_transactions', 'payment_out_ids')) {
+            return 0;
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT id, details FROM bank_transactions
+             WHERE amount < 0
+               AND payment_out_ids IS NULL
+               AND details LIKE :pattern
+             LIMIT ' . (int) $limit,
+            ['pattern' => '%Nr OP:%']
+        );
+
+        $updated = 0;
+        foreach ($rows as $row) {
+            $ids = $this->extractPaymentOutIds((string) ($row['details'] ?? ''));
+            if (empty($ids)) {
+                continue;
+            }
+
+            // Valideaza ca ID-urile exista efectiv in payments_out
+            $ph     = implode(',', array_fill(0, count($ids), '?'));
+            $exists = Database::fetchAll(
+                'SELECT id FROM payments_out WHERE id IN (' . $ph . ')',
+                array_values($ids)
+            );
+            $validIds = array_column($exists, 'id');
+            if (empty($validIds)) {
+                continue;
+            }
+
+            Database::execute(
+                'UPDATE bank_transactions SET payment_out_ids = :ids WHERE id = :id',
+                ['ids' => implode(',', $validIds), 'id' => (int) $row['id']]
+            );
+            $updated++;
+        }
+
+        return $updated;
     }
 
     public function ensureTable(): bool

@@ -193,6 +193,7 @@ $clients  = $clients  ?? [];
                     <th class="px-3 py-2 whitespace-nowrap">Suma</th>
                     <th class="px-3 py-2">Contraparte</th>
                     <th class="px-3 py-2">Detalii</th>
+                    <th class="px-3 py-2">Plata</th>
                     <th class="px-3 py-2">Status</th>
                     <th class="px-3 py-2 text-right">Actiuni</th>
                 </tr>
@@ -200,9 +201,12 @@ $clients  = $clients  ?? [];
             <tbody>
                 <?php foreach ($outgoing as $p): ?>
                     <?php
-                        $status    = $p['status'] ?? 'new';
-                        $bankTxId  = (int) ($p['id'] ?? 0);
-                        $isIgnored = ($status === 'ignored');
+                        $status        = $p['status'] ?? 'new';
+                        $bankTxId      = (int) ($p['id'] ?? 0);
+                        $isIgnored     = ($status === 'ignored');
+                        $paymentOutIds = array_values(array_filter(
+                            array_map('intval', explode(',', (string) ($p['payment_out_ids'] ?? '')))
+                        ));
                         $dateFormatted = '';
                         if (!empty($p['processed_at'])) {
                             $ts = strtotime($p['processed_at']);
@@ -219,6 +223,23 @@ $clients  = $clients  ?? [];
                             <span class="block truncate text-xs text-slate-500" title="<?= htmlspecialchars($p['details'] ?? '') ?>">
                                 <?= htmlspecialchars(mb_substr($p['details'] ?? '', 0, 60, 'UTF-8')) ?><?= mb_strlen($p['details'] ?? '', 'UTF-8') > 60 ? '…' : '' ?>
                             </span>
+                        </td>
+                        <td class="px-3 py-2 whitespace-nowrap">
+                            <?php if (!empty($paymentOutIds)): ?>
+                                <div class="flex flex-wrap gap-1">
+                                    <?php foreach ($paymentOutIds as $pid): ?>
+                                        <a
+                                            href="<?= App\Support\Url::to('admin/plati/print?payment_id=' . $pid) ?>"
+                                            class="inline-flex items-center rounded bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 hover:bg-orange-200"
+                                            target="_blank"
+                                        >
+                                            Plata #<?= $pid ?>
+                                        </a>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <span class="text-xs text-slate-400">—</span>
+                            <?php endif; ?>
                         </td>
                         <td class="px-3 py-2 whitespace-nowrap">
                             <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold <?= $statusClasses[$status] ?? '' ?>">

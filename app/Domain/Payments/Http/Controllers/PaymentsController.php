@@ -57,6 +57,7 @@ class PaymentsController
 
         $service = new BankImportService();
         $service->ensureColumns();
+        $service->matchPaymentOuts();
 
         $proposals = $service->loadProposalsFromDb();
         $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
@@ -77,7 +78,9 @@ class PaymentsController
 
         $rows = [];
         if (Database::tableExists('bank_transactions')) {
-            (new BankImportService())->ensureColumns();
+            $bankService = new BankImportService();
+            $bankService->ensureColumns();
+            $bankService->matchPaymentOuts();
             $rows = Database::fetchAll(
                 'SELECT * FROM bank_transactions ORDER BY processed_at ASC, id ASC'
             );
@@ -116,6 +119,7 @@ class PaymentsController
                     $rows       = $service->parseCsv($content);
                     $normalized = array_map([$service, 'normalizeRow'], $rows);
                     $newCount   = $service->storeRows($normalized);
+                    $service->matchPaymentOuts();
                     $total      = count($normalized);
                     Session::flash('status', $total . ' tranzactii procesate, ' . $newCount . ' noi importate.');
                     Response::redirect('/admin/incasari/extras');
