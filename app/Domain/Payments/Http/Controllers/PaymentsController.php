@@ -36,9 +36,8 @@ class PaymentsController
         );
 
         $unprocessedBankCount = 0;
-        if (Database::tableExists('bank_transactions')
-            && Database::columnExists('bank_transactions', 'ignored')
-        ) {
+        if (Database::tableExists('bank_transactions')) {
+            (new BankImportService())->ensureColumns();
             $unprocessedBankCount = (int) (Database::fetchValue(
                 'SELECT COUNT(*) FROM bank_transactions
                  WHERE amount > 0.001 AND ignored = 0 AND payment_in_id IS NULL'
