@@ -60,8 +60,8 @@ class PaymentsController
         $service->matchPaymentOuts();
 
         $proposals = $service->loadProposalsFromDb();
-        $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
-        $outgoing  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
+        $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming' && ($p['status'] ?? '') !== 'ignored'));
+        $outgoing  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing' && ($p['status'] ?? '') !== 'ignored'));
         $clients   = $this->availableClients();
 
         Response::view('admin/payments/in/bank_statement', [
