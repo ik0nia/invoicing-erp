@@ -4179,6 +4179,10 @@ class InvoiceController
                 $index++;
             }
         }
+
+        // Consuma numerele imediat la creare, nu la confirmare,
+        // astfel incat doua facturi draft sa nu poata primi aceleasi numere.
+        $this->setLastConfirmedPackageNo($nextNumber - 1);
     }
 
     private function buildVatGroups(array $lines): array
@@ -4306,9 +4310,14 @@ class InvoiceController
     private function lastConfirmedPackageNo(): int
     {
         $settings = new SettingsService();
-        $value = (int) $settings->get('packages.last_confirmed_no', 10000);
+        $settingsValue = (int) $settings->get('packages.last_confirmed_no', 10000);
+        $settingsValue = $settingsValue > 0 ? $settingsValue : 10000;
 
-        return $value > 0 ? $value : 10000;
+        // Asigura ca plecam de la un numar mai mare decat orice pachet existent in DB,
+        // pentru a rezolva eventuale desincronizari ale contorului fata de starea reala.
+        $dbMax = (int) Database::fetchValue('SELECT COALESCE(MAX(package_no), 0) FROM packages');
+
+        return max($settingsValue, $dbMax);
     }
 
     private function setLastConfirmedPackageNo(int $value): void
@@ -4325,16 +4334,7 @@ class InvoiceController
             return;
         }
 
-        $ordered = $this->orderPackages($packages);
-        $nextNumber = $this->lastConfirmedPackageNo() + 1;
-
-        foreach ($ordered as $package) {
-            Package::updateNumber($package->id, $nextNumber);
-            $nextNumber++;
-        }
-
-        $this->setLastConfirmedPackageNo($nextNumber - 1);
-
+        // Numerele sunt deja alocate definitiv la generatePackages() — nu se mai renumeroteaza.
         Database::execute(
             'UPDATE invoices_in SET packages_confirmed = 1, packages_confirmed_at = :now WHERE id = :id',
             ['now' => date('Y-m-d H:i:s'), 'id' => $invoiceId]
