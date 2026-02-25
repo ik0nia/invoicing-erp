@@ -1005,6 +1005,7 @@ class InvoiceController
             if (
                 !empty($row['all_saga'])
                 && !empty($row['has_fgo_invoice'])
+                && !empty($row['stock_ok'])
                 && !in_array($status, ['pending', 'processing', 'executed', 'imported'], true)
             ) {
                 if (!$autoTriggered) {
