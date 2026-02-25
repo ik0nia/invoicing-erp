@@ -268,6 +268,60 @@ class BankImportService
         return $proposals;
     }
 
+    /**
+     * Incarca toate propunerile direct din DB (fara re-upload CSV).
+     * Folosit la afisarea paginii de import fara fisier nou.
+     */
+    public function loadProposalsFromDb(): array
+    {
+        if (!Database::tableExists('bank_transactions')) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT * FROM bank_transactions ORDER BY processed_at DESC, id DESC'
+        );
+
+        $proposals = [];
+        foreach ($rows as $dbRow) {
+            $txId        = (int) $dbRow['id'];
+            $paymentInId = !empty($dbRow['payment_in_id']) ? (int) $dbRow['payment_in_id'] : null;
+
+            if ((int) ($dbRow['ignored'] ?? 0) === 1) {
+                $status = 'ignored';
+            } elseif ($paymentInId) {
+                $status = 'processed';
+            } else {
+                $status = 'imported';
+            }
+
+            $client  = $this->matchClient([
+                'counterpart_cui'  => (string) ($dbRow['counterpart_cui'] ?? ''),
+                'counterpart_name' => (string) ($dbRow['counterpart_name'] ?? ''),
+            ]);
+            $rowType = (float) $dbRow['amount'] > 0.001 ? 'incoming' : 'outgoing';
+
+            $proposals[] = [
+                'id'               => $txId,
+                'row_hash'         => (string) ($dbRow['row_hash'] ?? ''),
+                'processed_at'     => (string) ($dbRow['processed_at'] ?? ''),
+                'amount'           => (float) $dbRow['amount'],
+                'currency'         => (string) ($dbRow['currency'] ?? 'RON'),
+                'transaction_type' => (string) ($dbRow['transaction_type'] ?? ''),
+                'counterpart_name' => (string) ($dbRow['counterpart_name'] ?? ''),
+                'counterpart_cui'  => (string) ($dbRow['counterpart_cui'] ?? ''),
+                'details'          => (string) ($dbRow['details'] ?? ''),
+                'balance'          => $dbRow['balance'] !== null ? (float) $dbRow['balance'] : null,
+                'status'           => $status,
+                'client'           => $client,
+                'row_type'         => $rowType,
+                'payment_in_id'    => $paymentInId,
+            ];
+        }
+
+        return $proposals;
+    }
+
     /** Adauga coloane noi la bank_transactions daca lipsesc (pentru instalari existente) */
     public function ensureColumns(): void
     {

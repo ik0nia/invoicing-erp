@@ -61,13 +61,11 @@ class PaymentsController
             Response::redirect('/admin/incasari');
         }
 
-        $proposals = [];
         $importError = null;
-        $importInfo = null;
-
-        $incoming = [];
-        $outgoing = [];
-        $clients  = $this->availableClients();
+        $importInfo  = null;
+        $incoming    = [];
+        $outgoing    = [];
+        $clients     = $this->availableClients();
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $file = $_FILES['csv_file'] ?? null;
@@ -92,6 +90,12 @@ class PaymentsController
                     $importInfo = count($normalized) . ' tranzactii gasite (' . count($incoming) . ' intrari, ' . count($outgoing) . ' iesiri), din care ' . $newCount . ' noi.';
                 }
             }
+        } else {
+            // GET: incarca tranzactiile existente din DB fara re-upload
+            $service->ensureColumns();
+            $proposals = $service->loadProposalsFromDb();
+            $incoming  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
+            $outgoing  = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
         }
 
         Response::view('admin/payments/in/import_bank', [
