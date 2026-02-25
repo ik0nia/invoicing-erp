@@ -36,6 +36,7 @@
                 <th class="px-3 py-2 whitespace-nowrap">CUI contraparte</th>
                 <th class="px-3 py-2 whitespace-nowrap">Cont propriu</th>
                 <th class="px-3 py-2 whitespace-nowrap">Importat la</th>
+                <th class="px-3 py-2 whitespace-nowrap">Legatura</th>
             </tr>
         </thead>
         <tbody>
@@ -53,6 +54,8 @@
                         $ts = strtotime($row['imported_at']);
                         $importedFormatted = $ts ? date('d.m.Y H:i', $ts) : $row['imported_at'];
                     }
+                    $paymentInId = !empty($row['payment_in_id']) ? (int) $row['payment_in_id'] : null;
+                    $isIgnored   = (int) ($row['ignored'] ?? 0) === 1;
                 ?>
                 <tr class="border-t border-slate-100 hover:bg-slate-50">
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-600"><?= htmlspecialchars($dateFormatted) ?></td>
@@ -75,6 +78,21 @@
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-400"><?= htmlspecialchars($row['counterpart_cui'] ?? '') ?></td>
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-400 font-mono text-[10px]"><?= htmlspecialchars($row['account_no'] ?? '') ?></td>
                     <td class="px-3 py-1.5 whitespace-nowrap text-slate-400"><?= htmlspecialchars($importedFormatted) ?></td>
+                    <td class="px-3 py-1.5 whitespace-nowrap">
+                        <?php if ($paymentInId): ?>
+                            <a
+                                href="<?= App\Support\Url::to('admin/incasari/istoric?payment_id=' . $paymentInId) ?>"
+                                class="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 hover:bg-green-200"
+                                title="Incasare #<?= $paymentInId ?>"
+                            >
+                                Incasare #<?= $paymentInId ?>
+                            </a>
+                        <?php elseif ($isIgnored): ?>
+                            <span class="text-[10px] text-slate-400">Ignorat</span>
+                        <?php else: ?>
+                            <span class="text-[10px] text-slate-300">—</span>
+                        <?php endif; ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
         </tbody>
