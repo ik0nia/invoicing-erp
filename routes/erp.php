@@ -136,6 +136,7 @@ $router->post('/admin/incasari/sterge', [PaymentsController::class, 'deleteIn'])
 $router->get('/admin/incasari/import-extras', [PaymentsController::class, 'importBankStatement']);
 $router->post('/admin/incasari/import-extras', [PaymentsController::class, 'importBankStatement']);
 $router->post('/admin/incasari/import-extras/executa', [PaymentsController::class, 'executeBankProposal']);
+$router->post('/admin/incasari/import-extras/ignora', [PaymentsController::class, 'ignoreBankTransaction']);
 $router->get('/admin/plati', [PaymentsController::class, 'indexOut']);
 $router->get('/admin/plati/adauga', [PaymentsController::class, 'createOut']);
 $router->post('/admin/plati/adauga', [PaymentsController::class, 'storeOut']);

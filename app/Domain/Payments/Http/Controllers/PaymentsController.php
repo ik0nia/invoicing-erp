@@ -35,8 +35,19 @@ class PaymentsController
              ORDER BY p.paid_at DESC, p.id DESC'
         );
 
+        $unprocessedBankCount = 0;
+        if (Database::tableExists('bank_transactions')
+            && Database::columnExists('bank_transactions', 'ignored')
+        ) {
+            $unprocessedBankCount = (int) (Database::fetchValue(
+                'SELECT COUNT(*) FROM bank_transactions
+                 WHERE amount > 0.001 AND ignored = 0 AND payment_in_id IS NULL'
+            ) ?? 0);
+        }
+
         Response::view('admin/payments/in/index', [
-            'payments' => $rows,
+            'payments'             => $rows,
+            'unprocessedBankCount' => $unprocessedBankCount,
         ]);
     }
 
@@ -55,6 +66,10 @@ class PaymentsController
         $importError = null;
         $importInfo = null;
 
+        $incoming = [];
+        $outgoing = [];
+        $clients  = $this->availableClients();
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $file = $_FILES['csv_file'] ?? null;
             if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
@@ -64,20 +79,26 @@ class PaymentsController
                 if ($content === false || trim($content) === '') {
                     $importError = 'Fisierul CSV este gol sau nu poate fi citit.';
                 } else {
-                    $rows = $service->parseCsv($content);
+                    $service->ensureTable();
+                    $service->ensureColumns();
+                    $rows       = $service->parseCsv($content);
                     $normalized = array_map([$service, 'normalizeRow'], $rows);
-                    $incoming = $service->filterIncoming($normalized);
-                    $service->storeRows($incoming);
-                    $proposals = $service->buildProposals($incoming);
+                    $service->storeRows($normalized);
+                    $proposals  = $service->buildProposals($normalized);
 
-                    $newCount = count(array_filter($proposals, static fn($p) => $p['status'] === 'new'));
-                    $importInfo = count($incoming) . ' tranzactii incasari gasite, din care ' . $newCount . ' sunt noi.';
+                    $incoming = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'incoming'));
+                    $outgoing = array_values(array_filter($proposals, static fn($p) => ($p['row_type'] ?? '') === 'outgoing'));
+
+                    $newCount   = count(array_filter($incoming, static fn($p) => $p['status'] === 'new'));
+                    $importInfo = count($normalized) . ' tranzactii gasite (' . count($incoming) . ' intrari, ' . count($outgoing) . ' iesiri), din care ' . $newCount . ' noi.';
                 }
             }
         }
 
         Response::view('admin/payments/in/import_bank', [
-            'proposals'   => $proposals,
+            'incoming'    => $incoming,
+            'outgoing'    => $outgoing,
+            'clients'     => $clients,
             'importError' => $importError,
             'importInfo'  => $importInfo,
         ]);
@@ -89,12 +110,15 @@ class PaymentsController
 
         $rowHash   = trim((string) ($_POST['row_hash'] ?? ''));
         $clientCui = preg_replace('/\D+/', '', (string) ($_POST['client_cui'] ?? ''));
-        $paidAt    = trim((string) ($_POST['paid_at'] ?? ''));
-        $amount    = trim((string) ($_POST['amount'] ?? ''));
-        $notes     = trim((string) ($_POST['notes'] ?? ''));
+        if ($clientCui === '') {
+            $clientCui = preg_replace('/\D+/', '', (string) ($_POST['manual_client_cui'] ?? ''));
+        }
+        $paidAt = trim((string) ($_POST['paid_at'] ?? ''));
+        $amount = trim((string) ($_POST['amount'] ?? ''));
+        $notes  = trim((string) ($_POST['notes'] ?? ''));
 
         if ($rowHash === '' || $clientCui === '' || $paidAt === '') {
-            Session::flash('error', 'Date incomplete pentru executarea incasarii.');
+            Session::flash('error', 'Date incomplete pentru executarea incasarii. Selecteaza un client.');
             Response::redirect('/admin/incasari/import-extras');
         }
 
@@ -105,6 +129,24 @@ class PaymentsController
             'notes'      => $notes,
             'row_hash'   => $rowHash,
         ]));
+    }
+
+    public function ignoreBankTransaction(): void
+    {
+        Auth::requireAdminWithoutOperator();
+
+        $id      = isset($_POST['bank_tx_id']) ? (int) $_POST['bank_tx_id'] : 0;
+        $ignored = (trim((string) ($_POST['action'] ?? '')) === 'unignore') ? 0 : 1;
+
+        if ($id > 0 && Database::tableExists('bank_transactions')) {
+            Database::execute(
+                'UPDATE bank_transactions SET ignored = :v WHERE id = :id',
+                ['v' => $ignored, 'id' => $id]
+            );
+            Session::flash('status', $ignored ? 'Tranzactia a fost ignorata.' : 'Tranzactia a fost reactivata.');
+        }
+
+        Response::redirect('/admin/incasari/import-extras');
     }
 
     public function deleteIn(): void

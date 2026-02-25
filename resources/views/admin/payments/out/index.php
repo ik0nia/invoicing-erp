@@ -19,6 +19,12 @@
             </button>
         </form>
         <a
+            href="<?= App\Support\Url::to('admin/incasari/import-extras') ?>"
+            class="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+            Extras bancar
+        </a>
+        <a
             href="<?= App\Support\Url::to('admin/plati/adauga') ?>"
             class="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
         >

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
     counterpart_cui VARCHAR(32)  NOT NULL DEFAULT '',
     row_hash        VARCHAR(64)  NOT NULL DEFAULT '',
     payment_in_id   BIGINT UNSIGNED NULL,
+    ignored         TINYINT(1)   NOT NULL DEFAULT 0,
     imported_at     DATETIME     NOT NULL,
     created_at      DATETIME     NULL,
     UNIQUE KEY uq_row_hash (row_hash)

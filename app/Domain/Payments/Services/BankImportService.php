@@ -217,7 +217,7 @@ class BankImportService
         return null;
     }
 
-    /** Construieste propunerile de incasare din tranzactiile noi */
+    /** Construieste propunerile din toate tranzactiile (incoming + outgoing) */
     public function buildProposals(array $normalizedRows): array
     {
         $proposals = [];
@@ -225,21 +225,30 @@ class BankImportService
         foreach ($normalizedRows as $row) {
             $hash = $this->hashRow($row);
             $existing = Database::fetchOne(
-                'SELECT id, payment_in_id FROM bank_transactions WHERE row_hash = :h LIMIT 1',
+                'SELECT id, payment_in_id, ignored FROM bank_transactions WHERE row_hash = :h LIMIT 1',
                 ['h' => $hash]
             );
 
-            $status = 'new';
-            $txId = null;
+            $status      = 'new';
+            $txId        = null;
+            $paymentInId = null;
             if ($existing) {
-                $txId = (int) $existing['id'];
-                $status = !empty($existing['payment_in_id']) ? 'processed' : 'imported';
+                $txId        = (int) $existing['id'];
+                $paymentInId = !empty($existing['payment_in_id']) ? (int) $existing['payment_in_id'] : null;
+                if ((int) ($existing['ignored'] ?? 0) === 1) {
+                    $status = 'ignored';
+                } elseif ($paymentInId) {
+                    $status = 'processed';
+                } else {
+                    $status = 'imported';
+                }
             }
 
-            $client = $this->matchClient($row);
+            $client   = $this->matchClient($row);
+            $rowType  = $row['amount'] > 0.001 ? 'incoming' : 'outgoing';
 
             $proposals[] = [
-                'tx_id'            => $txId,
+                'id'               => $txId,
                 'row_hash'         => $hash,
                 'processed_at'     => $row['processed_at'],
                 'amount'           => $row['amount'],
@@ -251,10 +260,25 @@ class BankImportService
                 'balance'          => $row['balance'],
                 'status'           => $status,
                 'client'           => $client,
+                'row_type'         => $rowType,
+                'payment_in_id'    => $paymentInId,
             ];
         }
 
         return $proposals;
+    }
+
+    /** Adauga coloane noi la bank_transactions daca lipsesc (pentru instalari existente) */
+    public function ensureColumns(): void
+    {
+        if (!Database::tableExists('bank_transactions')) {
+            return;
+        }
+        if (!Database::columnExists('bank_transactions', 'ignored')) {
+            Database::execute(
+                'ALTER TABLE bank_transactions ADD COLUMN ignored TINYINT(1) NOT NULL DEFAULT 0'
+            );
+        }
     }
 
     public function ensureTable(): bool
