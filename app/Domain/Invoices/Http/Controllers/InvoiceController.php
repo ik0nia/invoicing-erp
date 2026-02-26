@@ -92,6 +92,18 @@ class InvoiceController
             $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
             if ($hasDiscountPricing) {
                 $this->syncDiscountCommissionPercent($invoice, $rawPackageGrossTotal);
+            } elseif ($invoice->commission_percent !== null) {
+                $storedAutoCommission = (float) $invoice->commission_percent;
+                // Clear auto-detected micro-commission from rounding false-positive detection.
+                // Real commissions are always ≥ 0.1%; a value in (0, 0.1) was auto-calculated
+                // from a 1-ban rounding diff and is stale after fixing the detection threshold.
+                if ($storedAutoCommission > 0.0 && $storedAutoCommission < 0.1) {
+                    Database::execute(
+                        'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
+                        ['id' => $invoice->id]
+                    );
+                    $invoice->commission_percent = null;
+                }
             }
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
