@@ -5509,7 +5509,8 @@ class InvoiceController
             $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
         }
 
-        return $salesGrossTotal > ($invoiceGross + 0.009);
+        $diff = $salesGrossTotal - $invoiceGross;
+        return $diff > 0.50 && $diff > ($invoiceGross * 0.005);
     }
 
     private function invoiceSalesGrossTotal(int $invoiceId): float

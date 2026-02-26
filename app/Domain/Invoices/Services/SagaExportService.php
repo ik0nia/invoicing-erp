@@ -387,7 +387,8 @@ class SagaExportService
             ['invoice' => $invoiceId]
         ) ?? 0.0);
 
-        $hasDiscountPricing = $salesGrossTotal > ($invoiceGrossTotal + 0.009);
+        $diff               = $salesGrossTotal - $invoiceGrossTotal;
+        $hasDiscountPricing = $diff > 0.50 && $diff > ($invoiceGrossTotal * 0.005);
         $this->invoiceDiscountPricingCache[$invoiceId] = $hasDiscountPricing;
 
         return $hasDiscountPricing;
