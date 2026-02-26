@@ -1473,6 +1473,16 @@ class InvoiceController
         $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoiceId);
         $avizRawGrossTotal = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
+        if (!$hasDiscountPricing && $invoice->commission_percent !== null) {
+            $storedAutoCommission = (float) $invoice->commission_percent;
+            if ($storedAutoCommission > 0.0 && $storedAutoCommission < 0.1) {
+                Database::execute(
+                    'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
+                    ['id' => $invoice->id]
+                );
+                $invoice->commission_percent = null;
+            }
+        }
 
         $clientCui = $invoice->selected_client_cui ?? '';
         $clientName = '';
