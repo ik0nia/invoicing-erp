@@ -95,9 +95,11 @@ class InvoiceController
             } elseif ($invoice->commission_percent !== null) {
                 $storedAutoCommission = (float) $invoice->commission_percent;
                 // Clear auto-detected micro-commission from rounding false-positive detection.
-                // Real commissions are always ≥ 0.1%; a value in (0, 0.1) was auto-calculated
+                // Real commissions are always ≥ 0.1%; a value in [0, 0.1) was auto-calculated
                 // from a 1-ban rounding diff and is stale after fixing the detection threshold.
-                if ($storedAutoCommission > 0.0 && $storedAutoCommission < 0.1) {
+                // Note: 0.00 is included because DECIMAL(6,2) rounds values like 0.000002% to 0.00;
+                // a legitimate 0% commission only exists on discount invoices (hasDiscountPricing = true).
+                if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
                     Database::execute(
                         'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
                         ['id' => $invoice->id]
@@ -1475,7 +1477,7 @@ class InvoiceController
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
         if (!$hasDiscountPricing && $invoice->commission_percent !== null) {
             $storedAutoCommission = (float) $invoice->commission_percent;
-            if ($storedAutoCommission > 0.0 && $storedAutoCommission < 0.1) {
+            if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
                 Database::execute(
                     'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
                     ['id' => $invoice->id]
@@ -2434,8 +2436,12 @@ class InvoiceController
         if ($hasDiscountPricing) {
             $commissionPercent = $this->discountPricingCommissionPercent((float) $invoice->total_with_vat, $rawPackageGrossTotal);
         } else {
-            if ($invoice->commission_percent !== null) {
-                $commissionPercent = (float) $invoice->commission_percent;
+            $storedCommission = $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+            // Treat 0.00 as null: DECIMAL(6,2) rounds micro-commissions (e.g. 0.000002%) to 0.00,
+            // which is indistinguishable from a stale false-positive. A real non-discount invoice
+            // never has 0% commission; legitimate zero commissions only exist on discount invoices.
+            if ($storedCommission !== null && $storedCommission >= 0.1) {
+                $commissionPercent = $storedCommission;
             } else {
                 $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);
                 if (!$commission) {
@@ -6233,7 +6239,13 @@ class InvoiceController
     private function commissionForInvoice(InvoiceIn $invoice, array $commissionMap): ?float
     {
         if ($invoice->commission_percent !== null) {
-            return (float) $invoice->commission_percent;
+            $stored = (float) $invoice->commission_percent;
+            // A stored value < 0.1% is a DECIMAL(6,2) artefact from the old false-positive
+            // discount detection (e.g. 0.000002% rounded to 0.00). Treat it as null so the
+            // commission table is used instead. Real commissions are always ≥ 0.1%.
+            if ($stored >= 0.1) {
+                return $stored;
+            }
         }
 
         $supplier = (string) $invoice->supplier_cui;
