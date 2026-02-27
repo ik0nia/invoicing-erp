@@ -94,19 +94,16 @@ class InvoiceController
                 $this->syncDiscountCommissionPercent($invoice, $rawPackageGrossTotal);
             } elseif ($invoice->commission_percent !== null) {
                 $storedAutoCommission = (float) $invoice->commission_percent;
-                // Clear auto-detected micro-commission from rounding false-positive detection.
-                // Real commissions are always ≥ 0.1%; a value in [0, 0.1) was auto-calculated
-                // from a 1-ban rounding diff and is stale after fixing the detection threshold.
-                // Note: 0.00 is included because DECIMAL(6,2) rounds values like 0.000002% to 0.00;
-                // a legitimate 0% commission only exists on discount invoices (hasDiscountPricing = true).
+                // A value in [0, 0.1) is a DECIMAL(6,2) artefact from the old false-positive
+                // discount detection (e.g. 0.000002% rounded to 0.00). Clear it in memory now;
+                // after the configured commission is resolved below, it will be frozen into DB
+                // so the invoice stays locked to the commission it was issued with.
                 if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
-                    Database::execute(
-                        'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
-                        ['id' => $invoice->id]
-                    );
                     $invoice->commission_percent = null;
+                    $needsCommissionFreeze = true;
                 }
             }
+            $needsCommissionFreeze = $needsCommissionFreeze ?? false;
             $vatRates = $this->vatRates($lines);
             $packageDefaults = $this->packageDefaults($packages, $vatRates);
             $linesByPackage = $this->groupLinesByPackage($lines, $packages);
@@ -166,6 +163,17 @@ class InvoiceController
             if ($invoice->commission_percent !== null) {
                 // Persisted invoice commission (including manual overrides) takes precedence.
                 $commissionPercent = (float) $invoice->commission_percent;
+            }
+
+            // Freeze: a stale 0.00 was detected above; now that the real commission is known,
+            // persist it so the invoice stays locked to the commission it was issued with,
+            // regardless of future changes to the commission table.
+            if ($needsCommissionFreeze && $commissionPercent !== null && !$hasDiscountPricing) {
+                Database::execute(
+                    'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                    ['commission' => $commissionPercent, 'now' => date('Y-m-d H:i:s'), 'id' => $invoice->id]
+                );
+                $invoice->commission_percent = $commissionPercent;
             }
 
             $packageTotalsWithCommission = $this->packageTotalsWithCommission($packageStats, $commissionPercent);
@@ -1475,14 +1483,12 @@ class InvoiceController
         $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoiceId);
         $avizRawGrossTotal = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
+        $avizNeedsCommissionFreeze = false;
         if (!$hasDiscountPricing && $invoice->commission_percent !== null) {
             $storedAutoCommission = (float) $invoice->commission_percent;
             if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
-                Database::execute(
-                    'UPDATE invoices_in SET commission_percent = NULL WHERE id = :id',
-                    ['id' => $invoice->id]
-                );
                 $invoice->commission_percent = null;
+                $avizNeedsCommissionFreeze = true;
             }
         }
 
@@ -1505,6 +1511,13 @@ class InvoiceController
                 (string) $invoice->supplier_cui,
                 (string) $clientCui
             );
+        }
+        if ($avizNeedsCommissionFreeze && $commissionPercent !== null) {
+            Database::execute(
+                'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
+                ['commission' => $commissionPercent, 'now' => date('Y-m-d H:i:s'), 'id' => $invoice->id]
+            );
+            $invoice->commission_percent = $commissionPercent;
         }
         if ($hasDiscountPricing) {
             // XML discount invoices already contain final sale prices on lines.
