@@ -109,7 +109,7 @@
             </div>
         <?php endif; ?>
 
-        <?php if (!empty($clientLocked)): ?>
+        <?php if (!empty($clientLocked) && empty($hasFgoInvoice)): ?>
             <div class="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 Clientul este blocat deoarece pachetele sunt confirmate.
                 <?php if (!empty($isAdmin)): ?>
