@@ -153,6 +153,9 @@ $router->get('/admin/rapoarte/cashflow', [ReportsController::class, 'cashflow'])
 $router->get('/admin/rapoarte/cashflow/export', [ReportsController::class, 'exportCashflow']);
 $router->get('/admin/rapoarte/cashflow/pdf', [ReportsController::class, 'cashflowPdf']);
 
+$router->get('/admin/rapoarte/furnizor', [ReportsController::class, 'supplierReport']);
+$router->get('/admin/rapoarte/furnizor/print', [ReportsController::class, 'supplierReportPrint']);
+
 $router->get('/admin/utilizatori', [UsersController::class, 'index']);
 $router->get('/admin/utilizatori/adauga', [UsersController::class, 'create']);
 $router->post('/admin/utilizatori/adauga', [UsersController::class, 'store']);

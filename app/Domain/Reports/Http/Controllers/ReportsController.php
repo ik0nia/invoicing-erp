@@ -112,6 +112,263 @@ class ReportsController
         exit;
     }
 
+    public function supplierReport(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $suppliers = Database::tableExists('invoices_in')
+            ? Database::fetchAll('SELECT DISTINCT supplier_cui, supplier_name FROM invoices_in ORDER BY supplier_name ASC')
+            : [];
+
+        $supplierCui  = trim((string) ($_GET['supplier_cui'] ?? ''));
+        $dateStart    = trim((string) ($_GET['date_start'] ?? ''));
+        $dateEnd      = trim((string) ($_GET['date_end'] ?? ''));
+
+        if ($dateStart && !strtotime($dateStart)) {
+            $dateStart = '';
+        }
+        if ($dateEnd && !strtotime($dateEnd)) {
+            $dateEnd = '';
+        }
+
+        $supplierName  = '';
+        $invoices      = [];
+        $paymentsIn    = [];
+        $paymentsOut   = [];
+        $totalFurnizor = 0.0;
+        $totalIncasat  = 0.0;
+        $totalPlatit   = 0.0;
+
+        if ($supplierCui !== '') {
+            foreach ($suppliers as $s) {
+                if ((string) $s['supplier_cui'] === $supplierCui) {
+                    $supplierName = (string) $s['supplier_name'];
+                    break;
+                }
+            }
+
+            [$invoices, $paymentsIn, $paymentsOut] = $this->fetchSupplierData(
+                $supplierCui,
+                $dateStart,
+                $dateEnd
+            );
+
+            foreach ($invoices as $inv) {
+                $totalFurnizor += (float) ($inv['total_with_vat'] ?? 0);
+            }
+            foreach ($paymentsIn as $p) {
+                $totalIncasat += (float) ($p['allocated_amount'] ?? 0);
+            }
+            foreach ($paymentsOut as $p) {
+                $totalPlatit += (float) ($p['amount'] ?? 0);
+            }
+        }
+
+        Response::view('admin/reports/supplier_report', [
+            'suppliers'     => $suppliers,
+            'supplierCui'   => $supplierCui,
+            'supplierName'  => $supplierName,
+            'dateStart'     => $dateStart,
+            'dateEnd'       => $dateEnd,
+            'invoices'      => $invoices,
+            'paymentsIn'    => $paymentsIn,
+            'paymentsOut'   => $paymentsOut,
+            'totalFurnizor' => $totalFurnizor,
+            'totalIncasat'  => $totalIncasat,
+            'totalPlatit'   => $totalPlatit,
+        ]);
+    }
+
+    public function supplierReportPrint(): void
+    {
+        Auth::requireAdmin();
+
+        if (!$this->ensurePaymentTables()) {
+            Response::view('errors/schema', [], 'layouts/app');
+        }
+
+        $suppliers = Database::tableExists('invoices_in')
+            ? Database::fetchAll('SELECT DISTINCT supplier_cui, supplier_name FROM invoices_in ORDER BY supplier_name ASC')
+            : [];
+
+        $supplierCui = trim((string) ($_GET['supplier_cui'] ?? ''));
+        $dateStart   = trim((string) ($_GET['date_start'] ?? ''));
+        $dateEnd     = trim((string) ($_GET['date_end'] ?? ''));
+
+        if ($dateStart && !strtotime($dateStart)) {
+            $dateStart = '';
+        }
+        if ($dateEnd && !strtotime($dateEnd)) {
+            $dateEnd = '';
+        }
+
+        $supplierName  = '';
+        $invoices      = [];
+        $paymentsIn    = [];
+        $paymentsOut   = [];
+        $totalFurnizor = 0.0;
+        $totalIncasat  = 0.0;
+        $totalPlatit   = 0.0;
+
+        if ($supplierCui !== '') {
+            foreach ($suppliers as $s) {
+                if ((string) $s['supplier_cui'] === $supplierCui) {
+                    $supplierName = (string) $s['supplier_name'];
+                    break;
+                }
+            }
+
+            [$invoices, $paymentsIn, $paymentsOut] = $this->fetchSupplierData(
+                $supplierCui,
+                $dateStart,
+                $dateEnd
+            );
+
+            foreach ($invoices as $inv) {
+                $totalFurnizor += (float) ($inv['total_with_vat'] ?? 0);
+            }
+            foreach ($paymentsIn as $p) {
+                $totalIncasat += (float) ($p['allocated_amount'] ?? 0);
+            }
+            foreach ($paymentsOut as $p) {
+                $totalPlatit += (float) ($p['amount'] ?? 0);
+            }
+        }
+
+        Response::view('admin/reports/supplier_report_print', [
+            'supplierCui'   => $supplierCui,
+            'supplierName'  => $supplierName,
+            'dateStart'     => $dateStart,
+            'dateEnd'       => $dateEnd,
+            'invoices'      => $invoices,
+            'paymentsIn'    => $paymentsIn,
+            'paymentsOut'   => $paymentsOut,
+            'totalFurnizor' => $totalFurnizor,
+            'totalIncasat'  => $totalIncasat,
+            'totalPlatit'   => $totalPlatit,
+        ], 'layouts/print');
+    }
+
+    private function fetchSupplierData(string $supplierCui, string $dateStart, string $dateEnd): array
+    {
+        // --- Invoices ---
+        $invWhere  = 'WHERE supplier_cui = :supplier_cui AND fgo_number IS NOT NULL';
+        $invParams = ['supplier_cui' => $supplierCui];
+        if ($dateStart) {
+            $invWhere              .= ' AND fgo_date >= :date_start';
+            $invParams['date_start'] = $dateStart;
+        }
+        if ($dateEnd) {
+            $invWhere            .= ' AND fgo_date <= :date_end';
+            $invParams['date_end'] = $dateEnd;
+        }
+
+        $invoices = Database::tableExists('invoices_in')
+            ? Database::fetchAll(
+                "SELECT id, fgo_series, fgo_number, fgo_date, invoice_number, issue_date,
+                        selected_client_cui, total_with_vat, commission_percent
+                 FROM invoices_in
+                 $invWhere
+                 ORDER BY fgo_date ASC, fgo_number ASC",
+                $invParams
+            )
+            : [];
+
+        // Build client name map from commissions/partners table
+        $clientNames = [];
+        if (Database::tableExists('commissions')) {
+            $partners = Database::fetchAll(
+                'SELECT c.client_cui, cp.denumire AS client_name
+                 FROM commissions c
+                 LEFT JOIN partners cp ON cp.cui = c.client_cui
+                 WHERE c.supplier_cui = :supplier',
+                ['supplier' => $supplierCui]
+            );
+            foreach ($partners as $p) {
+                if (!empty($p['client_name'])) {
+                    $clientNames[(string) $p['client_cui']] = (string) $p['client_name'];
+                }
+            }
+        }
+        // Also supplement from payments_in client names
+        if (Database::tableExists('payments_in')) {
+            $payClients = Database::fetchAll(
+                'SELECT DISTINCT p.client_cui, p.client_name
+                 FROM payments_in p
+                 WHERE p.client_name != "" AND p.client_name IS NOT NULL'
+            );
+            foreach ($payClients as $pc) {
+                $clientNames[(string) $pc['client_cui']] ??= (string) $pc['client_name'];
+            }
+        }
+
+        foreach ($invoices as &$inv) {
+            $cui              = (string) ($inv['selected_client_cui'] ?? '');
+            $inv['client_name'] = $clientNames[$cui] ?? $cui;
+        }
+        unset($inv);
+
+        // --- Payments IN allocated to this supplier's invoices ---
+        $paymentsIn = [];
+        if (
+            Database::tableExists('payments_in')
+            && Database::tableExists('payment_in_allocations')
+            && Database::tableExists('invoices_in')
+        ) {
+            $piWhere  = 'WHERE i.supplier_cui = :supplier_cui';
+            $piParams = ['supplier_cui' => $supplierCui];
+            if ($dateStart) {
+                $piWhere              .= ' AND p.paid_at >= :date_start';
+                $piParams['date_start'] = $dateStart;
+            }
+            if ($dateEnd) {
+                $piWhere            .= ' AND p.paid_at <= :date_end';
+                $piParams['date_end'] = $dateEnd;
+            }
+
+            $paymentsIn = Database::fetchAll(
+                "SELECT p.id, p.paid_at, p.client_cui, p.client_name,
+                        SUM(a.amount) AS allocated_amount, p.notes
+                 FROM payments_in p
+                 JOIN payment_in_allocations a ON a.payment_in_id = p.id
+                 JOIN invoices_in i ON i.id = a.invoice_in_id
+                 $piWhere
+                 GROUP BY p.id, p.paid_at, p.client_cui, p.client_name, p.notes
+                 ORDER BY p.paid_at ASC, p.id ASC",
+                $piParams
+            );
+        }
+
+        // --- Payments OUT to this supplier ---
+        $paymentsOut = [];
+        if (Database::tableExists('payments_out')) {
+            $poWhere  = 'WHERE supplier_cui = :supplier_cui';
+            $poParams = ['supplier_cui' => $supplierCui];
+            if ($dateStart) {
+                $poWhere              .= ' AND paid_at >= :date_start';
+                $poParams['date_start'] = $dateStart;
+            }
+            if ($dateEnd) {
+                $poWhere            .= ' AND paid_at <= :date_end';
+                $poParams['date_end'] = $dateEnd;
+            }
+
+            $paymentsOut = Database::fetchAll(
+                "SELECT id, paid_at, amount, notes
+                 FROM payments_out
+                 $poWhere
+                 ORDER BY paid_at ASC, id ASC",
+                $poParams
+            );
+        }
+
+        return [$invoices, $paymentsIn, $paymentsOut];
+    }
+
     private function fetchPayments(string $table, string $start, string $end): array
     {
         if (!Database::tableExists($table)) {

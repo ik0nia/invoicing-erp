@@ -166,6 +166,12 @@ if ($isPlatformUser) {
                 'icon' => 'rapoarte',
                 'active' => str_starts_with($currentPath, '/admin/rapoarte/cashflow'),
             ],
+            [
+                'label' => 'Raport furnizor',
+                'path' => '/admin/rapoarte/furnizor',
+                'icon' => 'rapoarte',
+                'active' => str_starts_with($currentPath, '/admin/rapoarte/furnizor'),
+            ],
         ];
     }
 
