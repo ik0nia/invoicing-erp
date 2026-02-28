@@ -72,6 +72,11 @@ $printUrl = App\Support\Url::to('admin/rapoarte/furnizor/print'
 
 <?php if ($supplierCui !== ''): ?>
 
+<?php
+$neincasat = max(0.0, $totalFurnizor - $totalIncasat);
+$neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
+?>
+
 <div class="mt-6 grid gap-4 md:grid-cols-3">
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <div class="text-slate-500">Total facturat furnizor</div>
@@ -85,17 +90,32 @@ $printUrl = App\Support\Url::to('admin/rapoarte/furnizor/print'
         <div class="mt-1 text-lg font-semibold text-emerald-700">
             <?= number_format($totalIncasat, 2, '.', ' ') ?> RON
         </div>
-        <div class="mt-0.5 text-xs text-slate-400">
-            Neincasat: <?= number_format(max(0.0, $totalFurnizor - $totalIncasat), 2, '.', ' ') ?> RON
-        </div>
     </div>
     <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <div class="text-slate-500">Total platit furnizor</div>
         <div class="mt-1 text-lg font-semibold text-rose-700">
             <?= number_format($totalPlatit, 2, '.', ' ') ?> RON
         </div>
-        <div class="mt-0.5 text-xs text-slate-400">
-            Neplatit: <?= number_format(max(0.0, $totalFurnizor - $totalPlatit), 2, '.', ' ') ?> RON
+    </div>
+</div>
+
+<div class="mt-4 grid gap-4 md:grid-cols-2">
+    <div class="rounded-lg border-2 border-amber-400 bg-amber-50 p-4 text-center">
+        <div class="text-sm font-semibold text-amber-800">De incasat de la clienti</div>
+        <div class="mt-2 text-2xl font-bold text-amber-900">
+            <?= number_format($neincasat, 2, '.', ' ') ?> RON
+        </div>
+        <div class="mt-1 text-xs text-amber-700">
+            din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
+        </div>
+    </div>
+    <div class="rounded-lg border-2 border-rose-400 bg-rose-50 p-4 text-center">
+        <div class="text-sm font-semibold text-rose-800">De platit catre furnizor</div>
+        <div class="mt-2 text-2xl font-bold text-rose-900">
+            <?= number_format($neplatit, 2, '.', ' ') ?> RON
+        </div>
+        <div class="mt-1 text-xs text-rose-700">
+            din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
         </div>
     </div>
 </div>
