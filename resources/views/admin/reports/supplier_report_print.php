@@ -34,19 +34,28 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
     </div>
 </div>
 
-<div class="mt-3 grid gap-3" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-    <div class="rounded border-2 border-slate-800 p-4 text-center">
-        <div class="text-sm font-medium text-slate-700">DE INCASAT DE LA CLIENTI</div>
-        <div class="mt-2 text-2xl font-bold text-slate-900"><?= number_format($neincasat, 2, '.', ' ') ?> RON</div>
-        <div class="mt-1 text-xs text-slate-500">
+<?php $restDePlatitDinIncasat = max(0.0, $totalIncasat - $totalPlatit); ?>
+
+<div class="mt-3 grid gap-3" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+    <div class="rounded border border-slate-400 bg-slate-50 p-3 text-center">
+        <div class="text-xs font-medium text-slate-600">De incasat de la clienti</div>
+        <div class="mt-1 text-base font-semibold text-slate-900"><?= number_format($neincasat, 2, '.', ' ') ?> RON</div>
+        <div class="mt-0.5 text-xs text-slate-500">
             din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
         </div>
     </div>
-    <div class="rounded border-2 border-slate-800 p-4 text-center">
-        <div class="text-sm font-medium text-slate-700">DE PLATIT CATRE FURNIZOR</div>
-        <div class="mt-2 text-2xl font-bold text-slate-900"><?= number_format($neplatit, 2, '.', ' ') ?> RON</div>
-        <div class="mt-1 text-xs text-slate-500">
+    <div class="rounded border border-slate-400 bg-slate-50 p-3 text-center">
+        <div class="text-xs font-medium text-slate-600">De platit catre furnizor</div>
+        <div class="mt-1 text-base font-semibold text-slate-900"><?= number_format($neplatit, 2, '.', ' ') ?> RON</div>
+        <div class="mt-0.5 text-xs text-slate-500">
             din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
+        </div>
+    </div>
+    <div class="rounded border border-slate-400 bg-slate-50 p-3 text-center">
+        <div class="text-xs font-medium text-slate-600">De platit din incasat</div>
+        <div class="mt-1 text-base font-semibold text-slate-900"><?= number_format($restDePlatitDinIncasat, 2, '.', ' ') ?> RON</div>
+        <div class="mt-0.5 text-xs text-slate-500">
+            din <?= number_format($totalIncasat, 2, '.', ' ') ?> RON incasat
         </div>
     </div>
 </div>
