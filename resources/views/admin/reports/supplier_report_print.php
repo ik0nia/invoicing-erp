@@ -46,7 +46,6 @@
                 <th class="px-2 py-1">Nr. fact. furnizor</th>
                 <th class="px-2 py-1">Client</th>
                 <th class="px-2 py-1 text-right">Total furnizor</th>
-                <th class="px-2 py-1 text-right">Comision</th>
             </tr>
         </thead>
         <tbody>
@@ -64,12 +63,6 @@
                         <td class="px-2 py-1"><?= htmlspecialchars((string) ($inv['invoice_number'] ?? '')) ?></td>
                         <td class="px-2 py-1"><?= htmlspecialchars((string) ($inv['client_name'] ?? '')) ?></td>
                         <td class="px-2 py-1 text-right"><?= number_format((float) ($inv['total_with_vat'] ?? 0), 2, '.', ' ') ?></td>
-                        <td class="px-2 py-1 text-right">
-                            <?php
-                            $cp = $inv['commission_percent'] !== null ? (float) $inv['commission_percent'] : null;
-                            echo ($cp !== null && $cp >= 0.1) ? number_format($cp, 2, '.', '') . '%' : '—';
-                            ?>
-                        </td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -79,7 +72,6 @@
                 <tr>
                     <td colspan="4" class="px-2 py-1 text-right font-semibold">Total</td>
                     <td class="px-2 py-1 text-right font-semibold"><?= number_format($totalFurnizor, 2, '.', ' ') ?></td>
-                    <td></td>
                 </tr>
             </tfoot>
         <?php endif; ?>
