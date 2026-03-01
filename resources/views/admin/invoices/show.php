@@ -922,7 +922,7 @@
                 <dialog id="fgo-date-modal" class="rounded-lg p-0 shadow-xl w-full max-w-sm" style="border:none;">
                     <div class="p-6">
                         <h2 class="text-base font-semibold text-slate-800 mb-4">Alege data facturii FGO</h2>
-                        <div class="mb-5">
+                        <div class="mb-4">
                             <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_date_input">
                                 Data emiterii
                             </label>
@@ -930,8 +930,10 @@
                                 type="date"
                                 id="fgo_date_input"
                                 class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                                onchange="fgoCheckDateWarning()"
                             />
                         </div>
+                        <div id="fgo-date-warning" class="mb-4 hidden rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"></div>
                         <div class="flex justify-end gap-2">
                             <button
                                 type="button"
@@ -951,14 +953,38 @@
                     </div>
                 </dialog>
                 <script>
+                var fgoLatestDate = '<?= htmlspecialchars($latestFgoDate ?? '') ?>';
+
+                function fgoFormatDate(iso) {
+                    if (!iso) return '';
+                    var p = iso.split('-');
+                    return p[2] + '.' + p[1] + '.' + p[0];
+                }
+
+                function fgoCheckDateWarning() {
+                    var dateVal = document.getElementById('fgo_date_input').value;
+                    var warning = document.getElementById('fgo-date-warning');
+                    if (fgoLatestDate && dateVal && dateVal < fgoLatestDate) {
+                        warning.textContent = 'Atentie! Ultima factura FGO a fost emisa pe data de '
+                            + fgoFormatDate(fgoLatestDate)
+                            + '. Data aleasa (' + fgoFormatDate(dateVal) + ') este mai veche — poti schimba data sau continua.';
+                        warning.classList.remove('hidden');
+                    } else {
+                        warning.classList.add('hidden');
+                    }
+                }
+
                 function fgoOpenDateModal() {
                     var today = new Date();
                     var y = today.getFullYear();
                     var m = String(today.getMonth() + 1).padStart(2, '0');
                     var d = String(today.getDate()).padStart(2, '0');
                     document.getElementById('fgo_date_input').value = y + '-' + m + '-' + d;
+                    document.getElementById('fgo-date-warning').classList.add('hidden');
+                    fgoCheckDateWarning();
                     document.getElementById('fgo-date-modal').showModal();
                 }
+
                 (function () {
                     var modal = document.getElementById('fgo-date-modal');
                     if (!modal) return;
