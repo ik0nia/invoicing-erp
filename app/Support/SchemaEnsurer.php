@@ -93,6 +93,10 @@ class SchemaEnsurer
                 unset(self::$columnCache['payments_out.payment_order_id']);
             }
         });
+
+        self::runStep('companies_strip_diacritics_judet_localitate', static function (): void {
+            self::ensureCompaniesStripDiacritics();
+        });
     }
 
     public static function ensureAuditLogTable(): void
@@ -1132,6 +1136,38 @@ class SchemaEnsurer
             self::ensureIndex('relation_documents', 'idx_relation_docs', 'ALTER TABLE relation_documents ADD INDEX idx_relation_docs (supplier_cui, client_cui)');
             self::ensureIndex('relation_documents', 'idx_relation_docs_created', 'ALTER TABLE relation_documents ADD INDEX idx_relation_docs_created (created_at)');
         }
+    }
+
+    public static function ensureCompaniesStripDiacritics(): void
+    {
+        if (!self::tableExists('companies')) {
+            return;
+        }
+
+        // Build nested REPLACE chains for both comma-below (ș/ț) and cedilla (ş/ţ) variants.
+        $map = [
+            'ă' => 'a', 'Ă' => 'A',
+            'â' => 'a', 'Â' => 'A',
+            'î' => 'i', 'Î' => 'I',
+            'ș' => 's', 'Ș' => 'S',
+            'ț' => 't', 'Ț' => 'T',
+            'ş' => 's', 'Ş' => 'S',
+            'ţ' => 't', 'Ţ' => 'T',
+        ];
+
+        $judetExpr     = 'judet';
+        $localitateExpr = 'localitate';
+        foreach ($map as $from => $to) {
+            $judetExpr      = "REPLACE($judetExpr, '$from', '$to')";
+            $localitateExpr = "REPLACE($localitateExpr, '$from', '$to')";
+        }
+
+        self::safeExecute(
+            "UPDATE companies SET judet = $judetExpr, localitate = $localitateExpr
+             WHERE judet REGEXP '[ăĂâÂîÎșȘțȚşŞţŢ]' OR localitate REGEXP '[ăĂâÂîÎșȘțȚşŞţŢ]'",
+            [],
+            'companies_strip_diacritics_judet_localitate'
+        );
     }
 
     private static function runStep(string $step, callable $callback): void
