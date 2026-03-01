@@ -452,8 +452,12 @@ class ReportsController
                 $fgoTotal = $commission >= 0
                     ? round($supplierTotal * $factor, 2)
                     : round($supplierTotal / $factor, 2);
-            } elseif ($linesTotal > $supplierTotal + 0.009) {
-                // No commission set; client-facing total is embedded in line prices.
+            } elseif (
+                ($linesTotal - $supplierTotal) > 0.50
+                && ($linesTotal - $supplierTotal) > ($supplierTotal * 0.005)
+            ) {
+                // No commission set; client-facing total is embedded in line prices
+                // (same threshold as invoiceHasDiscountPricing()).
                 $fgoTotal = round($linesTotal, 2);
             } else {
                 $fgoTotal = $supplierTotal;
