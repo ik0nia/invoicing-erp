@@ -283,7 +283,8 @@ class ReportsController
 
         $invoices = Database::tableExists('invoices_in')
             ? Database::fetchAll(
-                "SELECT id, fgo_series, fgo_number, fgo_date, invoice_number, issue_date,
+                "SELECT id, fgo_series, fgo_number, fgo_date, fgo_link,
+                        invoice_series, invoice_no, invoice_number, issue_date, xml_path,
                         selected_client_cui, total_with_vat, commission_percent
                  FROM invoices_in
                  $invWhere
@@ -320,12 +321,6 @@ class ReportsController
             }
         }
 
-        foreach ($invoices as &$inv) {
-            $cui              = (string) ($inv['selected_client_cui'] ?? '');
-            $inv['client_name'] = $clientNames[$cui] ?? $cui;
-        }
-        unset($inv);
-
         // Build a shared IN clause for invoice IDs.
         // Payments and commission calculation are all anchored to the same
         // set of invoices, so totals remain consistent with what is displayed.
@@ -337,6 +332,47 @@ class ReportsController
             $inParams['inv' . $k] = $id;
         }
         $inClause = implode(',', $inPlaceholders);
+
+        // Per-invoice collected amounts (client-side, from payment_in_allocations)
+        $incasatPerInvoice = [];
+        if (!empty($invoiceIds) && Database::tableExists('payment_in_allocations')) {
+            $incRows = Database::fetchAll(
+                "SELECT invoice_in_id, COALESCE(SUM(amount), 0) AS incasat
+                 FROM payment_in_allocations
+                 WHERE invoice_in_id IN ($inClause)
+                 GROUP BY invoice_in_id",
+                $inParams
+            );
+            foreach ($incRows as $row) {
+                $incasatPerInvoice[(int) $row['invoice_in_id']] = (float) $row['incasat'];
+            }
+        }
+
+        foreach ($invoices as &$inv) {
+            $cui              = (string) ($inv['selected_client_cui'] ?? '');
+            $inv['client_name'] = $clientNames[$cui] ?? $cui;
+
+            // Supplier invoice label (series + no, fallback to invoice_number)
+            $invLabel = trim((string) ($inv['invoice_series'] ?? '') . ' ' . (string) ($inv['invoice_no'] ?? ''));
+            if ($invLabel === '') {
+                $invLabel = (string) ($inv['invoice_number'] ?? '');
+            }
+            $inv['supplier_invoice_label'] = $invLabel;
+
+            // FGO total = supplier total with commission applied (markup on top)
+            $commission    = (float) ($inv['commission_percent'] ?? 0);
+            $factor        = 1 + abs($commission) / 100;
+            $supplierTotal = (float) ($inv['total_with_vat'] ?? 0);
+            $fgoTotal      = $commission >= 0
+                ? round($supplierTotal * $factor, 2)
+                : round($supplierTotal / $factor, 2);
+
+            $incasat              = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
+            $inv['fgo_total']     = $fgoTotal;
+            $inv['incasat']       = $incasat;
+            $inv['rest_de_plata'] = max(0.0, $fgoTotal - $incasat);
+        }
+        unset($inv);
 
         // --- Payments IN allocated to the filtered invoices ---
         $paymentsIn = [];

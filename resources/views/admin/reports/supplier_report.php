@@ -132,44 +132,91 @@ $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 </div>
 
 <!-- Facturi FGO -->
+<?php
+$fileBaseUrl = App\Support\Url::to('admin/facturi/fisier');
+$totalIncasatFacturi   = 0.0;
+$totalRestDePlataFacturi = 0.0;
+foreach ($invoices as $inv) {
+    $totalIncasatFacturi   += (float) ($inv['incasat'] ?? 0);
+    $totalRestDePlataFacturi += (float) ($inv['rest_de_plata'] ?? 0);
+}
+?>
 <div class="mt-6 rounded-lg border border-slate-200 bg-white p-4">
     <h2 class="text-base font-semibold text-slate-900">Facturi emise catre clienti</h2>
     <div class="mt-3 overflow-auto">
         <table class="w-full text-left text-sm">
             <thead class="border-b border-slate-200 bg-slate-50 text-slate-600">
                 <tr>
-                    <th class="px-3 py-2">Nr. FGO</th>
-                    <th class="px-3 py-2">Data FGO</th>
-                    <th class="px-3 py-2">Nr. factura furnizor</th>
+                    <th class="px-3 py-2">Factura furnizor</th>
+                    <th class="px-3 py-2">Factura client</th>
                     <th class="px-3 py-2">Client</th>
                     <th class="px-3 py-2 text-right">Total furnizor</th>
                     <th class="px-3 py-2 text-right">Comision</th>
+                    <th class="px-3 py-2 text-right">Incasat</th>
+                    <th class="px-3 py-2 text-right">Rest de plata</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($invoices)): ?>
                     <tr>
-                        <td colspan="6" class="px-3 py-4 text-center text-slate-500">
+                        <td colspan="7" class="px-3 py-4 text-center text-slate-500">
                             Nu exista facturi FGO pentru filtrul selectat.
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($invoices as $inv): ?>
+                        <?php
+                            $supplierLabel = htmlspecialchars((string) ($inv['supplier_invoice_label'] ?? ''));
+                            $supplierDate  = htmlspecialchars((string) ($inv['issue_date'] ?? ''));
+                            $xmlPath       = (string) ($inv['xml_path'] ?? '');
+                            $fileUrl       = $fileBaseUrl . '?invoice_id=' . (int) $inv['id'];
+
+                            $fgoLabel = htmlspecialchars(trim(($inv['fgo_series'] ?? '') . ' ' . ($inv['fgo_number'] ?? '')));
+                            $fgoDate  = htmlspecialchars((string) ($inv['fgo_date'] ?? ''));
+                            $fgoLink  = (string) ($inv['fgo_link'] ?? '');
+
+                            $cp = $inv['commission_percent'] !== null ? (float) $inv['commission_percent'] : null;
+                            $restDePlata = (float) ($inv['rest_de_plata'] ?? 0);
+                        ?>
                         <tr class="border-b border-slate-100 hover:bg-slate-50">
-                            <td class="px-3 py-2 font-medium text-slate-900">
-                                <?= htmlspecialchars(trim(($inv['fgo_series'] ?? '') . ' ' . ($inv['fgo_number'] ?? ''))) ?>
+                            <td class="px-3 py-2">
+                                <?php if ($supplierLabel !== '' && $xmlPath !== ''): ?>
+                                    <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank" rel="noopener"
+                                       class="font-medium text-blue-700 hover:text-blue-800">
+                                        <?= $supplierLabel ?>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="font-medium text-slate-900"><?= $supplierLabel !== '' ? $supplierLabel : '—' ?></span>
+                                <?php endif; ?>
+                                <?php if ($supplierDate !== ''): ?>
+                                    <div class="text-xs text-slate-400 mt-0.5"><?= $supplierDate ?></div>
+                                <?php endif; ?>
                             </td>
-                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($inv['fgo_date'] ?? '')) ?></td>
-                            <td class="px-3 py-2 text-slate-600"><?= htmlspecialchars((string) ($inv['invoice_number'] ?? '')) ?></td>
+                            <td class="px-3 py-2">
+                                <?php if ($fgoLabel !== '' && $fgoLink !== ''): ?>
+                                    <a href="<?= htmlspecialchars($fgoLink) ?>" target="_blank" rel="noopener"
+                                       class="font-medium text-blue-700 hover:text-blue-800">
+                                        <?= $fgoLabel ?>
+                                    </a>
+                                <?php else: ?>
+                                    <span class="font-medium text-slate-900"><?= $fgoLabel !== '' ? $fgoLabel : '—' ?></span>
+                                <?php endif; ?>
+                                <?php if ($fgoDate !== ''): ?>
+                                    <div class="text-xs text-slate-400 mt-0.5"><?= $fgoDate ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td class="px-3 py-2"><?= htmlspecialchars((string) ($inv['client_name'] ?? '')) ?></td>
                             <td class="px-3 py-2 text-right font-medium text-slate-900">
                                 <?= number_format((float) ($inv['total_with_vat'] ?? 0), 2, '.', ' ') ?>
                             </td>
                             <td class="px-3 py-2 text-right text-slate-600">
-                                <?php
-                                $cp = $inv['commission_percent'] !== null ? (float) $inv['commission_percent'] : null;
-                                echo ($cp !== null && $cp >= 0.1) ? number_format($cp, 2, '.', '') . '%' : '—';
-                                ?>
+                                <?= ($cp !== null && $cp >= 0.1) ? number_format($cp, 2, '.', '') . '%' : '—' ?>
+                            </td>
+                            <td class="px-3 py-2 text-right text-emerald-700 font-medium">
+                                <?= number_format((float) ($inv['incasat'] ?? 0), 2, '.', ' ') ?>
+                            </td>
+                            <td class="px-3 py-2 text-right font-medium <?= $restDePlata > 0 ? 'text-rose-700' : 'text-slate-400' ?>">
+                                <?= number_format($restDePlata, 2, '.', ' ') ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -178,11 +225,17 @@ $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
             <?php if (!empty($invoices)): ?>
                 <tfoot class="border-t border-slate-200 bg-slate-50">
                     <tr>
-                        <td colspan="4" class="px-3 py-2 text-right text-sm font-semibold text-slate-700">Total</td>
+                        <td colspan="3" class="px-3 py-2 text-right text-sm font-semibold text-slate-700">Total</td>
                         <td class="px-3 py-2 text-right text-sm font-semibold text-slate-900">
                             <?= number_format($totalFurnizor, 2, '.', ' ') ?>
                         </td>
                         <td></td>
+                        <td class="px-3 py-2 text-right text-sm font-semibold text-emerald-700">
+                            <?= number_format($totalIncasatFacturi, 2, '.', ' ') ?>
+                        </td>
+                        <td class="px-3 py-2 text-right text-sm font-semibold text-rose-700">
+                            <?= number_format($totalRestDePlataFacturi, 2, '.', ' ') ?>
+                        </td>
                     </tr>
                 </tfoot>
             <?php endif; ?>
