@@ -74,7 +74,7 @@ $printUrl = App\Support\Url::to('admin/rapoarte/furnizor/print'
 
 <?php
 $neincasat = max(0.0, $totalFurnizor - $totalIncasat);
-$neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
+$neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 ?>
 
 <div class="mt-6 grid gap-4 md:grid-cols-3">
@@ -99,7 +99,7 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
     </div>
 </div>
 
-<?php $restDePlatitDinIncasat = max(0.0, $totalIncasat - $totalPlatit); ?>
+<?php $restDePlatitDinIncasat = max(0.0, $totalCuvenitFurnizorDinIncasat - $totalPlatit); ?>
 
 <div class="mt-4 grid gap-3 md:grid-cols-3">
     <div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-center">
@@ -117,7 +117,7 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
             <?= number_format($neplatit, 2, '.', ' ') ?> RON
         </div>
         <div class="mt-0.5 text-xs text-rose-600">
-            din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
+            din <?= number_format($totalCuvenitFurnizorDinFacturi, 2, '.', ' ') ?> RON cuvenit furnizorului
         </div>
     </div>
     <div class="rounded-lg border border-indigo-300 bg-indigo-50 p-3 text-center">
@@ -126,7 +126,7 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
             <?= number_format($restDePlatitDinIncasat, 2, '.', ' ') ?> RON
         </div>
         <div class="mt-0.5 text-xs text-indigo-600">
-            din <?= number_format($totalIncasat, 2, '.', ' ') ?> RON incasat
+            din <?= number_format($totalCuvenitFurnizorDinIncasat, 2, '.', ' ') ?> RON cuvenit furnizorului din incasat
         </div>
     </div>
 </div>

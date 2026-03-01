@@ -15,7 +15,7 @@
 
 <?php
 $neincasat = max(0.0, $totalFurnizor - $totalIncasat);
-$neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
+$neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 ?>
 
 <div class="mt-4 grid gap-3" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
@@ -34,7 +34,7 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
     </div>
 </div>
 
-<?php $restDePlatitDinIncasat = max(0.0, $totalIncasat - $totalPlatit); ?>
+<?php $restDePlatitDinIncasat = max(0.0, $totalCuvenitFurnizorDinIncasat - $totalPlatit); ?>
 
 <div class="mt-3 grid gap-3" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
     <div class="rounded border border-slate-400 bg-slate-50 p-3 text-center">
@@ -48,14 +48,14 @@ $neplatit  = max(0.0, $totalFurnizor - $totalPlatit);
         <div class="text-xs font-medium text-slate-600">De platit catre furnizor</div>
         <div class="mt-1 text-base font-semibold text-slate-900"><?= number_format($neplatit, 2, '.', ' ') ?> RON</div>
         <div class="mt-0.5 text-xs text-slate-500">
-            din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
+            din <?= number_format($totalCuvenitFurnizorDinFacturi, 2, '.', ' ') ?> RON cuvenit furnizorului
         </div>
     </div>
     <div class="rounded border border-slate-400 bg-slate-50 p-3 text-center">
         <div class="text-xs font-medium text-slate-600">De platit din incasat</div>
         <div class="mt-1 text-base font-semibold text-slate-900"><?= number_format($restDePlatitDinIncasat, 2, '.', ' ') ?> RON</div>
         <div class="mt-0.5 text-xs text-slate-500">
-            din <?= number_format($totalIncasat, 2, '.', ' ') ?> RON incasat
+            din <?= number_format($totalCuvenitFurnizorDinIncasat, 2, '.', ' ') ?> RON cuvenit furnizorului din incasat
         </div>
     </div>
 </div>

@@ -143,6 +143,9 @@ class ReportsController
         $totalIncasat  = 0.0;
         $totalPlatit   = 0.0;
 
+        $totalCuvenitFurnizorDinFacturi  = 0.0;
+        $totalCuvenitFurnizorDinIncasat = 0.0;
+
         if ($supplierCui !== '') {
             foreach ($suppliers as $s) {
                 if ((string) $s['supplier_cui'] === $supplierCui) {
@@ -151,7 +154,7 @@ class ReportsController
                 }
             }
 
-            [$invoices, $paymentsIn, $paymentsOut] = $this->fetchSupplierData(
+            [$invoices, $paymentsIn, $paymentsOut, $totalCuvenitFurnizorDinIncasat] = $this->fetchSupplierData(
                 $supplierCui,
                 $dateStart,
                 $dateEnd
@@ -159,6 +162,8 @@ class ReportsController
 
             foreach ($invoices as $inv) {
                 $totalFurnizor += (float) ($inv['total_with_vat'] ?? 0);
+                $commission = (float) ($inv['commission_percent'] ?? 0);
+                $totalCuvenitFurnizorDinFacturi += (float) ($inv['total_with_vat'] ?? 0) * (1 - $commission / 100);
             }
             foreach ($paymentsIn as $p) {
                 $totalIncasat += (float) ($p['allocated_amount'] ?? 0);
@@ -169,17 +174,19 @@ class ReportsController
         }
 
         Response::view('admin/reports/supplier_report', [
-            'suppliers'     => $suppliers,
-            'supplierCui'   => $supplierCui,
-            'supplierName'  => $supplierName,
-            'dateStart'     => $dateStart,
-            'dateEnd'       => $dateEnd,
-            'invoices'      => $invoices,
-            'paymentsIn'    => $paymentsIn,
-            'paymentsOut'   => $paymentsOut,
-            'totalFurnizor' => $totalFurnizor,
-            'totalIncasat'  => $totalIncasat,
-            'totalPlatit'   => $totalPlatit,
+            'suppliers'                      => $suppliers,
+            'supplierCui'                    => $supplierCui,
+            'supplierName'                   => $supplierName,
+            'dateStart'                      => $dateStart,
+            'dateEnd'                        => $dateEnd,
+            'invoices'                       => $invoices,
+            'paymentsIn'                     => $paymentsIn,
+            'paymentsOut'                    => $paymentsOut,
+            'totalFurnizor'                  => $totalFurnizor,
+            'totalIncasat'                   => $totalIncasat,
+            'totalPlatit'                    => $totalPlatit,
+            'totalCuvenitFurnizorDinFacturi' => $totalCuvenitFurnizorDinFacturi,
+            'totalCuvenitFurnizorDinIncasat' => $totalCuvenitFurnizorDinIncasat,
         ]);
     }
 
@@ -214,6 +221,9 @@ class ReportsController
         $totalIncasat  = 0.0;
         $totalPlatit   = 0.0;
 
+        $totalCuvenitFurnizorDinFacturi  = 0.0;
+        $totalCuvenitFurnizorDinIncasat = 0.0;
+
         if ($supplierCui !== '') {
             foreach ($suppliers as $s) {
                 if ((string) $s['supplier_cui'] === $supplierCui) {
@@ -222,7 +232,7 @@ class ReportsController
                 }
             }
 
-            [$invoices, $paymentsIn, $paymentsOut] = $this->fetchSupplierData(
+            [$invoices, $paymentsIn, $paymentsOut, $totalCuvenitFurnizorDinIncasat] = $this->fetchSupplierData(
                 $supplierCui,
                 $dateStart,
                 $dateEnd
@@ -230,6 +240,8 @@ class ReportsController
 
             foreach ($invoices as $inv) {
                 $totalFurnizor += (float) ($inv['total_with_vat'] ?? 0);
+                $commission = (float) ($inv['commission_percent'] ?? 0);
+                $totalCuvenitFurnizorDinFacturi += (float) ($inv['total_with_vat'] ?? 0) * (1 - $commission / 100);
             }
             foreach ($paymentsIn as $p) {
                 $totalIncasat += (float) ($p['allocated_amount'] ?? 0);
@@ -240,22 +252,24 @@ class ReportsController
         }
 
         Response::view('admin/reports/supplier_report_print', [
-            'supplierCui'   => $supplierCui,
-            'supplierName'  => $supplierName,
-            'dateStart'     => $dateStart,
-            'dateEnd'       => $dateEnd,
-            'invoices'      => $invoices,
-            'paymentsIn'    => $paymentsIn,
-            'paymentsOut'   => $paymentsOut,
-            'totalFurnizor' => $totalFurnizor,
-            'totalIncasat'  => $totalIncasat,
-            'totalPlatit'   => $totalPlatit,
+            'supplierCui'                    => $supplierCui,
+            'supplierName'                   => $supplierName,
+            'dateStart'                      => $dateStart,
+            'dateEnd'                        => $dateEnd,
+            'invoices'                       => $invoices,
+            'paymentsIn'                     => $paymentsIn,
+            'paymentsOut'                    => $paymentsOut,
+            'totalFurnizor'                  => $totalFurnizor,
+            'totalIncasat'                   => $totalIncasat,
+            'totalPlatit'                    => $totalPlatit,
+            'totalCuvenitFurnizorDinFacturi' => $totalCuvenitFurnizorDinFacturi,
+            'totalCuvenitFurnizorDinIncasat' => $totalCuvenitFurnizorDinIncasat,
         ], 'layouts/print');
     }
 
     private function fetchSupplierData(string $supplierCui, string $dateStart, string $dateEnd): array
     {
-        // --- Invoices ---
+        // --- Invoices filtered by fgo_date ---
         $invWhere  = 'WHERE supplier_cui = :supplier_cui AND fgo_number IS NOT NULL';
         $invParams = ['supplier_cui' => $supplierCui];
         if ($dateStart) {
@@ -312,61 +326,77 @@ class ReportsController
         }
         unset($inv);
 
-        // --- Payments IN allocated to this supplier's invoices ---
+        // Build a shared IN clause for invoice IDs.
+        // Payments and commission calculation are all anchored to the same
+        // set of invoices, so totals remain consistent with what is displayed.
+        $invoiceIds     = array_column($invoices, 'id');
+        $inPlaceholders = [];
+        $inParams       = [];
+        foreach ($invoiceIds as $k => $id) {
+            $inPlaceholders[]    = ':inv' . $k;
+            $inParams['inv' . $k] = $id;
+        }
+        $inClause = implode(',', $inPlaceholders);
+
+        // --- Payments IN allocated to the filtered invoices ---
         $paymentsIn = [];
         if (
-            Database::tableExists('payments_in')
+            !empty($invoiceIds)
+            && Database::tableExists('payments_in')
             && Database::tableExists('payment_in_allocations')
-            && Database::tableExists('invoices_in')
         ) {
-            $piWhere  = 'WHERE i.supplier_cui = :supplier_cui';
-            $piParams = ['supplier_cui' => $supplierCui];
-            if ($dateStart) {
-                $piWhere              .= ' AND p.paid_at >= :date_start';
-                $piParams['date_start'] = $dateStart;
-            }
-            if ($dateEnd) {
-                $piWhere            .= ' AND p.paid_at <= :date_end';
-                $piParams['date_end'] = $dateEnd;
-            }
-
             $paymentsIn = Database::fetchAll(
                 "SELECT p.id, p.paid_at, p.client_cui, p.client_name,
                         SUM(a.amount) AS allocated_amount, p.notes
                  FROM payments_in p
                  JOIN payment_in_allocations a ON a.payment_in_id = p.id
-                 JOIN invoices_in i ON i.id = a.invoice_in_id
-                 $piWhere
+                 WHERE a.invoice_in_id IN ($inClause)
                  GROUP BY p.id, p.paid_at, p.client_cui, p.client_name, p.notes
                  ORDER BY p.paid_at ASC, p.id ASC",
-                $piParams
+                $inParams
             );
         }
 
-        // --- Payments OUT to this supplier ---
+        // --- Supplier's net share from collected amounts (after deducting commission) ---
+        // This is what the user actually owes the supplier from client payments.
+        $totalCuvenitFurnizorDinIncasat = 0.0;
+        if (
+            !empty($invoiceIds)
+            && Database::tableExists('payment_in_allocations')
+            && Database::tableExists('invoices_in')
+        ) {
+            $allocRows = Database::fetchAll(
+                "SELECT a.amount AS allocated_amount, i.commission_percent
+                 FROM payment_in_allocations a
+                 JOIN invoices_in i ON i.id = a.invoice_in_id
+                 WHERE a.invoice_in_id IN ($inClause)",
+                $inParams
+            );
+            foreach ($allocRows as $row) {
+                $commission = (float) ($row['commission_percent'] ?? 0);
+                $totalCuvenitFurnizorDinIncasat += (float) ($row['allocated_amount'] ?? 0) * (1 - $commission / 100);
+            }
+        }
+
+        // --- Payments OUT allocated to the filtered invoices ---
         $paymentsOut = [];
-        if (Database::tableExists('payments_out')) {
-            $poWhere  = 'WHERE supplier_cui = :supplier_cui';
-            $poParams = ['supplier_cui' => $supplierCui];
-            if ($dateStart) {
-                $poWhere              .= ' AND paid_at >= :date_start';
-                $poParams['date_start'] = $dateStart;
-            }
-            if ($dateEnd) {
-                $poWhere            .= ' AND paid_at <= :date_end';
-                $poParams['date_end'] = $dateEnd;
-            }
-
+        if (
+            !empty($invoiceIds)
+            && Database::tableExists('payments_out')
+            && Database::tableExists('payment_out_allocations')
+        ) {
             $paymentsOut = Database::fetchAll(
-                "SELECT id, paid_at, amount, notes
-                 FROM payments_out
-                 $poWhere
-                 ORDER BY paid_at ASC, id ASC",
-                $poParams
+                "SELECT p.id, p.paid_at, p.amount, p.notes
+                 FROM payments_out p
+                 JOIN payment_out_allocations a ON a.payment_out_id = p.id
+                 WHERE a.invoice_in_id IN ($inClause)
+                 GROUP BY p.id, p.paid_at, p.amount, p.notes
+                 ORDER BY p.paid_at ASC, p.id ASC",
+                $inParams
             );
         }
 
-        return [$invoices, $paymentsIn, $paymentsOut];
+        return [$invoices, $paymentsIn, $paymentsOut, $totalCuvenitFurnizorDinIncasat];
     }
 
     private function fetchPayments(string $table, string $start, string $end): array
