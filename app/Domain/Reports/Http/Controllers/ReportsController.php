@@ -348,6 +348,21 @@ class ReportsController
             }
         }
 
+        // Per-invoice paid amounts (supplier-side, from payment_out_allocations)
+        $platitPerInvoice = [];
+        if (!empty($invoiceIds) && Database::tableExists('payment_out_allocations')) {
+            $platitRows = Database::fetchAll(
+                "SELECT invoice_in_id, COALESCE(SUM(amount), 0) AS platit
+                 FROM payment_out_allocations
+                 WHERE invoice_in_id IN ($inClause)
+                 GROUP BY invoice_in_id",
+                $inParams
+            );
+            foreach ($platitRows as $row) {
+                $platitPerInvoice[(int) $row['invoice_in_id']] = (float) $row['platit'];
+            }
+        }
+
         foreach ($invoices as &$inv) {
             $cui              = (string) ($inv['selected_client_cui'] ?? '');
             $inv['client_name'] = $clientNames[$cui] ?? $cui;
@@ -367,10 +382,25 @@ class ReportsController
                 ? round($supplierTotal * $factor, 2)
                 : round($supplierTotal / $factor, 2);
 
-            $incasat              = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
-            $inv['fgo_total']     = $fgoTotal;
-            $inv['incasat']       = $incasat;
-            $inv['rest_de_plata'] = max(0.0, $fgoTotal - $incasat);
+            $incasat = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
+            $platit  = $platitPerInvoice[(int) $inv['id']] ?? 0.0;
+
+            // Supplier's net share from what has been collected for this invoice
+            if ($fgoTotal > 0.0 && $incasat >= $fgoTotal - 0.005) {
+                // Fully collected — supplier is owed the full supplier total
+                $cuvenitFurnizorDinIncasat = $supplierTotal;
+            } else {
+                // Partially collected — reverse the commission markup to get supplier share
+                $cuvenitFurnizorDinIncasat = $factor > 0.0
+                    ? round($incasat / $factor, 2)
+                    : $incasat;
+            }
+
+            $inv['fgo_total']             = $fgoTotal;
+            $inv['incasat']               = $incasat;
+            $inv['rest_de_incasat']       = max(0.0, $fgoTotal - $incasat);
+            $inv['platit_furnizor']       = $platit;
+            $inv['rest_de_plata']         = max(0.0, $cuvenitFurnizorDinIncasat - $platit);
         }
         unset($inv);
 

@@ -63,11 +63,13 @@ $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 <!-- Facturi FGO -->
 <?php
 $fileBaseUrl = App\Support\Url::to('admin/facturi/fisier');
-$totalIncasatFacturi     = 0.0;
-$totalRestDePlataFacturi = 0.0;
+$totalIncasatFacturi       = 0.0;
+$totalRestDeIncasatFacturi = 0.0;
+$totalRestDePlataFacturi   = 0.0;
 foreach ($invoices as $inv) {
-    $totalIncasatFacturi     += (float) ($inv['incasat'] ?? 0);
-    $totalRestDePlataFacturi += (float) ($inv['rest_de_plata'] ?? 0);
+    $totalIncasatFacturi       += (float) ($inv['incasat'] ?? 0);
+    $totalRestDeIncasatFacturi += (float) ($inv['rest_de_incasat'] ?? 0);
+    $totalRestDePlataFacturi   += (float) ($inv['rest_de_plata'] ?? 0);
 }
 ?>
 <div class="mt-6">
@@ -81,13 +83,14 @@ foreach ($invoices as $inv) {
                 <th class="px-2 py-1 text-right">Total furnizor</th>
                 <th class="px-2 py-1 text-right">Comision</th>
                 <th class="px-2 py-1 text-right">Incasat</th>
+                <th class="px-2 py-1 text-right">Rest de incasat</th>
                 <th class="px-2 py-1 text-right">Rest de plata</th>
             </tr>
         </thead>
         <tbody>
             <?php if (empty($invoices)): ?>
                 <tr>
-                    <td colspan="7" class="px-2 py-2 text-center text-slate-500">Nu exista facturi.</td>
+                    <td colspan="8" class="px-2 py-2 text-center text-slate-500">Nu exista facturi.</td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($invoices as $inv): ?>
@@ -102,7 +105,8 @@ foreach ($invoices as $inv) {
                         $fgoLink  = (string) ($inv['fgo_link'] ?? '');
 
                         $cp = $inv['commission_percent'] !== null ? (float) $inv['commission_percent'] : null;
-                        $restDePlata = (float) ($inv['rest_de_plata'] ?? 0);
+                        $restDeIncasat = (float) ($inv['rest_de_incasat'] ?? 0);
+                        $restDePlata   = (float) ($inv['rest_de_plata'] ?? 0);
                     ?>
                     <tr class="border-b border-slate-200">
                         <td class="px-2 py-1">
@@ -135,6 +139,7 @@ foreach ($invoices as $inv) {
                             <?= ($cp !== null && $cp >= 0.1) ? number_format($cp, 2, '.', '') . '%' : '—' ?>
                         </td>
                         <td class="px-2 py-1 text-right"><?= number_format((float) ($inv['incasat'] ?? 0), 2, '.', ' ') ?></td>
+                        <td class="px-2 py-1 text-right"><?= number_format($restDeIncasat, 2, '.', ' ') ?></td>
                         <td class="px-2 py-1 text-right"><?= number_format($restDePlata, 2, '.', ' ') ?></td>
                     </tr>
                 <?php endforeach; ?>
@@ -147,6 +152,7 @@ foreach ($invoices as $inv) {
                     <td class="px-2 py-1 text-right font-semibold"><?= number_format($totalFurnizor, 2, '.', ' ') ?></td>
                     <td></td>
                     <td class="px-2 py-1 text-right font-semibold"><?= number_format($totalIncasatFacturi, 2, '.', ' ') ?></td>
+                    <td class="px-2 py-1 text-right font-semibold"><?= number_format($totalRestDeIncasatFacturi, 2, '.', ' ') ?></td>
                     <td class="px-2 py-1 text-right font-semibold"><?= number_format($totalRestDePlataFacturi, 2, '.', ' ') ?></td>
                 </tr>
             </tfoot>
