@@ -30,9 +30,22 @@ class CompanyName
 
         $judet = preg_replace('/^municipiul\s+/iu', '', $judet);
         $judet = trim($judet);
-
-        $judet = str_replace(['București', 'Bucuresti'], 'Bucuresti', $judet);
+        $judet = self::stripDiacritics($judet);
+        $judet = str_replace('Bucuresti', 'Bucuresti', $judet); // already normalized via stripDiacritics
 
         return $judet;
+    }
+
+    /**
+     * Strip Romanian diacritics from a string.
+     * Handles both comma-below (correct: ș/ț) and cedilla (legacy: ş/ţ) variants.
+     */
+    public static function stripDiacritics(string $value): string
+    {
+        return str_replace(
+            ['ă', 'Ă', 'â', 'Â', 'î', 'Î', 'ș', 'Ș', 'ț', 'Ț', 'ş', 'Ş', 'ţ', 'Ţ'],
+            ['a', 'A', 'a', 'A', 'i', 'I', 's', 'S', 't', 'T', 's', 'S', 't', 'T'],
+            $value
+        );
     }
 }

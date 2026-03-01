@@ -80,7 +80,9 @@ class Company
     public static function save(array $data): self
     {
         $now = date('Y-m-d H:i:s');
-        $data['denumire'] = CompanyName::normalize((string) ($data['denumire'] ?? ''));
+        $data['denumire']   = CompanyName::normalize((string) ($data['denumire'] ?? ''));
+        $data['judet']      = CompanyName::normalizeJudet((string) ($data['judet'] ?? ''));
+        $data['localitate'] = CompanyName::stripDiacritics((string) ($data['localitate'] ?? ''));
 
         Database::execute(
             'INSERT INTO companies (
