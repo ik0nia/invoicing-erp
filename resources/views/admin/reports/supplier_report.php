@@ -319,7 +319,19 @@ foreach ($invoices as $inv) {
                                 <td class="px-3 py-2 text-right font-medium text-slate-900">
                                     <?= number_format((float) ($row['amount'] ?? 0), 2, '.', ' ') ?>
                                 </td>
-                                <td class="px-3 py-2 text-slate-500 text-xs"><?= htmlspecialchars($row['notes'] ?? '') ?></td>
+                                <td class="px-3 py-2">
+                                    <?php $opId = (int) ($row['id'] ?? 0); ?>
+                                    <?php if ($opId > 0): ?>
+                                        <?php $opUrl = App\Support\Url::to('admin/plati/istoric') . '?payment_id=' . $opId; ?>
+                                        <a href="<?= htmlspecialchars($opUrl) ?>" target="_blank" rel="noopener"
+                                           class="text-xs font-medium text-blue-700 hover:text-blue-800">
+                                            Plata cu OP #<?= $opId ?>
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php if (!empty($row['notes'])): ?>
+                                        <div class="mt-0.5 text-xs text-slate-500"><?= htmlspecialchars($row['notes']) ?></div>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php endif; ?>

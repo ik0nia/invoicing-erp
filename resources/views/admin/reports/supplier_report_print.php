@@ -215,7 +215,15 @@ foreach ($invoices as $inv) {
                     <tr class="border-b border-slate-200">
                         <td class="px-2 py-1"><?= htmlspecialchars($row['paid_at'] ?? '') ?></td>
                         <td class="px-2 py-1 text-right"><?= number_format((float) ($row['amount'] ?? 0), 2, '.', ' ') ?></td>
-                        <td class="px-2 py-1 text-xs text-slate-500"><?= htmlspecialchars($row['notes'] ?? '') ?></td>
+                        <td class="px-2 py-1 text-xs text-slate-500">
+                            <?php $opId = (int) ($row['id'] ?? 0); ?>
+                            <?php if ($opId > 0): ?>
+                                Plata cu OP #<?= $opId ?>
+                            <?php endif; ?>
+                            <?php if (!empty($row['notes'])): ?>
+                                <?= $opId > 0 ? ' — ' : '' ?><?= htmlspecialchars($row['notes']) ?>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
