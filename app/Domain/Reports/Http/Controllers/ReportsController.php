@@ -380,6 +380,37 @@ class ReportsController
             }
         }
 
+        // Resolve commission rates for invoices that have no commission_percent set.
+        // Mirrors CommissionService::resolveCommissionPercent():
+        //   1. invoice.commission_percent (already on row)
+        //   2. commissions table keyed by (supplier_cui, client_cui)
+        //   3. partners.default_commission for this supplier
+        $commissionsByClientCui = [];
+        if (Database::tableExists('commissions')) {
+            $commRows = Database::fetchAll(
+                'SELECT client_cui, commission FROM commissions WHERE supplier_cui = :supplier',
+                ['supplier' => $supplierCui]
+            );
+            foreach ($commRows as $row) {
+                $key = preg_replace('/\D+/', '', (string) $row['client_cui']);
+                $commissionsByClientCui[$key] = (float) $row['commission'];
+            }
+        }
+
+        $partnerDefaultCommission = null;
+        if (
+            Database::tableExists('partners')
+            && Database::columnExists('partners', 'default_commission')
+        ) {
+            $val = Database::fetchValue(
+                'SELECT default_commission FROM partners WHERE cui = :cui LIMIT 1',
+                ['cui' => $supplierCui]
+            );
+            if ($val !== null && $val !== '') {
+                $partnerDefaultCommission = (float) $val;
+            }
+        }
+
         foreach ($invoices as &$inv) {
             $cui              = (string) ($inv['selected_client_cui'] ?? '');
             $inv['client_name'] = $clientNames[$cui] ?? $cui;
@@ -391,19 +422,41 @@ class ReportsController
             }
             $inv['supplier_invoice_label'] = $invLabel;
 
-            $commission    = (float) ($inv['commission_percent'] ?? 0);
+            // Resolve effective commission (3-step lookup, mirrors CommissionService):
+            // 1. invoice-level commission_percent
+            // 2. commissions table for (supplier_cui, selected_client_cui)
+            // 3. partner default_commission
+            if ($inv['commission_percent'] !== null) {
+                $commission = (float) $inv['commission_percent'];
+            } else {
+                $clientCuiClean = preg_replace('/\D+/', '', (string) ($inv['selected_client_cui'] ?? ''));
+                if ($clientCuiClean !== '' && isset($commissionsByClientCui[$clientCuiClean])) {
+                    $commission = $commissionsByClientCui[$clientCuiClean];
+                } elseif ($partnerDefaultCommission !== null) {
+                    $commission = $partnerDefaultCommission;
+                } else {
+                    $commission = 0.0;
+                }
+            }
+
             $factor        = 1 + abs($commission) / 100;
             $supplierTotal = (float) ($inv['total_with_vat'] ?? 0);
 
-            // Client-facing total: prefer lines sum when it exceeds the supplier total
-            // (commission embedded in lines), otherwise apply commission_percent markup.
+            // Client-facing total:
+            // - When commission is known (from any source), use it to mark up the supplier total.
+            // - Only fall back to lines-sum detection when commission is truly 0
+            //   (commission may be embedded directly in line prices for some suppliers).
             $linesTotal = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
-            if ($linesTotal > $supplierTotal + 0.009) {
+            if (abs($commission) >= 0.01) {
+                // Commission resolved — compute client total from supplier total + markup.
+                $fgoTotal = $commission >= 0
+                    ? round($supplierTotal * $factor, 2)
+                    : round($supplierTotal / $factor, 2);
+            } elseif ($linesTotal > $supplierTotal + 0.009) {
+                // No commission set; client-facing total is embedded in line prices.
                 $fgoTotal = round($linesTotal, 2);
-            } elseif ($commission >= 0) {
-                $fgoTotal = round($supplierTotal * $factor, 2);
             } else {
-                $fgoTotal = round($supplierTotal / $factor, 2);
+                $fgoTotal = $supplierTotal;
             }
 
             $incasat = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
