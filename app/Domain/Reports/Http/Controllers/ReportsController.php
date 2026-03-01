@@ -363,33 +363,16 @@ class ReportsController
             }
         }
 
-        // Per-invoice line totals.
-        // line_total_vat  = sale/client price for lines.
-        // cost_line_total_vat = supplier/cost price for lines (when populated).
-        //
-        // For "discount pricing" invoices, the supplier gives FGO a discount and FGO
-        // charges the client the full price: line_total_vat > cost_line_total_vat.
-        // Both client total (line_total_vat) and supplier cost (cost_line_total_vat)
-        // are already stored — no commission calculation needed.
-        //
-        // For normal XML-imported invoices, cost_line_total_vat == line_total_vat
-        // (both set to supplier prices), so the difference is 0 and the client total
-        // must be computed via commission markup.
+        // Per-invoice SUM(line_total_vat).
+        // For "discount pricing" invoices, the supplier gives FGO a discount and the
+        // client prices are stored directly in line_total_vat (they exceed total_with_vat
+        // significantly). This mirrors invoiceHasDiscountPricing() used elsewhere.
+        // For normal XML-imported invoices, line_total_vat equals the supplier price
+        // and the client total is derived from the commission markup instead.
         $clientTotalFromLines = [];
-        $costTotalFromLines   = [];
         if (!empty($invoiceIds) && Database::tableExists('invoice_in_lines')) {
-            $hasCostCol = Database::columnExists('invoice_in_lines', 'cost_line_total_vat');
-
-            // cost_lines_total: use cost_line_total_vat when available, fall back to
-            // line_total_vat (so the difference is 0 for invoices without cost columns).
-            $costExpr = $hasCostCol
-                ? 'COALESCE(SUM(COALESCE(cost_line_total_vat, line_total_vat)), 0)'
-                : 'COALESCE(SUM(line_total_vat), 0)';
-
             $linesRows = Database::fetchAll(
-                "SELECT invoice_in_id,
-                        COALESCE(SUM(line_total_vat), 0) AS lines_total,
-                        $costExpr                        AS cost_lines_total
+                "SELECT invoice_in_id, COALESCE(SUM(line_total_vat), 0) AS lines_total
                  FROM invoice_in_lines
                  WHERE invoice_in_id IN ($inClause)
                  GROUP BY invoice_in_id",
@@ -397,7 +380,6 @@ class ReportsController
             );
             foreach ($linesRows as $row) {
                 $clientTotalFromLines[(int) $row['invoice_in_id']] = (float) $row['lines_total'];
-                $costTotalFromLines[(int) $row['invoice_in_id']]   = (float) $row['cost_lines_total'];
             }
         }
 
@@ -465,20 +447,22 @@ class ReportsController
 
             // Client-facing total — three-tier priority:
             //
-            // 1. Discount pricing: line_total_vat > cost_line_total_vat (both stored).
-            //    The client total is directly in line_total_vat; use it as-is.
-            //    (For normal XML imports cost == sale so diff ≈ 0; fallback applies.)
+            // 1. Discount pricing: SUM(line_total_vat) significantly exceeds total_with_vat.
+            //    This mirrors invoiceHasDiscountPricing() — the client prices are already
+            //    stored in invoice_in_lines.line_total_vat; use them directly.
+            //    Threshold: diff > 0.50 RON AND diff > 0.5% of supplier total.
             //
             // 2. Commission known (from invoice or commissions table): multiply
             //    the supplier total by the commission factor.
+            //    Covers cases where lines store supplier prices (normal XML import)
+            //    and the markup is explicit.
             //
             // 3. No commission, no markup in lines: fgoTotal = supplierTotal.
-            $linesTotal    = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
-            $costLinesTotal = $costTotalFromLines[(int) $inv['id']] ?? 0.0;
-            $linesDiff      = $linesTotal - $costLinesTotal;
+            $linesTotal = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
+            $linesDiff  = $linesTotal - $supplierTotal;
 
-            if ($linesDiff > 0.50 && $linesDiff > ($costLinesTotal * 0.005)) {
-                // Stored client prices in lines (discount pricing) — use directly.
+            if ($linesDiff > 0.50 && $linesDiff > ($supplierTotal * 0.005)) {
+                // Client prices stored in lines (same logic as invoiceHasDiscountPricing).
                 $fgoTotal = round($linesTotal, 2);
             } elseif (abs($commission) >= 0.01) {
                 // Commission resolved — compute client total from supplier total.
