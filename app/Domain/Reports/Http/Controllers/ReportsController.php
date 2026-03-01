@@ -363,6 +363,23 @@ class ReportsController
             }
         }
 
+        // Per-invoice client total from invoice lines.
+        // When invoice_in_lines exist and their sum exceeds the supplier total,
+        // the lines total IS the client-facing amount (commission is embedded in lines).
+        $clientTotalFromLines = [];
+        if (!empty($invoiceIds) && Database::tableExists('invoice_in_lines')) {
+            $linesRows = Database::fetchAll(
+                "SELECT invoice_in_id, COALESCE(SUM(line_total_vat), 0) AS lines_total
+                 FROM invoice_in_lines
+                 WHERE invoice_in_id IN ($inClause)
+                 GROUP BY invoice_in_id",
+                $inParams
+            );
+            foreach ($linesRows as $row) {
+                $clientTotalFromLines[(int) $row['invoice_in_id']] = (float) $row['lines_total'];
+            }
+        }
+
         foreach ($invoices as &$inv) {
             $cui              = (string) ($inv['selected_client_cui'] ?? '');
             $inv['client_name'] = $clientNames[$cui] ?? $cui;
@@ -374,33 +391,30 @@ class ReportsController
             }
             $inv['supplier_invoice_label'] = $invLabel;
 
-            // FGO total = supplier total with commission applied (markup on top)
             $commission    = (float) ($inv['commission_percent'] ?? 0);
             $factor        = 1 + abs($commission) / 100;
             $supplierTotal = (float) ($inv['total_with_vat'] ?? 0);
-            $fgoTotal      = $commission >= 0
-                ? round($supplierTotal * $factor, 2)
-                : round($supplierTotal / $factor, 2);
+
+            // Client-facing total: prefer lines sum when it exceeds the supplier total
+            // (commission embedded in lines), otherwise apply commission_percent markup.
+            $linesTotal = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
+            if ($linesTotal > $supplierTotal + 0.009) {
+                $fgoTotal = round($linesTotal, 2);
+            } elseif ($commission >= 0) {
+                $fgoTotal = round($supplierTotal * $factor, 2);
+            } else {
+                $fgoTotal = round($supplierTotal / $factor, 2);
+            }
 
             $incasat = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
             $platit  = $platitPerInvoice[(int) $inv['id']] ?? 0.0;
 
-            // Supplier's net share from what has been collected for this invoice
-            if ($fgoTotal > 0.0 && $incasat >= $fgoTotal - 0.005) {
-                // Fully collected — supplier is owed the full supplier total
-                $cuvenitFurnizorDinIncasat = $supplierTotal;
-            } else {
-                // Partially collected — reverse the commission markup to get supplier share
-                $cuvenitFurnizorDinIncasat = $factor > 0.0
-                    ? round($incasat / $factor, 2)
-                    : $incasat;
-            }
-
-            $inv['fgo_total']             = $fgoTotal;
-            $inv['incasat']               = $incasat;
-            $inv['rest_de_incasat']       = max(0.0, $fgoTotal - $incasat);
-            $inv['platit_furnizor']       = $platit;
-            $inv['rest_de_plata']         = max(0.0, $cuvenitFurnizorDinIncasat - $platit);
+            $inv['fgo_total']       = $fgoTotal;
+            $inv['incasat']         = $incasat;
+            $inv['rest_de_incasat'] = max(0.0, $fgoTotal - $incasat);
+            $inv['platit_furnizor'] = $platit;
+            // Rest de plata = remaining supplier invoice balance (regardless of collections)
+            $inv['rest_de_plata']   = max(0.0, $supplierTotal - $platit);
         }
         unset($inv);
 

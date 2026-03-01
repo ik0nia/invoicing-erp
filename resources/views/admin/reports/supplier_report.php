@@ -79,7 +79,13 @@ $fmt = static function (string $d): string {
     return $dt ? $dt->format('d.m.Y') : $d;
 };
 
-$neincasat = max(0.0, $totalFurnizor - $totalIncasat);
+// Client-facing total across all displayed invoices (uses lines sum when available)
+$totalClientTotal = 0.0;
+foreach ($invoices as $inv) {
+    $totalClientTotal += (float) ($inv['fgo_total'] ?? 0);
+}
+
+$neincasat = max(0.0, $totalClientTotal - $totalIncasat);
 $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 ?>
 
@@ -114,7 +120,7 @@ $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
             <?= number_format($neincasat, 2, '.', ' ') ?> RON
         </div>
         <div class="mt-0.5 text-xs text-amber-600">
-            din <?= number_format($totalFurnizor, 2, '.', ' ') ?> RON facturat
+            din <?= number_format($totalClientTotal, 2, '.', ' ') ?> RON facturat clientilor
         </div>
     </div>
     <div class="rounded-lg border border-rose-300 bg-rose-50 p-3 text-center">
