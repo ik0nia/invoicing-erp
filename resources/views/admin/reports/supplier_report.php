@@ -73,6 +73,12 @@ $printUrl = App\Support\Url::to('admin/rapoarte/furnizor/print'
 <?php if ($supplierCui !== ''): ?>
 
 <?php
+$fmt = static function (string $d): string {
+    if ($d === '') return '';
+    $dt = \DateTime::createFromFormat('Y-m-d', substr($d, 0, 10));
+    return $dt ? $dt->format('d.m.Y') : $d;
+};
+
 $neincasat = max(0.0, $totalFurnizor - $totalIncasat);
 $neplatit  = max(0.0, $totalCuvenitFurnizorDinFacturi - $totalPlatit);
 ?>
@@ -170,12 +176,12 @@ foreach ($invoices as $inv) {
                     <?php foreach ($invoices as $inv): ?>
                         <?php
                             $supplierLabel = htmlspecialchars((string) ($inv['supplier_invoice_label'] ?? ''));
-                            $supplierDate  = htmlspecialchars((string) ($inv['issue_date'] ?? ''));
+                            $supplierDate  = $fmt((string) ($inv['issue_date'] ?? ''));
                             $xmlPath       = (string) ($inv['xml_path'] ?? '');
                             $fileUrl       = $fileBaseUrl . '?invoice_id=' . (int) $inv['id'];
 
                             $fgoLabel = htmlspecialchars(trim(($inv['fgo_series'] ?? '') . ' ' . ($inv['fgo_number'] ?? '')));
-                            $fgoDate  = htmlspecialchars((string) ($inv['fgo_date'] ?? ''));
+                            $fgoDate  = $fmt((string) ($inv['fgo_date'] ?? ''));
                             $fgoLink  = (string) ($inv['fgo_link'] ?? '');
 
                             $cp = $inv['commission_percent'] !== null ? (float) $inv['commission_percent'] : null;
@@ -278,7 +284,7 @@ foreach ($invoices as $inv) {
                     <?php else: ?>
                         <?php foreach ($paymentsIn as $row): ?>
                             <tr class="border-b border-slate-100">
-                                <td class="px-3 py-2"><?= htmlspecialchars($row['paid_at'] ?? '') ?></td>
+                                <td class="px-3 py-2"><?= $fmt((string) ($row['paid_at'] ?? '')) ?></td>
                                 <td class="px-3 py-2"><?= htmlspecialchars($row['client_name'] ?? $row['client_cui'] ?? '') ?></td>
                                 <td class="px-3 py-2 text-right font-medium text-slate-900">
                                     <?= number_format((float) ($row['allocated_amount'] ?? 0), 2, '.', ' ') ?>
@@ -325,7 +331,7 @@ foreach ($invoices as $inv) {
                     <?php else: ?>
                         <?php foreach ($paymentsOut as $row): ?>
                             <tr class="border-b border-slate-100">
-                                <td class="px-3 py-2"><?= htmlspecialchars($row['paid_at'] ?? '') ?></td>
+                                <td class="px-3 py-2"><?= $fmt((string) ($row['paid_at'] ?? '')) ?></td>
                                 <td class="px-3 py-2 text-right font-medium text-slate-900">
                                     <?= number_format((float) ($row['amount'] ?? 0), 2, '.', ' ') ?>
                                 </td>

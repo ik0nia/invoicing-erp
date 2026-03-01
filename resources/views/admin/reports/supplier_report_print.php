@@ -1,4 +1,11 @@
 <?php $title = 'Fisa furnizor'; ?>
+<?php
+$fmt = static function (string $d): string {
+    if ($d === '') return '';
+    $dt = \DateTime::createFromFormat('Y-m-d', substr($d, 0, 10));
+    return $dt ? $dt->format('d.m.Y') : $d;
+};
+?>
 
 <div class="text-center">
     <h1 class="text-xl font-semibold text-slate-900">Fisa furnizor</h1>
@@ -6,9 +13,9 @@
     <?php if ($dateStart || $dateEnd): ?>
         <div class="mt-1 text-sm text-slate-600">
             Perioada:
-            <?= $dateStart ? htmlspecialchars($dateStart) : '—' ?>
+            <?= $dateStart ? $fmt($dateStart) : '—' ?>
             &ndash;
-            <?= $dateEnd ? htmlspecialchars($dateEnd) : '—' ?>
+            <?= $dateEnd ? $fmt($dateEnd) : '—' ?>
         </div>
     <?php endif; ?>
 </div>
@@ -95,12 +102,12 @@ foreach ($invoices as $inv) {
                 <?php foreach ($invoices as $inv): ?>
                     <?php
                         $supplierLabel = htmlspecialchars((string) ($inv['supplier_invoice_label'] ?? ''));
-                        $supplierDate  = htmlspecialchars((string) ($inv['issue_date'] ?? ''));
+                        $supplierDate  = $fmt((string) ($inv['issue_date'] ?? ''));
                         $xmlPath       = (string) ($inv['xml_path'] ?? '');
                         $fileUrl       = $fileBaseUrl . '?invoice_id=' . (int) $inv['id'];
 
                         $fgoLabel = htmlspecialchars(trim(($inv['fgo_series'] ?? '') . ' ' . ($inv['fgo_number'] ?? '')));
-                        $fgoDate  = htmlspecialchars((string) ($inv['fgo_date'] ?? ''));
+                        $fgoDate  = $fmt((string) ($inv['fgo_date'] ?? ''));
                         $fgoLink  = (string) ($inv['fgo_link'] ?? '');
 
                         $restDeIncasat = (float) ($inv['rest_de_incasat'] ?? 0);
@@ -174,7 +181,7 @@ foreach ($invoices as $inv) {
             <?php else: ?>
                 <?php foreach ($paymentsIn as $row): ?>
                     <tr class="border-b border-slate-200">
-                        <td class="px-2 py-1"><?= htmlspecialchars($row['paid_at'] ?? '') ?></td>
+                        <td class="px-2 py-1"><?= $fmt((string) ($row['paid_at'] ?? '')) ?></td>
                         <td class="px-2 py-1"><?= htmlspecialchars($row['client_name'] ?? $row['client_cui'] ?? '') ?></td>
                         <td class="px-2 py-1 text-right"><?= number_format((float) ($row['allocated_amount'] ?? 0), 2, '.', ' ') ?></td>
                         <td class="px-2 py-1 text-xs text-slate-500"><?= htmlspecialchars($row['notes'] ?? '') ?></td>
@@ -213,7 +220,7 @@ foreach ($invoices as $inv) {
             <?php else: ?>
                 <?php foreach ($paymentsOut as $row): ?>
                     <tr class="border-b border-slate-200">
-                        <td class="px-2 py-1"><?= htmlspecialchars($row['paid_at'] ?? '') ?></td>
+                        <td class="px-2 py-1"><?= $fmt((string) ($row['paid_at'] ?? '')) ?></td>
                         <td class="px-2 py-1 text-right"><?= number_format((float) ($row['amount'] ?? 0), 2, '.', ' ') ?></td>
                         <td class="px-2 py-1 text-xs text-slate-500">
                             <?php $opId = (int) ($row['id'] ?? 0); ?>
