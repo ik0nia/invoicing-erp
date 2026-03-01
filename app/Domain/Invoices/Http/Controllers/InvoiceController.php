@@ -2504,7 +2504,16 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        $issueDate = date('Y-m-d');
+        $rawIssueDate = trim((string) ($_POST['fgo_issue_date'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawIssueDate)) {
+            // Format Y-m-d trimis de input type="date"
+            $issueDate = $rawIssueDate;
+        } elseif (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $rawIssueDate, $m)) {
+            // Format dd.mm.yyyy (fallback)
+            $issueDate = $m[3] . '-' . $m[2] . '-' . $m[1];
+        } else {
+            $issueDate = date('Y-m-d');
+        }
         $payload = [
             'CodUnic' => $codUnic,
             'Hash' => FgoClient::hashForEmitere($codUnic, $secret, $clientCompany->denumire),

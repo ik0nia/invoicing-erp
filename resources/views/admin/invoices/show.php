@@ -905,14 +905,75 @@
                         <?php elseif (!empty($fgoSeriesSelected)): ?>
                             <input type="hidden" name="fgo_series" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
                         <?php endif; ?>
+                        <input type="hidden" name="fgo_issue_date" id="fgo_issue_date_hidden">
                         <button
+                            type="button"
+                            id="fgo-generate-btn"
                             class="rounded border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                             <?= empty($selectedClientCui) ? 'disabled' : '' ?>
+                            onclick="fgoOpenDateModal()"
                         >
                             Genereaza factura FGO
                         </button>
                     </form>
                 </div>
+
+                <!-- Modal: alege data facturii FGO -->
+                <dialog id="fgo-date-modal" class="rounded-lg p-0 shadow-xl w-full max-w-sm" style="border:none;">
+                    <div class="p-6">
+                        <h2 class="text-base font-semibold text-slate-800 mb-4">Alege data facturii FGO</h2>
+                        <div class="mb-5">
+                            <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_date_input">
+                                Data emiterii
+                            </label>
+                            <input
+                                type="date"
+                                id="fgo_date_input"
+                                class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                            />
+                        </div>
+                        <div class="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                id="fgo-date-cancel"
+                                class="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Anuleaza
+                            </button>
+                            <button
+                                type="button"
+                                id="fgo-date-confirm"
+                                class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                                Genereaza
+                            </button>
+                        </div>
+                    </div>
+                </dialog>
+                <script>
+                function fgoOpenDateModal() {
+                    var today = new Date();
+                    var y = today.getFullYear();
+                    var m = String(today.getMonth() + 1).padStart(2, '0');
+                    var d = String(today.getDate()).padStart(2, '0');
+                    document.getElementById('fgo_date_input').value = y + '-' + m + '-' + d;
+                    document.getElementById('fgo-date-modal').showModal();
+                }
+                (function () {
+                    var modal = document.getElementById('fgo-date-modal');
+                    if (!modal) return;
+                    document.getElementById('fgo-date-cancel').addEventListener('click', function () {
+                        modal.close();
+                    });
+                    document.getElementById('fgo-date-confirm').addEventListener('click', function () {
+                        var dateVal = document.getElementById('fgo_date_input').value;
+                        if (!dateVal) { alert('Alege o data valida.'); return; }
+                        document.getElementById('fgo_issue_date_hidden').value = dateVal;
+                        modal.close();
+                        document.getElementById('fgo-generate-btn').closest('form').submit();
+                    });
+                })();
+                </script>
                 <?php if (empty($selectedClientCui)): ?>
                     <div class="text-xs text-right text-slate-500">Selecteaza clientul pentru a genera factura.</div>
                 <?php endif; ?>
