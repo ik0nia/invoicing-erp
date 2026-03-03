@@ -1097,12 +1097,14 @@
                             Nota de comanda
                         </a>
                         <?php if (empty($invoice->fgo_storno_number)): ?>
-                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/storno') ?>">
+                            <form method="POST" action="<?= App\Support\Url::to('admin/facturi/storno') ?>" id="fgo-storno-form">
                                 <?= App\Support\Csrf::input() ?>
                                 <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
+                                <input type="hidden" name="fgo_issue_date" id="fgo_storno_issue_date_hidden">
                                 <button
+                                    type="button"
                                     class="inline-flex items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                                    onclick="return confirm('Sigur vrei sa stornezi factura FGO?')"
+                                    onclick="fgoStornoOpenModal()"
                                 >
                                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                         <path d="M12 5v4l3-3M12 5a7 7 0 1 1-6.33 4" />
@@ -1358,19 +1360,12 @@
                                                     <?= App\Support\Csrf::input() ?>
                                                     <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                                                     <input type="hidden" name="adjustment_id" value="<?= $adjustmentId ?>">
-                                                    <?php if (!empty($fgoSeriesOptions)): ?>
-                                                        <select name="fgo_series" class="rounded border border-slate-300 px-2 py-1 text-xs">
-                                                            <option value="">Serie FGO</option>
-                                                            <?php foreach ($fgoSeriesOptions as $series): ?>
-                                                                <option value="<?= htmlspecialchars($series) ?>" <?= ($fgoSeriesSelected ?? '') === $series ? 'selected' : '' ?>>
-                                                                    <?= htmlspecialchars($series) ?>
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                    <?php endif; ?>
+                                                    <input type="hidden" name="fgo_series" class="fgo-adj-series" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
+                                                    <input type="hidden" name="fgo_issue_date" class="fgo-adj-issue-date">
                                                     <button
+                                                        type="button"
                                                         class="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                                                        onclick="return confirm('Generezi factura FGO pentru refacerea selectata?')"
+                                                        onclick="fgoAdjOpenModal(this.closest('form'))"
                                                     >
                                                         Genereaza factura FGO refacere
                                                     </button>
@@ -1386,6 +1381,152 @@
             </div>
         </div>
     <?php endif; ?>
+
+    <!-- Modal: alege data pentru stornare FGO -->
+    <dialog id="fgo-storno-date-modal" class="rounded-lg p-0 shadow-xl w-full max-w-sm" style="border:none;">
+        <div class="p-6">
+            <h2 class="text-base font-semibold text-slate-800 mb-1">Storneaza factura FGO</h2>
+            <?php if (!empty($invoice->fgo_series) && !empty($invoice->fgo_number)): ?>
+                <p class="text-xs text-slate-500 mb-4">Factura: <strong><?= htmlspecialchars($invoice->fgo_series . ' ' . $invoice->fgo_number) ?></strong> — seria nu poate fi schimbata.</p>
+            <?php endif; ?>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_storno_date_input">Data emiterii storno</label>
+                <input type="date" id="fgo_storno_date_input" class="w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div id="fgo-storno-date-warning" class="mb-4 hidden rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"></div>
+            <div class="flex justify-end gap-2">
+                <button type="button" id="fgo-storno-date-cancel" class="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Anuleaza</button>
+                <button type="button" id="fgo-storno-date-confirm" class="rounded border border-red-600 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Storneaza</button>
+            </div>
+        </div>
+    </dialog>
+    <script>
+    function fgoStornoFormatDate(iso) {
+        if (!iso) return '';
+        var p = iso.split('-');
+        return p[2] + '.' + p[1] + '.' + p[0];
+    }
+
+    function fgoStornoOpenModal() {
+        var today = new Date();
+        var y = today.getFullYear();
+        var m = String(today.getMonth() + 1).padStart(2, '0');
+        var d = String(today.getDate()).padStart(2, '0');
+        document.getElementById('fgo_storno_date_input').value = y + '-' + m + '-' + d;
+        var warning = document.getElementById('fgo-storno-date-warning');
+        warning.classList.add('hidden');
+        document.getElementById('fgo-storno-date-modal').showModal();
+    }
+
+    (function () {
+        var modal = document.getElementById('fgo-storno-date-modal');
+        if (!modal) return;
+        document.getElementById('fgo-storno-date-cancel').addEventListener('click', function () {
+            modal.close();
+        });
+        document.getElementById('fgo-storno-date-confirm').addEventListener('click', function () {
+            var dateVal = document.getElementById('fgo_storno_date_input').value;
+            if (!dateVal) { alert('Alege o data valida.'); return; }
+            document.getElementById('fgo_storno_issue_date_hidden').value = dateVal;
+            modal.close();
+            document.getElementById('fgo-storno-form').submit();
+        });
+    })();
+    </script>
+
+    <!-- Modal: alege data si seria pentru factura FGO refacere -->
+    <dialog id="fgo-adj-date-modal" class="rounded-lg p-0 shadow-xl w-full max-w-sm" style="border:none;">
+        <div class="p-6">
+            <h2 class="text-base font-semibold text-slate-800 mb-4">Alege data facturii FGO refacere</h2>
+            <?php if (!empty($fgoSeriesOptions)): ?>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_adj_series_modal">Serie FGO</label>
+                    <select id="fgo_adj_series_modal" class="w-full rounded border border-slate-300 px-3 py-2 text-sm" onchange="fgoAdjCheckDateWarning()">
+                        <?php foreach ($fgoSeriesOptions as $s): ?>
+                            <option value="<?= htmlspecialchars($s) ?>" <?= ($fgoSeriesSelected ?? '') === $s ? 'selected' : '' ?>><?= htmlspecialchars($s) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php else: ?>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_adj_series_modal">Serie FGO</label>
+                    <input type="text" id="fgo_adj_series_modal" class="w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase" value="<?= htmlspecialchars($fgoSeriesSelected) ?>" oninput="fgoAdjCheckDateWarning()" placeholder="ex: DW" />
+                </div>
+            <?php endif; ?>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_adj_date_input">Data emiterii</label>
+                <input type="date" id="fgo_adj_date_input" class="w-full rounded border border-slate-300 px-3 py-2 text-sm" onchange="fgoAdjCheckDateWarning()" />
+            </div>
+            <div id="fgo-adj-date-warning" class="mb-4 hidden rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"></div>
+            <div class="flex justify-end gap-2">
+                <button type="button" id="fgo-adj-date-cancel" class="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Anuleaza</button>
+                <button type="button" id="fgo-adj-date-confirm" class="rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Genereaza</button>
+            </div>
+        </div>
+    </dialog>
+    <script>
+    var fgoAdjLatestDates = <?= json_encode($latestFgoDates ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    var fgoAdjCurrentForm = null;
+
+    function fgoAdjFormatDate(iso) {
+        if (!iso) return '';
+        var p = iso.split('-');
+        return p[2] + '.' + p[1] + '.' + p[0];
+    }
+
+    function fgoAdjCurrentSeries() {
+        var sel = document.getElementById('fgo_adj_series_modal');
+        return sel ? sel.value : '';
+    }
+
+    function fgoAdjCheckDateWarning() {
+        var dateVal = document.getElementById('fgo_adj_date_input').value;
+        var series  = fgoAdjCurrentSeries();
+        var maxDate = fgoAdjLatestDates[series] || fgoAdjLatestDates[''] || '';
+        var warning = document.getElementById('fgo-adj-date-warning');
+        if (maxDate && dateVal && dateVal < maxDate) {
+            warning.textContent = 'Atentie! Ultima factura FGO pe seria ' + (series || '—')
+                + ' a fost emisa pe ' + fgoAdjFormatDate(maxDate)
+                + '. Data aleasa (' + fgoAdjFormatDate(dateVal) + ') este mai veche — poti schimba data sau continua.';
+            warning.classList.remove('hidden');
+        } else {
+            warning.classList.add('hidden');
+        }
+    }
+
+    function fgoAdjOpenModal(form) {
+        fgoAdjCurrentForm = form;
+        var today = new Date();
+        var y = today.getFullYear();
+        var m = String(today.getMonth() + 1).padStart(2, '0');
+        var d = String(today.getDate()).padStart(2, '0');
+        document.getElementById('fgo_adj_date_input').value = y + '-' + m + '-' + d;
+        var seriesEl = document.getElementById('fgo_adj_series_modal');
+        if (seriesEl) {
+            var formSeries = form.querySelector('.fgo-adj-series');
+            seriesEl.value = formSeries ? formSeries.value : seriesEl.value;
+        }
+        document.getElementById('fgo-adj-date-warning').classList.add('hidden');
+        fgoAdjCheckDateWarning();
+        document.getElementById('fgo-adj-date-modal').showModal();
+    }
+
+    (function () {
+        var modal = document.getElementById('fgo-adj-date-modal');
+        if (!modal) return;
+        document.getElementById('fgo-adj-date-cancel').addEventListener('click', function () {
+            modal.close();
+        });
+        document.getElementById('fgo-adj-date-confirm').addEventListener('click', function () {
+            var dateVal = document.getElementById('fgo_adj_date_input').value;
+            if (!dateVal) { alert('Alege o data valida.'); return; }
+            fgoAdjCurrentForm.querySelector('.fgo-adj-issue-date').value = dateVal;
+            fgoAdjCurrentForm.querySelector('.fgo-adj-series').value = fgoAdjCurrentSeries();
+            modal.close();
+            fgoAdjCurrentForm.submit();
+        });
+    })();
+    </script>
 
     <form id="move-line-form" method="POST" action="<?= App\Support\Url::to('admin/facturi/muta-linie') ?>" class="hidden">
         <?= App\Support\Csrf::input() ?>

@@ -131,25 +131,24 @@ class InvoiceController
             }
 
             // Latest FGO date per series — map {serie: max_date} passed to modal for date validation warning
+            // Always queried (not just when fgo_number is empty) so refacere modal can use it too
             $latestFgoDates = [];
-            if (empty($invoice->fgo_number)) {
-                $seriesToQuery = !empty($fgoSeriesOptions)
-                    ? $fgoSeriesOptions
-                    : ($fgoSeriesSelected !== '' ? [$fgoSeriesSelected] : []);
-                foreach ($seriesToQuery as $s) {
-                    $row = Database::fetchOne(
-                        'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_series = :series AND fgo_date IS NOT NULL',
-                        ['series' => $s]
-                    );
-                    $latestFgoDates[$s] = (string) ($row['max_date'] ?? '');
-                }
-                if (empty($seriesToQuery)) {
-                    // No series configured — fall back to global max
-                    $row = Database::fetchOne(
-                        'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_date IS NOT NULL'
-                    );
-                    $latestFgoDates[''] = (string) ($row['max_date'] ?? '');
-                }
+            $seriesToQuery = !empty($fgoSeriesOptions)
+                ? $fgoSeriesOptions
+                : ($fgoSeriesSelected !== '' ? [$fgoSeriesSelected] : []);
+            foreach ($seriesToQuery as $s) {
+                $row = Database::fetchOne(
+                    'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_series = :series AND fgo_date IS NOT NULL',
+                    ['series' => $s]
+                );
+                $latestFgoDates[$s] = (string) ($row['max_date'] ?? '');
+            }
+            if (empty($seriesToQuery)) {
+                // No series configured — fall back to global max
+                $row = Database::fetchOne(
+                    'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_date IS NOT NULL'
+                );
+                $latestFgoDates[''] = (string) ($row['max_date'] ?? '');
             }
 
             if ($clientLocked) {
@@ -2729,11 +2728,21 @@ class InvoiceController
             $baseUrl = 'https://api.fgo.ro/v1';
         }
 
+        $rawStornoDate = trim((string) ($_POST['fgo_issue_date'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawStornoDate)) {
+            $stornoIssueDate = $rawStornoDate;
+        } elseif (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $rawStornoDate, $m)) {
+            $stornoIssueDate = $m[3] . '-' . $m[2] . '-' . $m[1];
+        } else {
+            $stornoIssueDate = date('Y-m-d');
+        }
+
         $payload = [
             'CodUnic' => $codUnic,
             'Hash' => FgoClient::hashForNumber($codUnic, $secret, $invoice->fgo_number),
             'Serie' => $invoice->fgo_series,
             'Numar' => $invoice->fgo_number,
+            'DataEmitere' => $stornoIssueDate,
             'PlatformaUrl' => FgoClient::platformUrl(),
         ];
 
@@ -3139,7 +3148,14 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#invoice-refacere');
         }
 
-        $issueDate = date('Y-m-d');
+        $rawIssueDate = trim((string) ($_POST['fgo_issue_date'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawIssueDate)) {
+            $issueDate = $rawIssueDate;
+        } elseif (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $rawIssueDate, $m)) {
+            $issueDate = $m[3] . '-' . $m[2] . '-' . $m[1];
+        } else {
+            $issueDate = date('Y-m-d');
+        }
         $payload = [
             'CodUnic' => $codUnic,
             'Hash' => FgoClient::hashForEmitere($codUnic, $secret, (string) ($clientCompany->denumire ?? '')),
@@ -3189,6 +3205,7 @@ class InvoiceController
              SET fgo_series = :serie,
                  fgo_number = :numar,
                  fgo_link = :link,
+                 fgo_date = :fgo_date,
                  fgo_generated_at = :generated_at,
                  status = :status,
                  updated_at = :now
@@ -3197,6 +3214,7 @@ class InvoiceController
                 'serie' => $fgoSeries,
                 'numar' => $fgoNumber,
                 'link' => $fgoLink,
+                'fgo_date' => $issueDate,
                 'generated_at' => date('Y-m-d H:i:s'),
                 'status' => 'fgo_generated',
                 'now' => date('Y-m-d H:i:s'),

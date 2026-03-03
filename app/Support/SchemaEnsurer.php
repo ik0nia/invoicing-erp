@@ -97,6 +97,20 @@ class SchemaEnsurer
         self::runStep('companies_strip_diacritics_judet_localitate', static function (): void {
             self::ensureCompaniesStripDiacritics();
         });
+
+        self::runStep('invoice_adjustments_fgo_date', static function (): void {
+            if (!self::tableExists('invoice_adjustments')) {
+                return;
+            }
+            if (!self::columnExists('invoice_adjustments', 'fgo_date')) {
+                self::safeExecute(
+                    'ALTER TABLE invoice_adjustments ADD COLUMN fgo_date DATE NULL AFTER fgo_generated_at',
+                    [],
+                    'invoice_adjustments_add_fgo_date'
+                );
+                unset(self::$columnCache['invoice_adjustments.fgo_date']);
+            }
+        });
     }
 
     public static function ensureAuditLogTable(): void
