@@ -87,7 +87,11 @@ class InvoiceController
             foreach ($packageStats as $stat) {
                 $packageGrossTotal += (float) ($stat['total_vat'] ?? 0.0);
             }
-            $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoice->id);
+            // Per-package sales totals: includes storno adjustment lines (qty < 0) but excludes pure
+            // discount-adjustment lines (qty >= 0, negative total). The storno-inclusive total avoids
+            // the false-positive discount detection that occurred when the old positive-only filter
+            // excluded storno negatives from rawPackageGrossTotal but invoice->total_with_vat included them.
+            $discountPackageSalesTotals = $this->invoiceAllSalesTotalsForPackages((int) $invoice->id);
             $rawPackageGrossTotal       = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
             $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
             if ($hasDiscountPricing) {
@@ -5695,6 +5699,49 @@ class InvoiceController
             'SELECT package_id,
                     COALESCE(SUM(CASE WHEN line_total_vat > 0 THEN line_total_vat ELSE 0 END), 0) AS total_vat,
                     COALESCE(SUM(CASE WHEN line_total > 0 THEN line_total ELSE 0 END), 0) AS total_net
+             FROM invoice_in_lines
+             WHERE invoice_in_id = :invoice
+               AND package_id IS NOT NULL
+               AND package_id > 0
+             GROUP BY package_id
+             ORDER BY package_id ASC',
+            ['invoice' => $invoiceId]
+        );
+
+        $totals = [];
+        foreach ($rows as $row) {
+            $packageId = (int) ($row['package_id'] ?? 0);
+            if ($packageId <= 0) {
+                continue;
+            }
+            $totals[$packageId] = [
+                'total_vat' => (float) ($row['total_vat'] ?? 0.0),
+                'total_net' => (float) ($row['total_net'] ?? 0.0),
+            ];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Like invoicePackagePositiveSalesTotals but also includes storno adjustment lines (qty < 0).
+     * Excludes only original discount-adjustment lines (qty >= 0, line_total_vat < 0).
+     * Used for per-package display and client totals after refacere.
+     */
+    private function invoiceAllSalesTotalsForPackages(int $invoiceId): array
+    {
+        if (
+            $invoiceId <= 0
+            || !Database::tableExists('invoice_in_lines')
+            || !Database::columnExists('invoice_in_lines', 'package_id')
+        ) {
+            return [];
+        }
+
+        $rows = Database::fetchAll(
+            'SELECT package_id,
+                    COALESCE(SUM(CASE WHEN line_total_vat >= 0 OR quantity < 0 THEN line_total_vat ELSE 0 END), 0) AS total_vat,
+                    COALESCE(SUM(CASE WHEN line_total >= 0 OR quantity < 0 THEN line_total ELSE 0 END), 0) AS total_net
              FROM invoice_in_lines
              WHERE invoice_in_id = :invoice
                AND package_id IS NOT NULL

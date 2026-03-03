@@ -422,14 +422,15 @@
         $lineClientPricing = function ($line) use ($applyCommission, $hasDiscountPricing): ?array {
             if ($hasDiscountPricing) {
                 // Factura cu discount: pretul de vanzare este line_total_vat (fara comision suplimentar).
-                // Liniile negative (discount-ul propriu-zis) sunt sarite.
                 $grossTotal = (float) ($line->line_total_vat ?? 0.0);
-                if ($grossTotal <= 0.0) {
+                $qty        = (float) ($line->quantity ?? 0.0);
+                // Sari doar liniile de discount-ajustare furnizor (cantitate >= 0, total negativ).
+                // Liniile de storno (cantitate < 0) se afiseaza cu valori negative (reprezinta deducerea).
+                if ($grossTotal <= 0.0 && $qty >= -0.000001) {
                     return null;
                 }
                 $netTotal = (float) ($line->line_total ?? 0.0);
-                $qty      = (float) ($line->quantity ?? 0.0);
-                if ($qty > 0.000001) {
+                if (abs($qty) > 0.000001) {
                     $unitNet   = round($netTotal / $qty, 4);
                     $unitGross = round($grossTotal / $qty, 4);
                 } else {
