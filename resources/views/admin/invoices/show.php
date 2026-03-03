@@ -921,11 +921,19 @@
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                        <?php elseif (!empty($fgoSeriesSelected)): ?>
+                        <?php else: ?>
                             <div class="mb-4">
-                                <span class="block text-xs font-semibold text-slate-600 mb-1">Serie FGO</span>
-                                <span class="block text-sm font-semibold text-slate-800"><?= htmlspecialchars($fgoSeriesSelected) ?></span>
-                                <input type="hidden" id="fgo_series_modal" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
+                                <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_series_modal">
+                                    Serie FGO
+                                </label>
+                                <input
+                                    type="text"
+                                    id="fgo_series_modal"
+                                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase"
+                                    value="<?= htmlspecialchars($fgoSeriesSelected) ?>"
+                                    oninput="fgoCheckDateWarning()"
+                                    placeholder="ex: DW"
+                                />
                             </div>
                         <?php endif; ?>
                         <div class="mb-4">
