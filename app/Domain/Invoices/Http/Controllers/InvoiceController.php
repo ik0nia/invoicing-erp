@@ -130,20 +130,26 @@ class InvoiceController
                 $fgoSeriesSelected = $invoice->fgo_series;
             }
 
-            // Latest FGO date for this series — passed to the modal to warn if chosen date is older
-            $latestFgoDate = '';
+            // Latest FGO date per series — map {serie: max_date} passed to modal for date validation warning
+            $latestFgoDates = [];
             if (empty($invoice->fgo_number)) {
-                if ($fgoSeriesSelected !== '') {
-                    $latestFgoRow = Database::fetchOne(
+                $seriesToQuery = !empty($fgoSeriesOptions)
+                    ? $fgoSeriesOptions
+                    : ($fgoSeriesSelected !== '' ? [$fgoSeriesSelected] : []);
+                foreach ($seriesToQuery as $s) {
+                    $row = Database::fetchOne(
                         'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_series = :series AND fgo_date IS NOT NULL',
-                        ['series' => $fgoSeriesSelected]
+                        ['series' => $s]
                     );
-                } else {
-                    $latestFgoRow = Database::fetchOne(
+                    $latestFgoDates[$s] = (string) ($row['max_date'] ?? '');
+                }
+                if (empty($seriesToQuery)) {
+                    // No series configured — fall back to global max
+                    $row = Database::fetchOne(
                         'SELECT MAX(fgo_date) AS max_date FROM invoices_in WHERE fgo_date IS NOT NULL'
                     );
+                    $latestFgoDates[''] = (string) ($row['max_date'] ?? '');
                 }
-                $latestFgoDate = (string) ($latestFgoRow['max_date'] ?? '');
             }
 
             if ($clientLocked) {
@@ -286,7 +292,7 @@ class InvoiceController
                 'canShowRequestAlert' => $canShowRequestAlert,
                 'fgoSeriesOptions' => $fgoSeriesOptions,
                 'fgoSeriesSelected' => $fgoSeriesSelected,
-                'latestFgoDate' => $latestFgoDate,
+                'latestFgoDates' => $latestFgoDates,
                 'collectedTotal' => $collectedTotal,
                 'paidTotal' => $paidTotal,
                 'clientTotal' => $clientTotal,

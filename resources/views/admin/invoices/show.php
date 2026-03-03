@@ -886,25 +886,7 @@
                         <?php if (!empty($selectedClientCui)): ?>
                             <input type="hidden" name="client_cui" value="<?= htmlspecialchars($selectedClientCui) ?>">
                         <?php endif; ?>
-                        <?php if (!empty($fgoSeriesOptions)): ?>
-                            <div class="mb-2">
-                                <label class="mb-1 block text-xs font-semibold text-slate-600" for="fgo_series_select">Serie FGO</label>
-                                <select
-                                    id="fgo_series_select"
-                                    name="fgo_series"
-                                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                                >
-                                    <option value="">Alege serie</option>
-                                    <?php foreach ($fgoSeriesOptions as $series): ?>
-                                        <option value="<?= htmlspecialchars($series) ?>" <?= ($fgoSeriesSelected ?? '') === $series ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($series) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        <?php elseif (!empty($fgoSeriesSelected)): ?>
-                            <input type="hidden" name="fgo_series" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
-                        <?php endif; ?>
+                        <input type="hidden" name="fgo_series" id="fgo_series_form_hidden" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
                         <input type="hidden" name="fgo_issue_date" id="fgo_issue_date_hidden">
                         <button
                             type="button"
@@ -918,10 +900,34 @@
                     </form>
                 </div>
 
-                <!-- Modal: alege data facturii FGO -->
+                <!-- Modal: alege data si seria facturii FGO -->
                 <dialog id="fgo-date-modal" class="rounded-lg p-0 shadow-xl w-full max-w-sm" style="border:none;">
                     <div class="p-6">
                         <h2 class="text-base font-semibold text-slate-800 mb-4">Alege data facturii FGO</h2>
+                        <?php if (!empty($fgoSeriesOptions)): ?>
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_series_modal">
+                                    Serie FGO
+                                </label>
+                                <select
+                                    id="fgo_series_modal"
+                                    class="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                                    onchange="fgoCheckDateWarning()"
+                                >
+                                    <?php foreach ($fgoSeriesOptions as $s): ?>
+                                        <option value="<?= htmlspecialchars($s) ?>" <?= ($fgoSeriesSelected ?? '') === $s ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars($s) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        <?php elseif (!empty($fgoSeriesSelected)): ?>
+                            <div class="mb-4">
+                                <span class="block text-xs font-semibold text-slate-600 mb-1">Serie FGO</span>
+                                <span class="block text-sm font-semibold text-slate-800"><?= htmlspecialchars($fgoSeriesSelected) ?></span>
+                                <input type="hidden" id="fgo_series_modal" value="<?= htmlspecialchars($fgoSeriesSelected) ?>">
+                            </div>
+                        <?php endif; ?>
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-slate-700 mb-1" for="fgo_date_input">
                                 Data emiterii
@@ -953,7 +959,7 @@
                     </div>
                 </dialog>
                 <script>
-                var fgoLatestDate = '<?= htmlspecialchars($latestFgoDate ?? '') ?>';
+                var fgoLatestDates = <?= json_encode($latestFgoDates ?? [], JSON_UNESCAPED_UNICODE) ?>;
 
                 function fgoFormatDate(iso) {
                     if (!iso) return '';
@@ -961,12 +967,19 @@
                     return p[2] + '.' + p[1] + '.' + p[0];
                 }
 
+                function fgoCurrentSeries() {
+                    var sel = document.getElementById('fgo_series_modal');
+                    return sel ? sel.value : '';
+                }
+
                 function fgoCheckDateWarning() {
                     var dateVal = document.getElementById('fgo_date_input').value;
+                    var series  = fgoCurrentSeries();
+                    var maxDate = fgoLatestDates[series] || fgoLatestDates[''] || '';
                     var warning = document.getElementById('fgo-date-warning');
-                    if (fgoLatestDate && dateVal && dateVal < fgoLatestDate) {
-                        warning.textContent = 'Atentie! Ultima factura FGO a fost emisa pe data de '
-                            + fgoFormatDate(fgoLatestDate)
+                    if (maxDate && dateVal && dateVal < maxDate) {
+                        warning.textContent = 'Atentie! Ultima factura FGO pe seria ' + (series || '—')
+                            + ' a fost emisa pe ' + fgoFormatDate(maxDate)
                             + '. Data aleasa (' + fgoFormatDate(dateVal) + ') este mai veche — poti schimba data sau continua.';
                         warning.classList.remove('hidden');
                     } else {
@@ -995,6 +1008,7 @@
                         var dateVal = document.getElementById('fgo_date_input').value;
                         if (!dateVal) { alert('Alege o data valida.'); return; }
                         document.getElementById('fgo_issue_date_hidden').value = dateVal;
+                        document.getElementById('fgo_series_form_hidden').value = fgoCurrentSeries();
                         modal.close();
                         document.getElementById('fgo-generate-btn').closest('form').submit();
                     });
