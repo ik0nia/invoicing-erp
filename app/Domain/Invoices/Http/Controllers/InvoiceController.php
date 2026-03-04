@@ -1614,15 +1614,28 @@ class InvoiceController
 
         // Fetch the latest refacere (adjustment) for this invoice, if any.
         // Used to display the refacere date and new FGO number on the annex.
+        // Uses SELECT * to avoid SQL errors when optional columns (fgo_date)
+        // haven't been added yet on older database installations.
         $latestAdjustment = null;
         if (Database::tableExists('invoice_adjustments')) {
             $latestAdjustment = Database::fetchOne(
-                'SELECT fgo_series, fgo_number, fgo_date, created_at
+                'SELECT *
                  FROM invoice_adjustments
                  WHERE invoice_in_id = :id
+                   AND status = \'fgo_generated\'
                  ORDER BY id DESC LIMIT 1',
                 ['id' => $invoiceId]
             );
+            // Fall back to any adjustment (even without FGO) if none with fgo_generated found
+            if (!$latestAdjustment) {
+                $latestAdjustment = Database::fetchOne(
+                    'SELECT *
+                     FROM invoice_adjustments
+                     WHERE invoice_in_id = :id
+                     ORDER BY id DESC LIMIT 1',
+                    ['id' => $invoiceId]
+                );
+            }
         }
 
         $viewData = [

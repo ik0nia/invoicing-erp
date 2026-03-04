@@ -20,7 +20,13 @@
         $adjSeries = trim((string) ($latestAdjustment['fgo_series'] ?? ''));
         $adjNumber = trim((string) ($latestAdjustment['fgo_number'] ?? ''));
         $adjRef    = trim($adjSeries . ' ' . $adjNumber);
-        $adjDateRaw = trim((string) ($latestAdjustment['fgo_date'] ?? $latestAdjustment['created_at'] ?? ''));
+        // fgo_date (DATE) preferred; fall back to fgo_generated_at (DATETIME) then created_at
+        $adjDateRaw = trim((string) (
+            $latestAdjustment['fgo_date']
+            ?? $latestAdjustment['fgo_generated_at']
+            ?? $latestAdjustment['created_at']
+            ?? ''
+        ));
         if ($adjDateRaw !== '') {
             $adjDate = date('d.m.Y', strtotime($adjDateRaw));
         }
