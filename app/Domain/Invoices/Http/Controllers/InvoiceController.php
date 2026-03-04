@@ -2575,6 +2575,11 @@ class InvoiceController
                 ? round((float) ($rawPackageSalesTotals[$package->id]['total_vat'] ?? 0.0), 2)
                 : $this->commissionService->applyCommission((float) ($stat['total_vat'] ?? 0.0), $commissionPercent);
 
+            // Skip packages with zero or near-zero total (empty packages, fully-cancelled storno pairs, etc.)
+            if (abs($total) < 0.01) {
+                continue;
+            }
+
             $content[] = [
                 'Denumire' => $this->packageLabel($package),
                 'CodArticol' => $this->fgoPackageArticleCode($package),
