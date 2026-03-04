@@ -21,6 +21,8 @@
         thead th { text-align: left; padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; }
         tbody td { padding: 6px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
         tbody tr:nth-child(even) { background: #f8fafc; }
+        tfoot td { padding: 6px 8px; border: 1px solid #94a3b8; font-weight: 700; background: #1e293b; color: #f8fafc; }
+        tfoot tr.totals-secondary td { background: #334155; color: #e2e8f0; font-weight: 600; }
         .muted { color: #64748b; }
         .no-print { display: block; }
         @media print {
@@ -138,6 +140,46 @@
                 <?php endforeach; ?>
             <?php endif; ?>
         </tbody>
+        <?php
+            $totalSupplier  = 0.0;
+            $totalClient    = 0.0;
+            $totalCollected = 0.0;
+            $totalPaid      = 0.0;
+            foreach ($invoices as $inv) {
+                $st = $invoiceStatuses[$inv->id] ?? null;
+                $totalSupplier += (float) $inv->total_with_vat;
+                if ($st && $st['client_total'] !== null) {
+                    $totalClient    += (float) $st['client_total'];
+                    $totalCollected += (float) $st['collected'];
+                }
+                if ($st) {
+                    $totalPaid += (float) $st['paid'];
+                }
+            }
+            $totalToCollect = $totalClient - $totalCollected;
+            $totalToPay     = $totalSupplier - $totalPaid;
+        ?>
+        <tfoot>
+            <tr>
+                <td colspan="3">TOTAL</td>
+                <td><?= number_format($totalSupplier, 2, '.', ' ') ?></td>
+                <td></td>
+                <td><?= number_format($totalClient, 2, '.', ' ') ?></td>
+                <td><?= number_format($totalCollected, 2, '.', ' ') ?></td>
+                <td><?= number_format($totalPaid, 2, '.', ' ') ?></td>
+            </tr>
+            <tr class="totals-secondary">
+                <td colspan="5">De incasat (client ramas)</td>
+                <td><?= number_format($totalToCollect, 2, '.', ' ') ?></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="totals-secondary">
+                <td colspan="3">De platit (furnizori ramasi)</td>
+                <td><?= number_format($totalToPay, 2, '.', ' ') ?></td>
+                <td colspan="4"></td>
+            </tr>
+        </tfoot>
     </table>
 </div>
 </body>

@@ -608,6 +608,11 @@ class InvoiceController
             'Plata furnizor',
         ]);
 
+        $totalSupplier  = 0.0;
+        $totalClient    = 0.0;
+        $totalCollected = 0.0;
+        $totalPaid      = 0.0;
+
         foreach ($invoices as $invoice) {
             $status = $invoiceStatuses[$invoice->id] ?? $this->buildInvoiceStatus(
                 $invoice,
@@ -634,6 +639,13 @@ class InvoiceController
             $paidText = number_format($status['paid'], 2, '.', '') . ' / ' . number_format((float) $invoice->total_with_vat, 2, '.', '') .
                 ' (' . $status['supplier_label'] . ')';
 
+            $totalSupplier  += (float) $invoice->total_with_vat;
+            if ($clientTotal !== null) {
+                $totalClient    += $clientTotal;
+                $totalCollected += (float) $status['collected'];
+            }
+            $totalPaid += (float) $status['paid'];
+
             fputcsv($out, [
                 $invoice->supplier_name,
                 $supplierInvoice !== '' ? $supplierInvoice : '—',
@@ -647,6 +659,17 @@ class InvoiceController
                 $paidText,
             ]);
         }
+
+        // Separator row
+        fputcsv($out, []);
+
+        // Totals rows
+        fputcsv($out, ['TOTAL FACTURAT FURNIZORI', '', '', number_format($totalSupplier, 2, '.', ''), '', '', '', '', '', '']);
+        fputcsv($out, ['TOTAL FACTURAT CLIENT',    '', '', '', '', '', '', number_format($totalClient, 2, '.', ''), '', '']);
+        fputcsv($out, ['TOTAL INCASAT',            '', '', '', '', '', '', '', number_format($totalCollected, 2, '.', ''), '']);
+        fputcsv($out, ['TOTAL PLATIT FURNIZORI',   '', '', '', '', '', '', '', '', number_format($totalPaid, 2, '.', '')]);
+        fputcsv($out, ['DE INCASAT (client)',      '', '', '', '', '', '', number_format($totalClient - $totalCollected, 2, '.', ''), '', '']);
+        fputcsv($out, ['DE PLATIT (furnizori)',     '', '', number_format($totalSupplier - $totalPaid, 2, '.', ''), '', '', '', '', '', '']);
 
         fclose($out);
         exit;
