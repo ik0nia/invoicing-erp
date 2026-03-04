@@ -13,6 +13,18 @@
     $isPdfMode = !empty($pdfMode);
     $hasDiscountPricing = !empty($hasDiscountPricing);
     $discountPackageSalesTotals = is_array($discountPackageSalesTotals ?? null) ? $discountPackageSalesTotals : [];
+    $latestAdjustment = is_array($latestAdjustment ?? null) ? $latestAdjustment : null;
+    $adjRef  = '';
+    $adjDate = '';
+    if ($latestAdjustment !== null) {
+        $adjSeries = trim((string) ($latestAdjustment['fgo_series'] ?? ''));
+        $adjNumber = trim((string) ($latestAdjustment['fgo_number'] ?? ''));
+        $adjRef    = trim($adjSeries . ' ' . $adjNumber);
+        $adjDateRaw = trim((string) ($latestAdjustment['fgo_date'] ?? $latestAdjustment['created_at'] ?? ''));
+        if ($adjDateRaw !== '') {
+            $adjDate = date('d.m.Y', strtotime($adjDateRaw));
+        }
+    }
 ?>
 
 <style>
@@ -99,6 +111,11 @@
             <h1 class="text-lg font-semibold text-slate-900">
                 ANEXA - Factura <?= htmlspecialchars($reference) ?> / DATA <?= htmlspecialchars($dateDisplay) ?>
             </h1>
+            <?php if ($latestAdjustment !== null): ?>
+                <p class="mt-1 text-xs font-semibold text-orange-700">
+                    Refacut<?php if ($adjRef !== ''): ?> prin: <?= htmlspecialchars($adjRef) ?><?php endif; ?><?php if ($adjDate !== ''): ?> / Data refacere: <?= htmlspecialchars($adjDate) ?><?php endif; ?>
+                </p>
+            <?php endif; ?>
             <p class="mt-1 text-xs font-semibold text-slate-600">DOCUMENT NEFISCAL</p>
             <p class="mt-2 text-xs text-slate-600">
                 Client: <strong><?= htmlspecialchars($clientName ?: $clientCui) ?></strong>

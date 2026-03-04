@@ -1612,6 +1612,19 @@ class InvoiceController
             }
         }
 
+        // Fetch the latest refacere (adjustment) for this invoice, if any.
+        // Used to display the refacere date and new FGO number on the annex.
+        $latestAdjustment = null;
+        if (Database::tableExists('invoice_adjustments')) {
+            $latestAdjustment = Database::fetchOne(
+                'SELECT fgo_series, fgo_number, fgo_date, created_at
+                 FROM invoice_adjustments
+                 WHERE invoice_in_id = :id
+                 ORDER BY id DESC LIMIT 1',
+                ['id' => $invoiceId]
+            );
+        }
+
         $viewData = [
             'invoice' => $invoice,
             'packages' => $packages,
@@ -1626,6 +1639,7 @@ class InvoiceController
             'commissionPercent' => $commissionPercent,
             'hasDiscountPricing' => $hasDiscountPricing,
             'discountPackageSalesTotals' => $discountPackageSalesTotals,
+            'latestAdjustment' => $latestAdjustment,
         ];
         $this->renderInvoicePrintDocument(
             'admin/invoices/aviz',
