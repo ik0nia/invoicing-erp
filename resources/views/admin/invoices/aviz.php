@@ -183,8 +183,15 @@
                             <?php $index = 1; ?>
                             <?php foreach ($lines as $line): ?>
                                 <?php
-                                    if ($hasDiscountPricing && ((float) ($line->line_total_vat ?? 0)) <= 0.0) {
-                                        continue; // sare liniile de discount (negative)
+                                    if ($hasDiscountPricing) {
+                                        $avizLineTotalVat = (float) ($line->line_total_vat ?? 0.0);
+                                        $avizLineQty      = (float) ($line->quantity      ?? 0.0);
+                                        // Skip only discount-adjustment lines: qty >= 0 cu total negativ.
+                                        // Liniile storno (qty < 0) trebuie afisate — reprezinta marfa
+                                        // efectiv returnata/stornata, nu o ajustare de discount.
+                                        if ($avizLineTotalVat <= 0.0 && $avizLineQty >= -0.000001) {
+                                            continue;
+                                        }
                                     }
                                     $unitPrice = $applyCommission((float) $line->unit_price);
                                     $lineTotal = $applyCommission((float) $line->line_total);

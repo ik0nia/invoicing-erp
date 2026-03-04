@@ -1515,7 +1515,11 @@ class InvoiceController
         $lines = InvoiceInLine::forInvoice($invoiceId);
         $packageStats = $this->packageStats($lines, $packages);
         $linesByPackage = $this->groupLinesByPackage($lines, $packages);
-        $discountPackageSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoiceId);
+        // Use the storno-inclusive method (same as index()) so that storno packages
+        // with negative quantities are correctly netted out when detecting discount pricing.
+        // The old invoicePackagePositiveSalesTotals() excluded storno negatives, causing
+        // a false-positive hasDiscountPricing=TRUE and wrong totals on the annex.
+        $discountPackageSalesTotals = $this->invoiceAllSalesTotalsForPackages((int) $invoiceId);
         $avizRawGrossTotal = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
         $avizNeedsCommissionFreeze = false;
