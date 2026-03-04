@@ -105,6 +105,15 @@ class InvoiceController
                 if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
                     $invoice->commission_percent = null;
                     $needsCommissionFreeze = true;
+                } else {
+                    // For cost-price invoices (non-discount) with commission: verify the stored
+                    // total_with_vat matches the actual effective line sums. The old
+                    // positive-only rawPackageGrossTotal bug could write an inflated
+                    // total_with_vat (e.g. original + replacement lines, excluding storno
+                    // negatives) which then gets divided by (1+commission) via
+                    // syncInvoiceTotalsByCommission, producing a wrong supplier total.
+                    // Self-heal here so the DB value is corrected on the next page load.
+                    $this->syncCostPriceTotalsIfNeeded($invoice);
                 }
             }
             $needsCommissionFreeze = $needsCommissionFreeze ?? false;
@@ -5881,6 +5890,51 @@ class InvoiceController
         }
 
         return (float) $value;
+    }
+
+    /**
+     * For cost-price invoices (non-discount) that carry a commission percentage,
+     * the stored total_with_vat must equal the sum of effective line costs.
+     * A previous bug using positive-only rawPackageGrossTotal could write an inflated
+     * total_with_vat via syncInvoiceTotalsByCommission (false-positive discount path).
+     * This method detects the mismatch and corrects the DB value on the next page load.
+     */
+    private function syncCostPriceTotalsIfNeeded(InvoiceIn $invoice): void
+    {
+        if ((int) ($invoice->id ?? 0) <= 0) {
+            return;
+        }
+
+        $totals        = $this->packageTotalsService->calculateInvoiceTotals((int) $invoice->id);
+        $expectedNet   = round((float) ($totals['sum_net']   ?? 0.0), 2);
+        $expectedGross = round((float) ($totals['sum_gross'] ?? 0.0), 2);
+        $currentGross  = round((float) ($invoice->total_with_vat ?? 0.0), 2);
+
+        if (abs($currentGross - $expectedGross) < 0.009) {
+            return; // already correct, nothing to do
+        }
+
+        $expectedVat = round($expectedGross - $expectedNet, 2);
+
+        Database::execute(
+            'UPDATE invoices_in
+             SET total_without_vat = :net,
+                 total_vat         = :vat,
+                 total_with_vat    = :gross,
+                 updated_at        = :now
+             WHERE id = :id',
+            [
+                'net'   => $expectedNet,
+                'vat'   => $expectedVat,
+                'gross' => $expectedGross,
+                'now'   => date('Y-m-d H:i:s'),
+                'id'    => $invoice->id,
+            ]
+        );
+
+        $invoice->total_without_vat = $expectedNet;
+        $invoice->total_vat         = $expectedVat;
+        $invoice->total_with_vat    = $expectedGross;
     }
 
     private function syncInvoiceTotalsByCommission(InvoiceIn $invoice, float $commissionPercent, float $salesGrossTotal): void
