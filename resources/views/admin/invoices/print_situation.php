@@ -21,8 +21,8 @@
         thead th { text-align: left; padding: 6px 8px; background: #f1f5f9; border: 1px solid #e2e8f0; }
         tbody td { padding: 6px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
         tbody tr:nth-child(even) { background: #f8fafc; }
-        tfoot td { padding: 6px 8px; border: 1px solid #94a3b8; font-weight: 700; background: #1e293b; color: #f8fafc; }
-        tfoot tr.totals-secondary td { background: #334155; color: #e2e8f0; font-weight: 600; }
+        tfoot td { padding: 6px 8px; border: 1px solid #94a3b8; font-weight: 700; background: #e2e8f0; color: #0f172a; border-top: 2px solid #64748b; }
+        tfoot tr.totals-secondary td { background: #f1f5f9; color: #334155; font-weight: 600; border-top: none; }
         .muted { color: #64748b; }
         .no-print { display: block; }
         @media print {
@@ -140,6 +140,7 @@
                 <?php endforeach; ?>
             <?php endif; ?>
         </tbody>
+        <?php if (!empty($showTotals)): ?>
         <?php
             $totalSupplier  = 0.0;
             $totalClient    = 0.0;
@@ -180,6 +181,7 @@
                 <td colspan="4"></td>
             </tr>
         </tfoot>
+        <?php endif; ?>
     </table>
 </div>
 </body>

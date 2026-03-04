@@ -912,6 +912,8 @@ class InvoiceController
             'telefon' => (string) $settings->get('company.telefon', ''),
         ];
 
+        $showTotals = !empty($_GET['show_totals']);
+
         $viewData = [
             'invoices' => $invoices,
             'invoiceStatuses' => $invoiceStatuses,
@@ -921,6 +923,7 @@ class InvoiceController
             'company' => $company,
             'printedAt' => date('d.m.Y H:i'),
             'titleText' => $titleText,
+            'showTotals' => $showTotals,
             'pdfMode' => false,
         ];
 
