@@ -1613,28 +1613,23 @@ class InvoiceController
         }
 
         // Fetch the latest refacere (adjustment) for this invoice, if any.
-        // Used to display the refacere date and new FGO number on the annex.
-        // Uses SELECT * to avoid SQL errors when optional columns (fgo_date)
-        // haven't been added yet on older database installations.
+        // Reuse loadInvoiceAdjustments() — same method used by the invoice show
+        // page ("Refaceri salvate" section) so guaranteed to return correct data.
+        // Prefer the latest row with status=fgo_generated (has fgo_series/number/date);
+        // fall back to any row so at least the refacere date (created_at) is shown.
         $latestAdjustment = null;
-        if (Database::tableExists('invoice_adjustments')) {
-            $latestAdjustment = Database::fetchOne(
-                'SELECT *
-                 FROM invoice_adjustments
-                 WHERE invoice_in_id = :id
-                   AND status = \'fgo_generated\'
-                 ORDER BY id DESC LIMIT 1',
-                ['id' => $invoiceId]
-            );
-            // Fall back to any adjustment (even without FGO) if none with fgo_generated found
-            if (!$latestAdjustment) {
-                $latestAdjustment = Database::fetchOne(
-                    'SELECT *
-                     FROM invoice_adjustments
-                     WHERE invoice_in_id = :id
-                     ORDER BY id DESC LIMIT 1',
-                    ['id' => $invoiceId]
-                );
+        $allAdjustments = $this->loadInvoiceAdjustments((int) $invoiceId, 10);
+        if (!empty($allAdjustments)) {
+            // Try to find one that already has an FGO number generated
+            foreach ($allAdjustments as $adj) {
+                if (!empty($adj['fgo_number']) && ($adj['status'] ?? '') === 'fgo_generated') {
+                    $latestAdjustment = $adj;
+                    break;
+                }
+            }
+            // Fall back to the most recent adjustment regardless of status
+            if ($latestAdjustment === null) {
+                $latestAdjustment = $allAdjustments[0];
             }
         }
 
