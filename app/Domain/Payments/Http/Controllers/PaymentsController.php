@@ -1142,15 +1142,14 @@ class PaymentsController
     private function supplierInvoicesWithBalances(string $supplierCui): array
     {
         $rows = Database::fetchAll(
-            'SELECT i.*, COALESCE(SUM(o.amount), 0) AS paid, COALESCE(SUM(a.amount), 0) AS collected
+            'SELECT i.*,
+                    COALESCE((SELECT SUM(o.amount) FROM payment_out_allocations o WHERE o.invoice_in_id = i.id), 0) AS paid,
+                    COALESCE((SELECT SUM(a.amount) FROM payment_in_allocations a WHERE a.invoice_in_id = i.id), 0) AS collected
              FROM invoices_in i
-             LEFT JOIN payment_out_allocations o ON o.invoice_in_id = i.id
-             LEFT JOIN payment_in_allocations a ON a.invoice_in_id = i.id
              WHERE i.supplier_cui = :supplier
                AND (i.fgo_storno_number IS NULL OR i.fgo_storno_number = "")
                AND (i.fgo_storno_series IS NULL OR i.fgo_storno_series = "")
                AND (i.fgo_storno_link IS NULL OR i.fgo_storno_link = "")
-             GROUP BY i.id
              ORDER BY i.issue_date DESC, i.id DESC',
             ['supplier' => $supplierCui]
         );
