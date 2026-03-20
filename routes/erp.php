@@ -127,7 +127,7 @@ $router->post('/admin/facturi/storno', [InvoiceController::class, 'stornoInvoice
 $router->post('/admin/facturi/refacere', [InvoiceController::class, 'rebuildInvoice']);
 $router->post('/admin/facturi/refacere/genereaza', [InvoiceController::class, 'generateAdjustmentInvoice']);
 $router->post('/admin/facturi/sterge', [InvoiceController::class, 'delete']);
-$router->post('/admin/facturi/repair-fgo', [InvoiceController::class, 'repairFgoData']);
+$router->get('/admin/facturi/repair-fgo', [InvoiceController::class, 'repairFgoData']);
 
 $router->get('/admin/incasari', [PaymentsController::class, 'indexIn']);
 $router->get('/admin/incasari/adauga', [PaymentsController::class, 'createIn']);
