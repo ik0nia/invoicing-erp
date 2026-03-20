@@ -192,10 +192,44 @@ class PaymentsController
         }
 
         Database::execute('DELETE FROM payment_in_allocations WHERE payment_in_id = :id', ['id' => $paymentId]);
+
+        if (Database::tableExists('bank_transactions') && Database::columnExists('bank_transactions', 'payment_in_id')) {
+            Database::execute(
+                'UPDATE bank_transactions SET payment_in_id = NULL WHERE payment_in_id = :id',
+                ['id' => $paymentId]
+            );
+        }
+
         Database::execute('DELETE FROM payments_in WHERE id = :id', ['id' => $paymentId]);
 
         Session::flash('status', 'Incasarea a fost stearsa.');
         Response::redirect('/admin/incasari/istoric');
+    }
+
+    public function repairOrphanBankTransactions(): void
+    {
+        Auth::requireSuperAdmin();
+
+        if (!Database::tableExists('bank_transactions') || !Database::columnExists('bank_transactions', 'payment_in_id')) {
+            Session::flash('error', 'Tabela bank_transactions nu exista sau nu are coloana payment_in_id.');
+            Response::redirect('/admin/incasari/extras');
+        }
+
+        $count = Database::fetchValue(
+            'SELECT COUNT(*) FROM bank_transactions bt
+             LEFT JOIN payments_in p ON p.id = bt.payment_in_id
+             WHERE bt.payment_in_id IS NOT NULL AND p.id IS NULL'
+        );
+
+        Database::execute(
+            'UPDATE bank_transactions bt
+             LEFT JOIN payments_in p ON p.id = bt.payment_in_id
+             SET bt.payment_in_id = NULL
+             WHERE bt.payment_in_id IS NOT NULL AND p.id IS NULL'
+        );
+
+        Session::flash('status', "S-au resetat {$count} tranzactii bancare orfane (incasarea stearsa). Pot fi reprocesate acum.");
+        Response::redirect('/admin/incasari/extras');
     }
 
     public function historyIn(): void
