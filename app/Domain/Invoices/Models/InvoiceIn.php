@@ -36,6 +36,7 @@ class InvoiceIn
     public ?int $order_note_no = null;
     public ?string $order_note_date = null;
     public ?float $commission_percent = null;
+    public ?float $fgo_total_with_vat = null;
     public ?string $created_at = null;
     public ?string $supplier_request_at = null;
 
@@ -182,6 +183,7 @@ class InvoiceIn
         $invoice->order_note_no = isset($row['order_note_no']) ? (int) $row['order_note_no'] : null;
         $invoice->order_note_date = $row['order_note_date'] ?? null;
         $invoice->commission_percent = isset($row['commission_percent']) ? (float) $row['commission_percent'] : null;
+        $invoice->fgo_total_with_vat = isset($row['fgo_total_with_vat']) ? (float) $row['fgo_total_with_vat'] : null;
         $invoice->created_at = $row['created_at'] ?? null;
         $invoice->supplier_request_at = $row['supplier_request_at'] ?? null;
 

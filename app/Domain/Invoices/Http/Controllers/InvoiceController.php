@@ -94,9 +94,12 @@ class InvoiceController
             $discountPackageSalesTotals = $this->invoiceAllSalesTotalsForPackages((int) $invoice->id);
             $rawPackageGrossTotal       = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
             $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawPackageGrossTotal);
-            if ($hasDiscountPricing) {
+            $hasFgoInvoice = $this->hasFgoInvoice($invoice);
+            // Sync commission/totals only for invoices that have NOT been issued in FGO yet.
+            // Once FGO is generated, commission_percent and total_with_vat are frozen.
+            if ($hasDiscountPricing && !$hasFgoInvoice) {
                 $this->syncDiscountCommissionPercent($invoice, $rawPackageGrossTotal);
-            } elseif ($invoice->commission_percent !== null) {
+            } elseif (!$hasFgoInvoice && $invoice->commission_percent !== null) {
                 $storedAutoCommission = (float) $invoice->commission_percent;
                 // A value in [0, 0.1) is a DECIMAL(6,2) artefact from the old false-positive
                 // discount detection (e.g. 0.000002% rounded to 0.00). Clear it in memory now;
@@ -129,7 +132,6 @@ class InvoiceController
             $hasImportedPackages = $this->invoiceHasImportedPackages($invoice->id);
             $canUnconfirmPackages = $this->canUnconfirmPackages($user) && !$hasImportedPackages;
             $canDownloadSaga = $user ? $user->hasRole(['super_admin', 'contabil']) : false;
-            $hasFgoInvoice = $this->hasFgoInvoice($invoice);
             $invoiceLocked = $this->packageLockService->isInvoiceLocked(['packages_confirmed' => $invoice->packages_confirmed]);
             $clientLocked = $invoiceLocked && (!$isAdmin || !$this->isClientUnlocked($invoice->id));
             $storedClientCui = $invoice->selected_client_cui ?? '';
@@ -202,7 +204,7 @@ class InvoiceController
             // Freeze: a stale 0.00 was detected above; now that the real commission is known,
             // persist it so the invoice stays locked to the commission it was issued with,
             // regardless of future changes to the commission table.
-            if ($needsCommissionFreeze && $commissionPercent !== null && !$hasDiscountPricing) {
+            if ($needsCommissionFreeze && $commissionPercent !== null && !$hasDiscountPricing && !$hasFgoInvoice) {
                 Database::execute(
                     'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
                     ['commission' => $commissionPercent, 'now' => date('Y-m-d H:i:s'), 'id' => $invoice->id]
@@ -258,7 +260,10 @@ class InvoiceController
             if ($hasDiscountPricing && $selectedClientCui !== '') {
                 $commissionBase = 0.0;
             }
-            if ($hasDiscountPricing && $selectedClientCui !== '') {
+            // Prefer frozen FGO client total when available.
+            if ($hasFgoInvoice && $invoice->fgo_total_with_vat !== null) {
+                $clientTotal = (float) $invoice->fgo_total_with_vat;
+            } elseif ($hasDiscountPricing && $selectedClientCui !== '') {
                 $clientTotal = round($rawPackageGrossTotal, 2);
             } elseif ($commissionBase !== null) {
                 $clientTotal = $this->clientTotalFromPackageStats($packageStats, (float) $commissionBase);
@@ -1548,8 +1553,9 @@ class InvoiceController
         $discountPackageSalesTotals = $this->invoiceAllSalesTotalsForPackages((int) $invoiceId);
         $avizRawGrossTotal = (float) array_sum(array_column($discountPackageSalesTotals, 'total_vat'));
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $avizRawGrossTotal);
+        $hasFgoInvoice = $this->hasFgoInvoice($invoice);
         $avizNeedsCommissionFreeze = false;
-        if (!$hasDiscountPricing && $invoice->commission_percent !== null) {
+        if (!$hasFgoInvoice && !$hasDiscountPricing && $invoice->commission_percent !== null) {
             $storedAutoCommission = (float) $invoice->commission_percent;
             if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
                 $invoice->commission_percent = null;
@@ -1577,7 +1583,7 @@ class InvoiceController
                 (string) $clientCui
             );
         }
-        if ($avizNeedsCommissionFreeze && $commissionPercent !== null) {
+        if ($avizNeedsCommissionFreeze && $commissionPercent !== null && !$hasFgoInvoice) {
             Database::execute(
                 'UPDATE invoices_in SET commission_percent = :commission, updated_at = :now WHERE id = :id',
                 ['commission' => $commissionPercent, 'now' => date('Y-m-d H:i:s'), 'id' => $invoice->id]
@@ -1592,7 +1598,19 @@ class InvoiceController
         $totalWithout = 0.0;
         $totalWith = 0.0;
 
-        if ($hasDiscountPricing) {
+        // Prefer frozen FGO client total when available for the grand total.
+        if ($hasFgoInvoice && $invoice->fgo_total_with_vat !== null) {
+            $totalWith = (float) $invoice->fgo_total_with_vat;
+            // Estimate net from gross using the invoice VAT ratio.
+            $invoiceGross = (float) ($invoice->total_with_vat ?? 0.0);
+            $invoiceNet = (float) ($invoice->total_without_vat ?? 0.0);
+            if ($invoiceGross > 0.0 && $invoiceNet > 0.0) {
+                $vatRatio = $invoiceGross / $invoiceNet;
+                $totalWithout = round($totalWith / $vatRatio, 2);
+            } else {
+                $totalWithout = $totalWith;
+            }
+        } elseif ($hasDiscountPricing) {
             $totalWithout = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_net')), 2);
             $totalWith    = round((float) array_sum(array_column($discountPackageSalesTotals, 'total_vat')), 2);
         } else {
@@ -2653,6 +2671,12 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
+        // Compute the client-facing total that was sent to FGO — freeze it in DB
+        // so it can never be corrupted by later sync/recalculation.
+        $fgoTotalWithVat = $hasDiscountPricing
+            ? round($rawPackageGrossTotal, 2)
+            : $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commissionPercent);
+
         Database::execute(
             'UPDATE invoices_in
              SET fgo_series = :serie,
@@ -2660,6 +2684,7 @@ class InvoiceController
                  fgo_date = :fgo_date,
                  fgo_generated_at = :generated_at,
                  fgo_link = :link,
+                 fgo_total_with_vat = :fgo_total,
                  updated_at = :now
              WHERE id = :id',
             [
@@ -2668,6 +2693,7 @@ class InvoiceController
                 'fgo_date' => $issueDate,
                 'generated_at' => date('Y-m-d H:i:s'),
                 'link' => $fgoLink,
+                'fgo_total' => $fgoTotalWithVat,
                 'now' => date('Y-m-d H:i:s'),
                 'id' => $invoice->id,
             ]
@@ -4260,8 +4286,11 @@ class InvoiceController
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'commission_percent')) {
             Database::execute('ALTER TABLE invoices_in ADD COLUMN commission_percent DECIMAL(6,2) NULL AFTER order_note_date');
         }
+        if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'fgo_total_with_vat')) {
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN fgo_total_with_vat DECIMAL(12,2) NULL AFTER commission_percent');
+        }
         if (Database::tableExists('invoices_in') && !Database::columnExists('invoices_in', 'supplier_request_at')) {
-            Database::execute('ALTER TABLE invoices_in ADD COLUMN supplier_request_at DATETIME NULL AFTER commission_percent');
+            Database::execute('ALTER TABLE invoices_in ADD COLUMN supplier_request_at DATETIME NULL AFTER fgo_total_with_vat');
         }
         if (Database::tableExists('invoice_adjustments') && !Database::columnExists('invoice_adjustments', 'fgo_series')) {
             Database::execute('ALTER TABLE invoice_adjustments ADD COLUMN fgo_series VARCHAR(32) NULL AFTER status');
@@ -5873,6 +5902,11 @@ class InvoiceController
 
     private function syncDiscountCommissionPercent(InvoiceIn $invoice, ?float $salesGrossTotal = null): ?float
     {
+        // Once FGO is generated, the commission is frozen — never overwrite it.
+        if ($this->hasFgoInvoice($invoice)) {
+            return $invoice->commission_percent !== null ? (float) $invoice->commission_percent : null;
+        }
+
         if ($salesGrossTotal === null) {
             $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
         }
@@ -5949,6 +5983,119 @@ class InvoiceController
         return (float) $value;
     }
 
+    public function repairFgoData(): void
+    {
+        $user = Auth::user();
+        if (!$user || !$user->hasRole(['super_admin'])) {
+            Session::flash('error', 'Aceasta actiune necesita rol super_admin.');
+            Response::redirect('/admin/facturi');
+        }
+
+        $repaired = $this->repairFgoCommissions();
+        Session::flash('status', 'Reparare comisioane FGO finalizata. Facturi reparate: ' . $repaired);
+        Response::redirect('/admin/facturi');
+    }
+
+    private function repairFgoCommissions(): int
+    {
+        if (!Database::tableExists('invoices_in') || !Database::columnExists('invoices_in', 'fgo_total_with_vat')) {
+            return 0;
+        }
+
+        $invoices = Database::fetchAll(
+            "SELECT id, supplier_cui, selected_client_cui, total_with_vat, commission_percent
+             FROM invoices_in
+             WHERE fgo_number IS NOT NULL AND fgo_number != ''
+               AND fgo_total_with_vat IS NULL"
+        );
+
+        $repaired = 0;
+        foreach ($invoices as $row) {
+            $invoiceId = (int) $row['id'];
+            $supplierCui = (string) ($row['supplier_cui'] ?? '');
+            $clientCui = (string) ($row['selected_client_cui'] ?? '');
+            $supplierTotal = (float) ($row['total_with_vat'] ?? 0.0);
+
+            if ($supplierTotal <= 0.0 || $clientCui === '') {
+                continue;
+            }
+
+            // Determine correct commission — invoice_adjustments first, then commissions table.
+            $adjustmentCommission = $this->latestAdjustmentCommissionPercent($invoiceId);
+            $correctCommission = null;
+            $fgoTotalWithVat = null;
+
+            // Check if this is a discount pricing invoice by comparing line totals vs supplier total.
+            $salesGrossTotal = (float) Database::fetchValue(
+                'SELECT COALESCE(SUM(line_total_vat), 0) FROM invoice_in_lines WHERE invoice_in_id = :id',
+                ['id' => $invoiceId]
+            );
+            $diff = $salesGrossTotal - $supplierTotal;
+            $isDiscountPricing = $diff > 0.50 && $diff > ($supplierTotal * 0.005);
+
+            if ($isDiscountPricing) {
+                // Discount pricing: client total = sum of line sales prices.
+                $fgoTotalWithVat = round($salesGrossTotal, 2);
+                if ($supplierTotal > 0.0) {
+                    $correctCommission = round(($salesGrossTotal / $supplierTotal - 1.0) * 100.0, 6);
+                }
+            } else {
+                // Non-discount: commission from adjustments or commissions table.
+                if ($adjustmentCommission !== null && $adjustmentCommission > 0.0) {
+                    $correctCommission = $adjustmentCommission;
+                } else {
+                    $resolved = $this->commissionService->resolveCommissionPercent(
+                        null,
+                        $supplierCui,
+                        $clientCui
+                    );
+                    if ($resolved !== null) {
+                        $correctCommission = $resolved;
+                    }
+                }
+
+                if ($correctCommission !== null && $correctCommission > 0.0) {
+                    $fgoTotalWithVat = $this->commissionService->applyCommission($supplierTotal, $correctCommission);
+                } else {
+                    $fgoTotalWithVat = $supplierTotal;
+                }
+            }
+
+            if ($fgoTotalWithVat === null) {
+                continue;
+            }
+
+            $params = [
+                'fgo_total' => round($fgoTotalWithVat, 2),
+                'now' => date('Y-m-d H:i:s'),
+                'id' => $invoiceId,
+            ];
+
+            if ($correctCommission !== null && $correctCommission > 0.0) {
+                Database::execute(
+                    'UPDATE invoices_in
+                     SET fgo_total_with_vat = :fgo_total,
+                         commission_percent = :commission,
+                         updated_at = :now
+                     WHERE id = :id',
+                    array_merge($params, ['commission' => round($correctCommission, 2)])
+                );
+            } else {
+                Database::execute(
+                    'UPDATE invoices_in
+                     SET fgo_total_with_vat = :fgo_total,
+                         updated_at = :now
+                     WHERE id = :id',
+                    $params
+                );
+            }
+
+            $repaired++;
+        }
+
+        return $repaired;
+    }
+
     /**
      * For cost-price invoices (non-discount) that carry a commission percentage,
      * the stored total_with_vat must equal the sum of effective line costs.
@@ -5958,6 +6105,10 @@ class InvoiceController
      */
     private function syncCostPriceTotalsIfNeeded(InvoiceIn $invoice): void
     {
+        if ($this->hasFgoInvoice($invoice)) {
+            return;
+        }
+
         if ((int) ($invoice->id ?? 0) <= 0) {
             return;
         }
@@ -5996,6 +6147,10 @@ class InvoiceController
 
     private function syncInvoiceTotalsByCommission(InvoiceIn $invoice, float $commissionPercent, float $salesGrossTotal): void
     {
+        if ($this->hasFgoInvoice($invoice)) {
+            return;
+        }
+
         if ((int) ($invoice->id ?? 0) <= 0) {
             return;
         }
@@ -6480,11 +6635,28 @@ class InvoiceController
 
     private function buildInvoiceStatus(InvoiceIn $invoice, float $collected, float $paid, array $commissionMap): array
     {
+        // Prefer the frozen FGO client total when available.
+        if ($this->hasFgoInvoice($invoice) && $invoice->fgo_total_with_vat !== null) {
+            $clientTotal = (float) $invoice->fgo_total_with_vat;
+            $clientStatus = $this->clientStatus($clientTotal, $collected);
+            $supplierStatus = $this->supplierStatus((float) $invoice->total_with_vat, $paid);
+
+            return [
+                'collected' => $collected,
+                'paid' => $paid,
+                'client_total' => $clientTotal,
+                'client_label' => $clientStatus['label'],
+                'client_class' => $clientStatus['class'],
+                'supplier_label' => $supplierStatus['label'],
+                'supplier_class' => $supplierStatus['class'],
+            ];
+        }
+
         $commission = $this->commissionForInvoice($invoice, $commissionMap);
         $clientTotal = null;
         $salesGrossTotal = $this->invoiceSalesGrossTotal((int) $invoice->id);
         $hasDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $salesGrossTotal);
-        if ($hasDiscountPricing) {
+        if ($hasDiscountPricing && !$this->hasFgoInvoice($invoice)) {
             $discountCommission = $this->syncDiscountCommissionPercent($invoice, $salesGrossTotal);
             if ($discountCommission !== null) {
                 $commission = $discountCommission;

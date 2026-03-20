@@ -98,6 +98,20 @@ class SchemaEnsurer
             self::ensureCompaniesStripDiacritics();
         });
 
+        self::runStep('invoices_in_fgo_total_with_vat', static function (): void {
+            if (!self::tableExists('invoices_in')) {
+                return;
+            }
+            if (!self::columnExists('invoices_in', 'fgo_total_with_vat')) {
+                self::safeExecute(
+                    'ALTER TABLE invoices_in ADD COLUMN fgo_total_with_vat DECIMAL(12,2) NULL AFTER commission_percent',
+                    [],
+                    'invoices_in_add_fgo_total_with_vat'
+                );
+                unset(self::$columnCache['invoices_in.fgo_total_with_vat']);
+            }
+        });
+
         self::runStep('invoice_adjustments_fgo_date', static function (): void {
             if (!self::tableExists('invoice_adjustments')) {
                 return;

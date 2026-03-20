@@ -285,7 +285,7 @@ class ReportsController
             ? Database::fetchAll(
                 "SELECT id, fgo_series, fgo_number, fgo_date, fgo_link,
                         invoice_series, invoice_no, invoice_number, issue_date, xml_path,
-                        selected_client_cui, total_with_vat, commission_percent
+                        selected_client_cui, total_with_vat, commission_percent, fgo_total_with_vat
                  FROM invoices_in
                  $invWhere
                  ORDER BY fgo_date ASC, fgo_number ASC",
@@ -445,32 +445,29 @@ class ReportsController
             $factor        = 1 + abs($commission) / 100;
             $supplierTotal = (float) ($inv['total_with_vat'] ?? 0);
 
-            // Client-facing total — three-tier priority:
-            //
-            // 1. Discount pricing: SUM(line_total_vat) significantly exceeds total_with_vat.
-            //    This mirrors invoiceHasDiscountPricing() — the client prices are already
-            //    stored in invoice_in_lines.line_total_vat; use them directly.
-            //    Threshold: diff > 0.50 RON AND diff > 0.5% of supplier total.
-            //
-            // 2. Commission known (from invoice or commissions table): multiply
-            //    the supplier total by the commission factor.
-            //    Covers cases where lines store supplier prices (normal XML import)
-            //    and the markup is explicit.
-            //
-            // 3. No commission, no markup in lines: fgoTotal = supplierTotal.
-            $linesTotal = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
-            $linesDiff  = $linesTotal - $supplierTotal;
+            // Client-facing total — prefer frozen FGO total when available,
+            // otherwise fall back to the three-tier calculation.
+            $storedFgoTotal = isset($inv['fgo_total_with_vat']) ? (float) $inv['fgo_total_with_vat'] : 0.0;
 
-            if ($linesDiff > 0.50 && $linesDiff > ($supplierTotal * 0.005)) {
-                // Client prices stored in lines (same logic as invoiceHasDiscountPricing).
-                $fgoTotal = round($linesTotal, 2);
-            } elseif (abs($commission) >= 0.01) {
-                // Commission resolved — compute client total from supplier total.
-                $fgoTotal = $commission >= 0
-                    ? round($supplierTotal * $factor, 2)
-                    : round($supplierTotal / $factor, 2);
+            if ($storedFgoTotal > 0.0) {
+                $fgoTotal = $storedFgoTotal;
             } else {
-                $fgoTotal = $supplierTotal;
+                // Three-tier priority:
+                // 1. Discount pricing: SUM(line_total_vat) significantly exceeds total_with_vat.
+                // 2. Commission known: multiply supplier total by the commission factor.
+                // 3. No commission, no markup in lines: fgoTotal = supplierTotal.
+                $linesTotal = $clientTotalFromLines[(int) $inv['id']] ?? 0.0;
+                $linesDiff  = $linesTotal - $supplierTotal;
+
+                if ($linesDiff > 0.50 && $linesDiff > ($supplierTotal * 0.005)) {
+                    $fgoTotal = round($linesTotal, 2);
+                } elseif (abs($commission) >= 0.01) {
+                    $fgoTotal = $commission >= 0
+                        ? round($supplierTotal * $factor, 2)
+                        : round($supplierTotal / $factor, 2);
+                } else {
+                    $fgoTotal = $supplierTotal;
+                }
             }
 
             $incasat = $incasatPerInvoice[(int) $inv['id']] ?? 0.0;
