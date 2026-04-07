@@ -112,6 +112,20 @@ class SchemaEnsurer
             }
         });
 
+        self::runStep('invoices_in_commission_percent_widen', static function (): void {
+            if (!self::tableExists('invoices_in')) {
+                return;
+            }
+            // Widen commission_percent from DECIMAL(6,2) to DECIMAL(10,6) so that
+            // manual adjustments can store fine-grained percentages without truncation.
+            // Existing values fit unchanged; rows already issued in FGO are not touched.
+            self::safeExecute(
+                'ALTER TABLE invoices_in MODIFY commission_percent DECIMAL(10,6) NULL',
+                [],
+                'invoices_in_widen_commission_percent'
+            );
+        });
+
         self::runStep('invoice_adjustments_fgo_date', static function (): void {
             if (!self::tableExists('invoice_adjustments')) {
                 return;

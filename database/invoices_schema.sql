@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS invoices_in (
     fgo_storno_at DATETIME NULL,
     order_note_no INT NULL,
     order_note_date DATE NULL,
-    commission_percent DECIMAL(6,2) NULL,
+    commission_percent DECIMAL(10,6) NULL,
     supplier_request_at DATETIME NULL,
     created_at DATETIME NULL,
     updated_at DATETIME NULL
