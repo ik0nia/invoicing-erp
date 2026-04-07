@@ -2828,11 +2828,20 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        // Compute the client-facing total we INTENDED to send to FGO. This is a fallback
-        // used only if FGO does not return its own authoritative value below.
-        $fgoTotalWithVat = $hasDiscountPricing
-            ? round($rawPackageGrossTotal, 2)
-            : $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commissionPercent);
+        // Fallback total = exact sum of PretTotal values we placed in $content. This is
+        // what FGO actually receives, so it matches the ERP display per-package rounding.
+        // Avoids the old discrepancy from doing a single applyCommission on the invoice
+        // total (which can drift by a few bani vs. the per-package rounded sum).
+        $fgoTotalWithVat = 0.0;
+        foreach ($content as $contentRow) {
+            $fgoTotalWithVat += (float) ($contentRow['PretTotal'] ?? 0.0);
+        }
+        $fgoTotalWithVat = round($fgoTotalWithVat, 2);
+        if ($fgoTotalWithVat <= 0.0) {
+            $fgoTotalWithVat = $hasDiscountPricing
+                ? round($rawPackageGrossTotal, 2)
+                : $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commissionPercent);
+        }
 
         // Source of truth: query FGO immediately for the freshly issued invoice's total.
         // factura/emitere does not return totals, but factura/getstatus returns Valoare
