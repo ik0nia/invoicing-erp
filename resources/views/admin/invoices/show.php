@@ -860,7 +860,7 @@
                         <input
                             id="target_total_without_vat"
                             type="number"
-                            step="0.01"
+                            step="any"
                             min="0"
                             name="target_total_without_vat"
                             value="<?= htmlspecialchars($adjustNetInput) ?>"
@@ -877,7 +877,7 @@
                         <input
                             id="target_total_with_vat"
                             type="number"
-                            step="0.01"
+                            step="any"
                             min="0"
                             name="target_total_with_vat"
                             value="<?= htmlspecialchars($adjustGrossInput) ?>"
