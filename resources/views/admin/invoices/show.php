@@ -484,11 +484,15 @@
             ];
         };
         $packageClientPricing = function (array $stat) use ($applyCommission): ?array {
-            $net = $applyCommission((float) ($stat['total'] ?? 0.0));
+            // Mirror FGO logic: gross = round(base_gross * (1+commission), 2),
+            // net derived as round(gross / (1+vat), 2). This ensures per-package
+            // display matches both the invoice summary box and what FGO computes.
             $gross = $applyCommission((float) ($stat['total_vat'] ?? 0.0));
-            if ($net === null || $gross === null) {
+            if ($gross === null) {
                 return null;
             }
+            $vatPercent = (float) ($stat['vat_percent'] ?? 0.0);
+            $net = round(((float) $gross) / (1 + ($vatPercent / 100)), 2);
 
             return [
                 'net' => (float) $net,

@@ -2420,7 +2420,35 @@ class InvoiceController
         if ($commissionPercent < 0.0) {
             $commissionPercent = 0.0;
         }
-        $commissionPercent = round($commissionPercent, 6);
+
+        // Rounding the commission to 6 decimals can land on the wrong side of a
+        // per-package rounding boundary, dropping the total by 1 cent. Probe a few
+        // neighbours and keep the one whose totals are closest to the target.
+        $candidates = [];
+        $base = round($commissionPercent, 6);
+        for ($k = -3; $k <= 3; $k++) {
+            $cand = $base + ($k * 0.000001);
+            if ($cand < 0.0) {
+                continue;
+            }
+            $candidates[] = round($cand, 6);
+        }
+        $candidates = array_values(array_unique($candidates));
+
+        $bestCandidate = $candidates[0];
+        $bestDiff = PHP_INT_MAX;
+        foreach ($candidates as $cand) {
+            $totals = $totalsForCommission($cand);
+            $diff = abs($totals[$targetKey] - $targetValue);
+            if ($diff < $bestDiff || ($diff === $bestDiff && $cand < $bestCandidate)) {
+                $bestDiff = $diff;
+                $bestCandidate = $cand;
+            }
+            if ($diff === 0.0) {
+                break;
+            }
+        }
+        $commissionPercent = $bestCandidate;
 
         $finalTotals = $totalsForCommission($commissionPercent);
         $baseNet = $baseTotals['net'];
