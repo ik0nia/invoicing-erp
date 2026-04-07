@@ -778,13 +778,21 @@
                 $computedNet = 0.0;
                 $computedGross = 0.0;
                 if ($commissionPercent !== null) {
+                    // Mirror FGO's per-package logic: send PretTotal (gross w/ commission)
+                    // and let it derive net via gross / (1 + vat/100). We compute the same
+                    // way here so the ERP summary matches what FGO will show.
+                    $factor = 1 + ($commissionPercent / 100);
                     foreach ($packageStats as $stat) {
-                        $clientPricing = $packageClientPricing((array) $stat);
-                        if ($clientPricing === null) {
+                        $statArr = (array) $stat;
+                        $baseGross = (float) ($statArr['total_vat'] ?? 0.0);
+                        $vatPercent = (float) ($statArr['vat_percent'] ?? 0.0);
+                        $pkgGross = round($baseGross * $factor, 2);
+                        if (abs($pkgGross) < 0.01) {
                             continue;
                         }
-                        $computedNet += (float) ($clientPricing['net'] ?? 0.0);
-                        $computedGross += (float) ($clientPricing['gross'] ?? 0.0);
+                        $pkgNet = round($pkgGross / (1 + ($vatPercent / 100)), 2);
+                        $computedGross += $pkgGross;
+                        $computedNet   += $pkgNet;
                     }
                 } else {
                     foreach ($packageStats as $stat) {

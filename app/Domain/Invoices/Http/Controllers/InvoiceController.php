@@ -2327,47 +2327,104 @@ class InvoiceController
         }
 
         // ----- Cost-price (non-discount) invoices: recompute commission_percent only -----
-        // IMPORTANT: must mirror packageStats() — prefer cost_line_total* when present,
-        // otherwise fall back to line_total*. The view applies commission on top of this
-        // exact base, so any mismatch breaks the round-trip.
-        $baseNet = 0.0;
-        $baseGross = 0.0;
-        foreach ($lines as $line) {
-            $effectiveNet = ($line->cost_line_total !== null)
-                ? (float) $line->cost_line_total
-                : (float) ($line->line_total ?? 0.0);
-            $effectiveGross = ($line->cost_line_total_vat !== null)
-                ? (float) $line->cost_line_total_vat
-                : (float) ($line->line_total_vat ?? 0.0);
-            $baseNet   += $effectiveNet;
-            $baseGross += $effectiveGross;
+        // We mirror FGO/view logic: per-package gross is rounded to 2dp after applying
+        // commission, and net is derived as round(gross / (1 + vat/100), 2). Use the
+        // same packageStats() the view uses so the displayed totals match exactly what
+        // FGO will compute from PretTotal.
+        $packageStats = $this->packageStats($lines, $packages);
+        $packagesForCalc = [];
+        $baseNetSum = 0.0;
+        $baseGrossSum = 0.0;
+        foreach ($packageStats as $stat) {
+            $statArr = (array) $stat;
+            $baseGross = (float) ($statArr['total_vat'] ?? 0.0);
+            $baseNet   = (float) ($statArr['total'] ?? 0.0);
+            if ($baseGross <= 0.0) {
+                continue;
+            }
+            $packagesForCalc[] = [
+                'base_gross' => $baseGross,
+                'vat_factor' => 1.0 + ((float) ($statArr['vat_percent'] ?? 0.0)) / 100.0,
+            ];
+            $baseGrossSum += $baseGross;
+            $baseNetSum   += $baseNet;
         }
-        $baseNet = round($baseNet, 2);
-        $baseGross = round($baseGross, 2);
-
-        if ($baseNet <= 0.0 || $baseGross <= 0.0) {
+        if (empty($packagesForCalc) || $baseGrossSum <= 0.0) {
             Session::flash('error', 'Factura nu are un cost de baza valid pentru recalculul comisionului.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
+        // Helper: given a commission percent, compute the FGO-style summed net/gross.
+        $totalsForCommission = function (float $percent) use ($packagesForCalc): array {
+            $factor = 1.0 + ($percent / 100.0);
+            $sumGross = 0.0;
+            $sumNet   = 0.0;
+            foreach ($packagesForCalc as $pkg) {
+                $g = round($pkg['base_gross'] * $factor, 2);
+                $n = round($g / $pkg['vat_factor'], 2);
+                $sumGross += $g;
+                $sumNet   += $n;
+            }
+            return ['net' => round($sumNet, 2), 'gross' => round($sumGross, 2)];
+        };
+
+        $baseTotals = $totalsForCommission(0.0);
+
         if ($targetNet !== null) {
-            if ($targetNet + 0.005 < $baseNet) {
-                Session::flash('error', sprintf('Totalul fara TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetNet, $baseNet));
+            if ($targetNet + 0.005 < $baseTotals['net']) {
+                Session::flash('error', sprintf('Totalul fara TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetNet, $baseTotals['net']));
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
-            $commissionPercent = (($targetNet / $baseNet) - 1.0) * 100.0;
         } else {
-            if ($targetGross + 0.005 < $baseGross) {
-                Session::flash('error', sprintf('Totalul cu TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetGross, $baseGross));
+            if ($targetGross + 0.005 < $baseTotals['gross']) {
+                Session::flash('error', sprintf('Totalul cu TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetGross, $baseTotals['gross']));
                 Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
-            $commissionPercent = (($targetGross / $baseGross) - 1.0) * 100.0;
         }
+
+        // Bisection: find the commission percent (>= 0) such that the FGO-style
+        // total (net or gross, depending on what user targeted) equals the target
+        // exactly to the nearest cent.
+        $targetKey   = $targetNet !== null ? 'net' : 'gross';
+        $targetValue = $targetNet !== null ? round((float) $targetNet, 2) : round((float) $targetGross, 2);
+
+        $lo = 0.0;
+        $hi = 1000.0; // 1000% upper bound — far above any realistic commission
+        // Sanity: ensure target is reachable within [lo, hi].
+        $hiTotals = $totalsForCommission($hi);
+        if ($hiTotals[$targetKey] + 0.005 < $targetValue) {
+            Session::flash('error', 'Valoarea ceruta este nerealist de mare pentru aceasta factura.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        $commissionPercent = 0.0;
+        for ($i = 0; $i < 80; $i++) {
+            $mid = ($lo + $hi) / 2.0;
+            $midTotals = $totalsForCommission($mid);
+            if ($midTotals[$targetKey] >= $targetValue) {
+                $hi = $mid;
+            } else {
+                $lo = $mid;
+            }
+            if (($hi - $lo) < 1e-9) {
+                break;
+            }
+        }
+        // Pick the boundary that produces the closest total to target.
+        $loTotals = $totalsForCommission($lo);
+        $hiTotals = $totalsForCommission($hi);
+        $loDiff = abs($loTotals[$targetKey] - $targetValue);
+        $hiDiff = abs($hiTotals[$targetKey] - $targetValue);
+        $commissionPercent = $loDiff <= $hiDiff ? $lo : $hi;
 
         if ($commissionPercent < 0.0) {
             $commissionPercent = 0.0;
         }
         $commissionPercent = round($commissionPercent, 6);
+
+        $finalTotals = $totalsForCommission($commissionPercent);
+        $baseNet = $baseTotals['net'];
+        $baseGross = $baseTotals['gross'];
 
         try {
             Database::execute(
@@ -2392,8 +2449,8 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        $appliedNet = round($baseNet * (1.0 + $commissionPercent / 100.0), 2);
-        $appliedGross = round($baseGross * (1.0 + $commissionPercent / 100.0), 2);
+        $appliedNet = $finalTotals['net'];
+        $appliedGross = $finalTotals['gross'];
 
         Audit::record('invoice.manual_totals_adjusted', 'invoice_in', $invoiceId, [
             'mode' => 'commission_recalc',
