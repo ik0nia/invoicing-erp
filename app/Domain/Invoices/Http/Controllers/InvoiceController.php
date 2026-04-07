@@ -2828,11 +2828,37 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        // Compute the client-facing total that was sent to FGO — freeze it in DB
-        // so it can never be corrupted by later sync/recalculation.
+        // Compute the client-facing total we INTENDED to send to FGO. This is a fallback
+        // used only if FGO does not return its own authoritative value below.
         $fgoTotalWithVat = $hasDiscountPricing
             ? round($rawPackageGrossTotal, 2)
             : $this->commissionService->applyCommission((float) $invoice->total_with_vat, $commissionPercent);
+
+        // Source of truth: query FGO immediately for the freshly issued invoice's total.
+        // factura/emitere does not return totals, but factura/getstatus returns Valoare
+        // (the gross total FGO actually computed and displays). Store that so the ERP
+        // summary always matches the FGO invoice exactly.
+        try {
+            $statusPayload = [
+                'CodUnic' => $codUnic,
+                'Hash' => FgoClient::hashForNumber($codUnic, $secret, $fgoNumber),
+                'Serie' => $fgoSeries,
+                'Numar' => $fgoNumber,
+                'PlatformaUrl' => FgoClient::platformUrl(),
+            ];
+            $statusResponse = $client->post('factura/getstatus', $statusPayload);
+            if (!empty($statusResponse['Success'])) {
+                $statusFactura = $statusResponse['Factura'] ?? $statusResponse;
+                if (is_array($statusFactura) && isset($statusFactura['Valoare'])) {
+                    $fgoValoare = $this->parseNumber((string) $statusFactura['Valoare']);
+                    if ($fgoValoare !== null && $fgoValoare > 0.0) {
+                        $fgoTotalWithVat = round($fgoValoare, 2);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal: if getstatus fails, keep the locally-computed fallback above.
+        }
 
         Database::execute(
             'UPDATE invoices_in
