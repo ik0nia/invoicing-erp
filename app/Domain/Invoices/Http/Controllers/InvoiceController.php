@@ -105,7 +105,7 @@ class InvoiceController
                 // discount detection (e.g. 0.000002% rounded to 0.00). Clear it in memory now;
                 // after the configured commission is resolved below, it will be frozen into DB
                 // so the invoice stays locked to the commission it was issued with.
-                if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.1) {
+                if ($storedAutoCommission >= 0.0 && $storedAutoCommission < 0.01) {
                     $invoice->commission_percent = null;
                     $needsCommissionFreeze = true;
                 } else {
@@ -2327,11 +2327,20 @@ class InvoiceController
         }
 
         // ----- Cost-price (non-discount) invoices: recompute commission_percent only -----
+        // IMPORTANT: must mirror packageStats() — prefer cost_line_total* when present,
+        // otherwise fall back to line_total*. The view applies commission on top of this
+        // exact base, so any mismatch breaks the round-trip.
         $baseNet = 0.0;
         $baseGross = 0.0;
         foreach ($lines as $line) {
-            $baseNet   += (float) ($line->line_total ?? 0.0);
-            $baseGross += (float) ($line->line_total_vat ?? 0.0);
+            $effectiveNet = ($line->cost_line_total !== null)
+                ? (float) $line->cost_line_total
+                : (float) ($line->line_total ?? 0.0);
+            $effectiveGross = ($line->cost_line_total_vat !== null)
+                ? (float) $line->cost_line_total_vat
+                : (float) ($line->line_total_vat ?? 0.0);
+            $baseNet   += $effectiveNet;
+            $baseGross += $effectiveGross;
         }
         $baseNet = round($baseNet, 2);
         $baseGross = round($baseGross, 2);
