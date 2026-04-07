@@ -2199,8 +2199,24 @@ class InvoiceController
             Response::redirect('/admin/facturi');
         }
 
+        $rawTarget = trim((string) ($_POST['adjust_target'] ?? ''));
         $rawTargetNet = trim((string) ($_POST['target_total_without_vat'] ?? ''));
         $rawTargetGross = trim((string) ($_POST['target_total_with_vat'] ?? ''));
+
+        // Normalize to a single chosen target based on radio selection (mutually exclusive).
+        if ($rawTarget === 'net') {
+            $rawTargetGross = '';
+        } elseif ($rawTarget === 'gross') {
+            $rawTargetNet = '';
+        } elseif ($rawTargetNet !== '' && $rawTargetGross !== '') {
+            Session::flash('invoice_price_adjust_form', [
+                'target_total_without_vat' => $rawTargetNet,
+                'target_total_with_vat' => $rawTargetGross,
+            ]);
+            Session::flash('error', 'Alege un singur total tinta (fara TVA SAU cu TVA).');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
         Session::flash('invoice_price_adjust_form', [
             'target_total_without_vat' => $rawTargetNet,
             'target_total_with_vat' => $rawTargetGross,
@@ -2210,15 +2226,15 @@ class InvoiceController
         $targetGross = $rawTargetGross !== '' ? $this->parseNumber($rawTargetGross) : null;
 
         if (($rawTargetNet !== '' && $targetNet === null) || ($rawTargetGross !== '' && $targetGross === null)) {
-            Session::flash('error', 'Valorile ajustarii trebuie sa fie numere valide.');
+            Session::flash('error', 'Valoarea ajustarii trebuie sa fie un numar valid.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
         if ($targetNet === null && $targetGross === null) {
-            Session::flash('error', 'Completeaza cel putin Total fara TVA sau Total cu TVA.');
+            Session::flash('error', 'Completeaza Total fara TVA sau Total cu TVA.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
         if (($targetNet !== null && $targetNet < 0.0) || ($targetGross !== null && $targetGross < 0.0)) {
-            Session::flash('error', 'Valorile ajustarii nu pot fi negative.');
+            Session::flash('error', 'Valoarea ajustarii nu poate fi negativa.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
@@ -2239,41 +2255,112 @@ class InvoiceController
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        $targetNetCents = $targetNet !== null ? (int) round($targetNet * 100) : null;
-        $targetGrossCents = $targetGross !== null ? (int) round($targetGross * 100) : null;
+        $rawSalesTotals = $this->invoicePackagePositiveSalesTotals((int) $invoice->id);
+        $rawSalesGross = (float) array_sum(array_column($rawSalesTotals, 'total_vat'));
+        $isDiscountPricing = $this->invoiceHasDiscountPricing($invoice, $rawSalesGross);
 
-        $adjustment = $this->buildAdjustedLinePricing($lines, $targetNetCents, $targetGrossCents);
-        if (!$adjustment['ok']) {
-            Session::flash('error', (string) ($adjustment['error'] ?? 'Nu am putut aplica ajustarea.'));
+        $now = date('Y-m-d H:i:s');
+
+        if ($isDiscountPricing) {
+            // Discount-pricing invoices store sale prices on the lines (not derived from
+            // commission). To honor a target, we redistribute line totals using the existing
+            // cent-by-cent rebalancer, then re-derive commission_percent for display.
+            $targetNetCents = $targetNet !== null ? (int) round($targetNet * 100) : null;
+            $targetGrossCents = $targetGross !== null ? (int) round($targetGross * 100) : null;
+
+            $adjustment = $this->buildAdjustedLinePricing($lines, $targetNetCents, $targetGrossCents);
+            if (!$adjustment['ok']) {
+                Session::flash('error', (string) ($adjustment['error'] ?? 'Nu am putut aplica ajustarea.'));
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+
+            $pdo = Database::pdo();
+            $updateLine = $pdo->prepare(
+                'UPDATE invoice_in_lines
+                 SET unit_price = :unit_price,
+                     line_total = :line_total,
+                     line_total_vat = :line_total_vat
+                 WHERE id = :id AND invoice_in_id = :invoice'
+            );
+
+            $appliedNet = round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2);
+            $appliedGross = round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2);
+
+            $pdo->beginTransaction();
+            try {
+                foreach ((array) ($adjustment['lines'] ?? []) as $lineRow) {
+                    $updateLine->execute([
+                        'unit_price' => (float) ($lineRow['unit_price'] ?? 0.0),
+                        'line_total' => (float) ($lineRow['line_total'] ?? 0.0),
+                        'line_total_vat' => (float) ($lineRow['line_total_vat'] ?? 0.0),
+                        'id' => (int) ($lineRow['id'] ?? 0),
+                        'invoice' => $invoiceId,
+                    ]);
+                }
+                $pdo->commit();
+            } catch (\Throwable $exception) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                Session::flash('error', 'Nu am putut aplica ajustarea facturii.');
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+
+            // Re-derive commission_percent from the new line sale totals.
+            $invoice = $this->guardInvoice($invoiceId);
+            $this->syncDiscountCommissionPercent($invoice);
+
+            Audit::record('invoice.manual_totals_adjusted', 'invoice_in', $invoiceId, [
+                'mode' => 'line_rebalance',
+                'target_total_without_vat' => $targetNet !== null ? round($targetNet, 2) : null,
+                'target_total_with_vat' => $targetGross !== null ? round($targetGross, 2) : null,
+                'applied_total_without_vat' => $appliedNet,
+                'applied_total_with_vat' => $appliedGross,
+            ]);
+
+            Session::flash('invoice_price_adjust_form', [
+                'target_total_without_vat' => $targetNet !== null ? number_format($appliedNet, 2, '.', '') : '',
+                'target_total_with_vat' => $targetGross !== null ? number_format($appliedGross, 2, '.', '') : '',
+            ]);
+            Session::flash('status', 'Ajustarea facturii a fost aplicata pe pozitii (factura discount).');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
-        $pdo = Database::pdo();
-        $now = date('Y-m-d H:i:s');
-        $updateLine = $pdo->prepare(
-            'UPDATE invoice_in_lines
-             SET unit_price = :unit_price,
-                 line_total = :line_total,
-                 line_total_vat = :line_total_vat
-             WHERE id = :id AND invoice_in_id = :invoice'
-        );
+        // ----- Cost-price (non-discount) invoices: recompute commission_percent only -----
+        $baseNet = 0.0;
+        $baseGross = 0.0;
+        foreach ($lines as $line) {
+            $baseNet   += (float) ($line->line_total ?? 0.0);
+            $baseGross += (float) ($line->line_total_vat ?? 0.0);
+        }
+        $baseNet = round($baseNet, 2);
+        $baseGross = round($baseGross, 2);
 
-        $pdo->beginTransaction();
-        try {
-            foreach ((array) ($adjustment['lines'] ?? []) as $lineRow) {
-                $updateLine->execute([
-                    'unit_price' => (float) ($lineRow['unit_price'] ?? 0.0),
-                    'line_total' => (float) ($lineRow['line_total'] ?? 0.0),
-                    'line_total_vat' => (float) ($lineRow['line_total_vat'] ?? 0.0),
-                    'id' => (int) ($lineRow['id'] ?? 0),
-                    'invoice' => $invoiceId,
-                ]);
+        if ($baseNet <= 0.0 || $baseGross <= 0.0) {
+            Session::flash('error', 'Factura nu are un cost de baza valid pentru recalculul comisionului.');
+            Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+        }
+
+        if ($targetNet !== null) {
+            if ($targetNet + 0.005 < $baseNet) {
+                Session::flash('error', sprintf('Totalul fara TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetNet, $baseNet));
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
             }
+            $commissionPercent = (($targetNet / $baseNet) - 1.0) * 100.0;
+        } else {
+            if ($targetGross + 0.005 < $baseGross) {
+                Session::flash('error', sprintf('Totalul cu TVA (%.2f) nu poate fi mai mic decat costul (%.2f).', $targetGross, $baseGross));
+                Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
+            }
+            $commissionPercent = (($targetGross / $baseGross) - 1.0) * 100.0;
+        }
 
-            $totalWithoutVat = round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2);
-            $totalWithVat = round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2);
-            $totalVat = round($totalWithVat - $totalWithoutVat, 2);
+        if ($commissionPercent < 0.0) {
+            $commissionPercent = 0.0;
+        }
+        $commissionPercent = round($commissionPercent, 6);
 
+        try {
             Database::execute(
                 'UPDATE invoices_in
                  SET total_without_vat = :without_vat,
@@ -2283,36 +2370,38 @@ class InvoiceController
                      updated_at = :updated_at
                  WHERE id = :id',
                 [
-                    'without_vat' => $totalWithoutVat,
-                    'vat' => $totalVat,
-                    'with_vat' => $totalWithVat,
-                    'commission' => 0.0,
+                    'without_vat' => $baseNet,
+                    'vat' => round($baseGross - $baseNet, 2),
+                    'with_vat' => $baseGross,
+                    'commission' => $commissionPercent,
                     'updated_at' => $now,
                     'id' => $invoiceId,
                 ]
             );
-
-            $pdo->commit();
         } catch (\Throwable $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            Session::flash('error', 'Nu am putut aplica ajustarea facturii.');
+            Session::flash('error', 'Nu am putut salva ajustarea facturii.');
             Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
         }
 
+        $appliedNet = round($baseNet * (1.0 + $commissionPercent / 100.0), 2);
+        $appliedGross = round($baseGross * (1.0 + $commissionPercent / 100.0), 2);
+
         Audit::record('invoice.manual_totals_adjusted', 'invoice_in', $invoiceId, [
+            'mode' => 'commission_recalc',
             'target_total_without_vat' => $targetNet !== null ? round($targetNet, 2) : null,
             'target_total_with_vat' => $targetGross !== null ? round($targetGross, 2) : null,
-            'applied_total_without_vat' => round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2),
-            'applied_total_with_vat' => round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2),
+            'base_total_without_vat' => $baseNet,
+            'base_total_with_vat' => $baseGross,
+            'commission_percent' => $commissionPercent,
+            'applied_total_without_vat' => $appliedNet,
+            'applied_total_with_vat' => $appliedGross,
         ]);
 
         Session::flash('invoice_price_adjust_form', [
-            'target_total_without_vat' => number_format(round(((int) ($adjustment['total_net_cents'] ?? 0)) / 100, 2), 2, '.', ''),
-            'target_total_with_vat' => number_format(round(((int) ($adjustment['total_gross_cents'] ?? 0)) / 100, 2), 2, '.', ''),
+            'target_total_without_vat' => $targetNet !== null ? number_format($appliedNet, 2, '.', '') : '',
+            'target_total_with_vat' => $targetGross !== null ? number_format($appliedGross, 2, '.', '') : '',
         ]);
-        Session::flash('status', 'Ajustarile facturii au fost aplicate pe toate pozitiile.');
+        Session::flash('status', sprintf('Comisionul a fost recalculat la %s%% si salvat pe factura.', rtrim(rtrim(number_format($commissionPercent, 4, '.', ''), '0'), '.')));
         Response::redirect('/admin/facturi?invoice_id=' . $invoiceId . '#drag-drop');
     }
 
@@ -2558,7 +2647,9 @@ class InvoiceController
             // Treat 0.00 as null: DECIMAL(6,2) rounds micro-commissions (e.g. 0.000002%) to 0.00,
             // which is indistinguishable from a stale false-positive. A real non-discount invoice
             // never has 0% commission; legitimate zero commissions only exist on discount invoices.
-            if ($storedCommission !== null && $storedCommission >= 0.1) {
+            // Threshold lowered to 0.01 so explicit user adjustments (manual commission recalc)
+            // with small commissions are honored at FGO time.
+            if ($storedCommission !== null && $storedCommission >= 0.01) {
                 $commissionPercent = $storedCommission;
             } else {
                 $commission = Commission::forSupplierClient($invoice->supplier_cui, $clientCui);

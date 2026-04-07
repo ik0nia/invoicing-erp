@@ -837,14 +837,18 @@
             <div class="mt-4 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 <div class="text-xs font-semibold uppercase tracking-wide text-amber-700">Ajustare factura</div>
                 <p class="mt-1 text-xs text-amber-800">
-                    Introdu totalul dorit (fara TVA si/sau cu TVA), apoi aplica ajustarea. Preturile se redistribuie pe toate
-                    pozitiile, tinand cont de cotele TVA ale pachetelor. Aceasta ajustare suprascrie regula initiala de comision.
+                    Alege un singur total tinta (fara TVA <strong>sau</strong> cu TVA). La aplicare se recalculeaza
+                    procentul de comision astfel incat factura sa atinga valoarea ceruta, iar comisionul nou se salveaza
+                    pe aceasta factura. Costurile pe linii raman neschimbate.
                 </p>
-                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/ajustare-totaluri') ?>" class="mt-3 flex flex-wrap items-end gap-3">
+                <form method="POST" action="<?= App\Support\Url::to('admin/facturi/ajustare-totaluri') ?>" class="mt-3 flex flex-wrap items-end gap-3" id="invoice-adjust-form">
                     <?= App\Support\Csrf::input() ?>
                     <input type="hidden" name="invoice_id" value="<?= (int) $invoice->id ?>">
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-amber-800" for="target_total_without_vat">Total fara TVA</label>
+                        <label class="mb-1 flex items-center gap-2 text-xs font-semibold text-amber-800">
+                            <input type="radio" name="adjust_target" value="net" data-adjust-target checked>
+                            Total fara TVA
+                        </label>
                         <input
                             id="target_total_without_vat"
                             type="number"
@@ -854,10 +858,14 @@
                             value="<?= htmlspecialchars($adjustNetInput) ?>"
                             class="w-44 rounded border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800"
                             placeholder="ex: 1234.56"
+                            data-adjust-input="net"
                         >
                     </div>
                     <div>
-                        <label class="mb-1 block text-xs font-semibold text-amber-800" for="target_total_with_vat">Total cu TVA</label>
+                        <label class="mb-1 flex items-center gap-2 text-xs font-semibold text-amber-800">
+                            <input type="radio" name="adjust_target" value="gross" data-adjust-target>
+                            Total cu TVA
+                        </label>
                         <input
                             id="target_total_with_vat"
                             type="number"
@@ -867,12 +875,42 @@
                             value="<?= htmlspecialchars($adjustGrossInput) ?>"
                             class="w-44 rounded border border-amber-300 bg-white px-3 py-2 text-sm text-slate-800"
                             placeholder="ex: 1499.99"
+                            data-adjust-input="gross"
+                            disabled
                         >
                     </div>
                     <button class="rounded border border-amber-600 bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-700">
-                        Aplica ajustari
+                        Aplica ajustare
                     </button>
                 </form>
+                <script>
+                (function () {
+                    var form = document.getElementById('invoice-adjust-form');
+                    if (!form) { return; }
+                    var radios = form.querySelectorAll('[data-adjust-target]');
+                    var inputs = {
+                        net: form.querySelector('[data-adjust-input="net"]'),
+                        gross: form.querySelector('[data-adjust-input="gross"]')
+                    };
+                    function sync() {
+                        var selected = form.querySelector('[data-adjust-target]:checked');
+                        var which = selected ? selected.value : 'net';
+                        Object.keys(inputs).forEach(function (key) {
+                            var el = inputs[key];
+                            if (!el) { return; }
+                            if (key === which) {
+                                el.disabled = false;
+                                el.removeAttribute('disabled');
+                            } else {
+                                el.disabled = true;
+                                el.setAttribute('disabled', 'disabled');
+                            }
+                        });
+                    }
+                    radios.forEach(function (r) { r.addEventListener('change', sync); });
+                    sync();
+                })();
+                </script>
             </div>
         <?php endif; ?>
     <?php endif; ?>
